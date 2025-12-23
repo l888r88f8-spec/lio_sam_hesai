@@ -271,6 +271,10 @@ public:
         if (sensor == SensorType::VELODYNE)
         {
             pcl::fromROSMsg(currentCloudMsg, *laserCloudIn);
+        }
+        else if (sensor == SensorType::HESAI)
+        {
+            pcl::fromROSMsg(currentCloudMsg, *laserCloudIn);
 
             if (!laserCloudIn->points.empty())
             {
@@ -286,7 +290,6 @@ public:
                 }
             }
         }
-        
         else if (sensor == SensorType::OUSTER)
         {
             // Convert to Velodyne format
@@ -373,7 +376,7 @@ public:
 
         // get timestamp
         cloudHeader = currentCloudMsg.header;
-        timeScanCur = rclcpp::Time(cloudHeader.stamp).seconds(); //stamp2Sec(cloudHeader.stamp);
+        timeScanCur = stamp2Sec(cloudHeader.stamp);
         timeScanEnd = timeScanCur + laserCloudIn->points.back().time;
     
         // remove Nan
@@ -392,17 +395,17 @@ public:
         if (ringFlag == 0)
         {
             ringFlag = -1;
-            /* for (int i = 0; i < (int)currentCloudMsg.fields.size(); ++i)
+            for (int i = 0; i < (int)currentCloudMsg.fields.size(); ++i)
             {
                 if (currentCloudMsg.fields[i].name == "ring")
                 {
                     ringFlag = 1;
                     break;
                 }
-            } */
+            }
             if (ringFlag == -1)
             {
-                if (sensor == SensorType::VELODYNE) {
+                if (sensor == SensorType::VELODYNE || sensor == SensorType::HESAI) {
                     ringFlag = 2;
                 } else if (sensor == SensorType::LSLIDAR || sensor == SensorType::LIVOX) {
                     ringFlag = 3; // Use artificial ring calculation for Livox
@@ -691,10 +694,7 @@ public:
             int rowIdn = laserCloudIn->points[i].ring;
             // if sensor is a velodyne (ringFlag = 2) calculate rowIdn based on number of scans
             if (ringFlag == 2) { 
-                float verticalAngle =
-                    atan2(thisPoint.z,
-                        sqrt(thisPoint.x * thisPoint.x + thisPoint.y * thisPoint.y)) *
-                    180 / M_PI;
+                float verticalAngle = atan2(thisPoint.z, sqrt(thisPoint.x * thisPoint.x + thisPoint.y * thisPoint.y)) * 180 / M_PI;
                 rowIdn = (verticalAngle + (N_SCAN - 1)) / 2.0;
             }
             
@@ -709,7 +709,7 @@ public:
                 continue;
 
             int columnIdn = -1;
-            if (sensor == SensorType::VELODYNE || sensor == SensorType::OUSTER)
+            if (sensor == SensorType::VELODYNE || sensor == SensorType::OUSTER || sensor == SensorType::HESAI)
             {
                 float horizonAngle = atan2(thisPoint.x, thisPoint.y) * 180 / M_PI;
                 static float ang_res_x = 360.0/float(Horizon_SCAN);
@@ -717,28 +717,6 @@ public:
                 if (columnIdn >= Horizon_SCAN)
                     columnIdn -= Horizon_SCAN;
             }
-            // else if (sensor == SensorType::LSLIDAR)
-            // {
-            //     // 1. 计算水平角：要不要 atan2(x,y) / atan2(y,x) 看你雷达坐标系
-            //     float horizonAngle = atan2(thisPoint.x, thisPoint.y) * 180.0f / M_PI;
-
-            //     // 假设雷达对准前方时 horizonAngle 约是 0°，
-            //     // 左右各 60°，即 [-60, +60] 是有效范围
-            //     const float fov_deg   = 120.0f;
-            //     const float half_fov  = fov_deg * 0.5f;
-            //     const float ang_res_x = fov_deg / float(Horizon_SCAN);  // 每列对应多少度
-
-            //     // 2. 把 [-60, +60] 映射到 [0, Horizon_SCAN)
-            //     //    -60° -> 0 列
-            //     //    +60° -> Horizon_SCAN-1
-            //     float angle_shifted = horizonAngle + half_fov;  // [-60,+60] -> [0,120]
-
-            //     int col = int(std::floor(angle_shifted / ang_res_x + 0.5f)); // 四舍五入
-            //     if (col < 0 || col >= Horizon_SCAN)
-            //         continue; // 超出FOV直接丢掉
-
-            //     columnIdn = col;
-            // }
             else if (sensor == SensorType::LSLIDAR || sensor == SensorType::LIVOX)
             {
                 float horizonAngle = atan2(thisPoint.y, thisPoint.x) * 180 / M_PI;
