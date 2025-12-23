@@ -1,4 +1,4 @@
-# LIO_SAM_MID360 (ROS 2)
+# LIO_SAM_HESAI (ROS 2)
 
 Adapted LIO-SAM for Livox MID-360. This fork renames the package to `lio_sam_mid360` (ROS package names must be lowercase) and updates configs/launch for MID-360 usage.
 
