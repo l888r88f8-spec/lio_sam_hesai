@@ -8,7 +8,7 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
 
-    share_dir = get_package_share_directory('lio_sam_mid360')
+    share_dir = get_package_share_directory('lio_sam_hesai')
     parameter_file = LaunchConfiguration('params_file')
     rviz_config_file = os.path.join(share_dir, 'config', 'rviz2.rviz')
 
@@ -52,30 +52,30 @@ def generate_launch_description():
 
         # --- LIO-SAM Nodes ---
         Node(
-            package='lio_sam_mid360',
-            executable='lio_sam_mid360_imuPreintegration',
-            name='lio_sam_mid360_imuPreintegration',
+            package='lio_sam_hesai',
+            executable='lio_sam_hesai_imuPreintegration',
+            name='lio_sam_hesai_imuPreintegration',
             parameters=[parameter_file],
             output='screen'
         ),
         Node(
-            package='lio_sam_mid360',
-            executable='lio_sam_mid360_imageProjection',
-            name='lio_sam_mid360_imageProjection',
+            package='lio_sam_hesai',
+            executable='lio_sam_hesai_imageProjection',
+            name='lio_sam_hesai_imageProjection',
             parameters=[parameter_file],
             output='screen'
         ),
         Node(
-            package='lio_sam_mid360',
-            executable='lio_sam_mid360_featureExtraction',
-            name='lio_sam_mid360_featureExtraction',
+            package='lio_sam_hesai',
+            executable='lio_sam_hesai_featureExtraction',
+            name='lio_sam_hesai_featureExtraction',
             parameters=[parameter_file],
             output='screen'
         ),
         Node(
-            package='lio_sam_mid360',
-            executable='lio_sam_mid360_mapOptimization',
-            name='lio_sam_mid360_mapOptimization',
+            package='lio_sam_hesai',
+            executable='lio_sam_hesai_mapOptimization',
+            name='lio_sam_hesai_mapOptimization',
             parameters=[parameter_file],
             output='screen'
         ),

@@ -45,7 +45,7 @@ Edit the fov of the Lidar setting. For Hesai XT16 (Default) it is -15 to 15 degr
 
 ## Run
 ```
-ros2 launch lio_sam_mid360 run.launch.py
+ros2 launch lio_sam_hesai run.launch.py
 ```
 
 Play a bag in another terminal:
@@ -55,7 +55,7 @@ ros2 bag play your_data
 
 ## Save map service
 ```
-ros2 service call /lio_sam/save_map lio_sam_mid360/srv/SaveMap "{resolution: 0.2, destination: /tmp/LOAM}"
+ros2 service call /lio_sam/save_map lio_sam_hesai/srv/SaveMap "{resolution: 0.2, destination: /tmp/LOAM}"
 ```
 <img width="1900" height="938" alt="image" src="https://github.com/user-attachments/assets/71c4b066-bc69-43f3-b2f0-d133372c79ad" />
 <img width="1885" height="931" alt="image_1" src="https://github.com/user-attachments/assets/e914fd49-680f-42c4-94af-ef969f65a800" />
@@ -72,4 +72,4 @@ Note: The service name `/lio_sam/save_map` follows the original namespace; the t
   
 ## Credits
 - Adaptation and maintenance: Vishnuraj A
-- Based on the original LIO-SAM by Tixiao Shan et al. See `LICENSE` and original repository for citations.
+- Based on the original LIO-SAM by Tixiao Shan and lio_sam_mid360 by Vishnuraj A et al. See `LICENSE` and original repository for citations.
