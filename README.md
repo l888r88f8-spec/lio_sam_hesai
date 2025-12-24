@@ -8,6 +8,8 @@ Adapted LIO-SAM for Hesai XT16. This fork renames the package to `lio_sam_hesai`
 - Same node graph as LIO-SAM (image projection, feature extraction, IMU preintegration, map optimization)
 - Directly supports ROS Bag Integration
 - Supports both 6-axis and 9-axis IMUs
+- Using Local Geometric Consistency Filtering (KNN)
+- Use voxel persistence filtering and edge filtering to filter dynamic obstacles*
 
 ## Requirements
 - Ubuntu 22.04 + ROS 2 Humble (other ROS 2 distros may work)
@@ -45,7 +47,7 @@ Edit the fov of the Lidar setting. For Hesai XT16 (Default) it is -15 to 15 degr
 
 ## Run
 ```
-ros2 launch lio_sam_hesai run.launch.py
+ros2 launch lio_sam_mid360 run.launch.py
 ```
 
 Play a bag in another terminal:
@@ -72,4 +74,4 @@ Note: The service name `/lio_sam/save_map` follows the original namespace; the t
   
 ## Credits
 - Adaptation and maintenance: Vishnuraj A
-- Based on the original LIO-SAM by Tixiao Shan and lio_sam_mid360 by Vishnuraj A et al. See `LICENSE` and original repository for citations.
+- Based on the original LIO-SAM by Tixiao Shan et al. See `LICENSE` and original repository for citations.

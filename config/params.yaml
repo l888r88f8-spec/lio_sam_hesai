@@ -31,7 +31,7 @@
     downsampleRate: 1                            # default: 1. Downsample your data if too many
     # points. i.e., 16 = 64 / 4, 16 = 16 / 1
     lidarMinRange: 0.3                           # default: 1.0, minimum lidar range to be used
-    lidarMaxRange: 40.0                        # default: 1000.0, maximum lidar range to be used
+    lidarMaxRange: 80.0                        # default: 1000.0, maximum lidar range to be used
 
     # IMU Settings
     imuType: 1                                  # default: 0 = 6-axis imu 1= 9 axis imu
@@ -40,9 +40,9 @@
     imuAccBiasN: 2.0e-3 # 0.19
     imuGyrBiasN: 2.5e-5 # 0.04
     imuGravity: 9.805
-    imuRPYWeight: 0.2
+    imuRPYWeight: 0.1
 
-    extrinsicTrans:  [ 0.0,  0.04,  -0.35 ]
+    extrinsicTrans:  [ 0.15,  0.0,  -0.15 ]
     extrinsicRot:    [1.0,  0.0,  0.0,
                       0.0,  1.0,  0.0,
                       0.0,  0.0,  1.0 ]
@@ -61,19 +61,32 @@
     mappingCornerLeafSize: 0.2                    # default: 0.2 - outdoor, 0.1 - indoor
     mappingSurfLeafSize: 0.4                      # default: 0.4 - outdoor, 0.2 - indoor
 
+    # 局部几何一致性滤波（KNN，cap + 强下采样从 no-match 少量补点）
+    dynamicKeyframeFilterEnable: true
+    dynamicSurfKnnMaxDist: 1.5 # 局部地图5NN阈值
+    dynamicSurfPlaneMaxDist: 0.15 # 点到平面距离阈值
+    # kept：40%–65% seenNoMatch：15%–35%
+
+    # Global map static (anti-ghost) filter
+    # 体素持久性滤波
+    globalStaticMapFilterEnable: true
+    globalStaticVoxelSize: 0.4 # 将全局点云划分为体素格，单位m
+    globalStaticMinKF: 3 # 保存阈值
+    globalStaticFilterCorners: true # 体素边缘滤波
+
     # robot motion constraint (in case you are using a 2D robot)
     z_tollerance: 1000.0                          # meters
     rotation_tollerance: 1000.0                   # radians
 
     # CPU Params
     numberOfCores: 6                              # number of cores for mapping optimization
-    mappingProcessInterval: 0.15                  # seconds, regulate mapping frequency
+    mappingProcessInterval: 0.1                  # seconds, regulate mapping frequency
 
     # Surrounding map
     surroundingkeyframeAddingDistThreshold: 1.0   # meters, regulate keyframe adding threshold
     surroundingkeyframeAddingAngleThreshold: 0.2  # radians, regulate keyframe adding threshold
     surroundingKeyframeDensity: 2.0               # meters, downsample surrounding keyframe poses   
-    surroundingKeyframeSearchRadius: 20.0         # meters, within n meters scan-to-map optimization
+    surroundingKeyframeSearchRadius: 20.0         # meters, within n meters scan-to-map optimization -indoor 30,outdoor 20
     # (when loop closure disabled)
 
     # Loop closure
@@ -90,5 +103,5 @@
 
     # Visualization
     globalMapVisualizationSearchRadius: 2000.0    # meters, global map visualization radius
-    globalMapVisualizationPoseDensity: 1.0       # meters, global map visualization keyframe density
+    globalMapVisualizationPoseDensity: 0.8       # meters, global map visualization keyframe density
     globalMapVisualizationLeafSize: 0.5           # meters, global map visualization cloud density

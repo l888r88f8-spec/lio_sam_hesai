@@ -13,8 +13,12 @@
 #include <gtsam/nonlinear/Marginals.h>
 #include <gtsam/nonlinear/Values.h>
 #include <gtsam/inference/Symbol.h>
-
 #include <gtsam/nonlinear/ISAM2.h>
+#include <pcl/filters/radius_outlier_removal.h>
+#include <pcl/segmentation/extract_clusters.h>
+#include <pcl/search/kdtree.h>
+#include <unordered_map>
+#include <cmath>
 
 using namespace gtsam;
 
@@ -44,6 +48,114 @@ POINT_CLOUD_REGISTER_POINT_STRUCT (PointXYZIRPYT,
                                    (double, time, time))
 
 typedef PointXYZIRPYT  PointTypePose;
+
+
+// ----------------------------------------------------------------------------
+// Global-map static voxel filter (anti-ghost):
+// Keep voxels that are observed by >= minKF distinct keyframes, output voxel centroids.
+// ----------------------------------------------------------------------------
+struct VoxelIndex
+{
+    int ix;
+    int iy;
+    int iz;
+
+    bool operator==(const VoxelIndex& o) const noexcept
+    {
+        return ix == o.ix && iy == o.iy && iz == o.iz;
+    }
+};
+
+struct VoxelIndexHash
+{
+    size_t operator()(const VoxelIndex& v) const noexcept
+    {
+        // A simple, reasonably well-mixed hash for 3 ints
+        size_t h1 = std::hash<int>{}(v.ix);
+        size_t h2 = std::hash<int>{}(v.iy);
+        size_t h3 = std::hash<int>{}(v.iz);
+
+        size_t h = h1;
+        h ^= h2 + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
+        h ^= h3 + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
+        return h;
+    }
+};
+
+struct VoxelAcc
+{
+    double sx, sy, sz;
+    uint32_t n;
+    uint16_t kf_count;
+    int last_kf;
+
+    VoxelAcc() : sx(0.0), sy(0.0), sz(0.0), n(0), kf_count(0), last_kf(-1) {}
+};
+
+static inline VoxelIndex voxelIndexOf(const PointType& p, float voxelSize)
+{
+    const double inv = 1.0 / (double)voxelSize;
+    VoxelIndex v;
+    v.ix = (int)std::floor((double)p.x * inv);
+    v.iy = (int)std::floor((double)p.y * inv);
+    v.iz = (int)std::floor((double)p.z * inv);
+    return v;
+}
+
+static void accumulateVoxelMap(std::unordered_map<VoxelIndex, VoxelAcc, VoxelIndexHash>& vox,
+                               const pcl::PointCloud<PointType>::Ptr& cloud,
+                               int keyframeId,
+                               float voxelSize)
+{
+    for (const auto& pt : cloud->points)
+    {
+        VoxelIndex idx = voxelIndexOf(pt, voxelSize);
+        auto it = vox.find(idx);
+        if (it == vox.end())
+        {
+            VoxelAcc acc;
+            acc.last_kf = keyframeId;
+            acc.kf_count = 1;
+            acc.sx = pt.x; acc.sy = pt.y; acc.sz = pt.z;
+            acc.n = 1;
+            vox.emplace(idx, acc);
+        }
+        else
+        {
+            VoxelAcc& acc = it->second;
+            if (acc.last_kf != keyframeId)
+            {
+                acc.kf_count++;
+                acc.last_kf = keyframeId;
+            }
+            acc.sx += pt.x; acc.sy += pt.y; acc.sz += pt.z;
+            acc.n++;
+        }
+    }
+}
+
+static pcl::PointCloud<PointType>::Ptr voxelMapToCloud(const std::unordered_map<VoxelIndex, VoxelAcc, VoxelIndexHash>& vox,
+                                                       int minKF)
+{
+    pcl::PointCloud<PointType>::Ptr out(new pcl::PointCloud<PointType>());
+    out->reserve(vox.size());
+
+    for (const auto& kv : vox)
+    {
+        const VoxelAcc& acc = kv.second;
+        if ((int)acc.kf_count < minKF || acc.n == 0)
+            continue;
+
+        PointType p;
+        p.x = (float)(acc.sx / (double)acc.n);
+        p.y = (float)(acc.sy / (double)acc.n);
+        p.z = (float)(acc.sz / (double)acc.n);
+        p.intensity = 1.0f;
+        out->push_back(p);
+    }
+
+    return out;
+}
 
 
 class mapOptimization : public ParamServer
@@ -196,12 +308,66 @@ public:
             pcl::PointCloud<PointType>::Ptr globalSurfCloud(new pcl::PointCloud<PointType>());
             pcl::PointCloud<PointType>::Ptr globalSurfCloudDS(new pcl::PointCloud<PointType>());
             pcl::PointCloud<PointType>::Ptr globalMapCloud(new pcl::PointCloud<PointType>());
+            const bool useStaticFilter = globalStaticMapFilterEnable && globalStaticVoxelSize > 1e-3f && globalStaticMinKF > 1;
+
+            std::unordered_map<VoxelIndex, VoxelAcc, VoxelIndexHash> voxSurf;
+            std::unordered_map<VoxelIndex, VoxelAcc, VoxelIndexHash> voxCorner;
+
+            size_t rawSurfPts = 0;
+            size_t rawCornerPts = 0;
+
+            if (useStaticFilter)
+            {
+                // Reserve a rough amount to reduce rehash; tune if needed.
+                voxSurf.reserve((size_t)cloudKeyPoses3D->size() * 2000);
+                if (globalStaticFilterCorners)
+                    voxCorner.reserve((size_t)cloudKeyPoses3D->size() * 400);
+            }
+
             for (int i = 0; i < (int)cloudKeyPoses3D->size(); i++) 
             {
-                *globalCornerCloud += *transformPointCloud(cornerCloudKeyFrames[i],  &cloudKeyPoses6D->points[i]);
-                *globalSurfCloud   += *transformPointCloud(surfCloudKeyFrames[i],    &cloudKeyPoses6D->points[i]);
-                cout << "\r" << std::flush << "Processing feature cloud " << i << " of " << cloudKeyPoses6D->size() << " ...";
+                pcl::PointCloud<PointType>::Ptr cornerT = transformPointCloud(cornerCloudKeyFrames[i],  &cloudKeyPoses6D->points[i]);
+                pcl::PointCloud<PointType>::Ptr surfT   = transformPointCloud(surfCloudKeyFrames[i],    &cloudKeyPoses6D->points[i]);
+
+                rawCornerPts += cornerT->size();
+                rawSurfPts   += surfT->size();
+
+                if (useStaticFilter)
+                {
+                    if (globalStaticFilterCorners)
+                        accumulateVoxelMap(voxCorner, cornerT, i, globalStaticVoxelSize);
+                    else
+                        *globalCornerCloud += *cornerT;
+
+                    // 对surf做静态一致性筛选
+                    accumulateVoxelMap(voxSurf, surfT, i, globalStaticVoxelSize);
+                }
+                else
+                {
+                    *globalCornerCloud += *cornerT;
+                    *globalSurfCloud   += *surfT;
+                }
+
+                cout << "" << std::flush << "Processing feature cloud " << i << " of " << cloudKeyPoses6D->size() << " ..." << endl;
             }
+
+            if (useStaticFilter)
+            {
+                // 把大于等于minKF次观测的体素输出成点
+                if (globalStaticFilterCorners)
+                    globalCornerCloud = voxelMapToCloud(voxCorner, globalStaticMinKF);
+
+                globalSurfCloud = voxelMapToCloud(voxSurf, globalStaticMinKF);
+
+                std::cout
+                    << "Static-map filter: voxel=" << std::fixed << std::setprecision(2)
+                    << globalStaticVoxelSize << " m, minKF=" << globalStaticMinKF
+                    << ", filterCorner=" << (globalStaticFilterCorners ? "true" : "false")
+                    << " | corner " << rawCornerPts << " -> " << globalCornerCloud->size()
+                    << " | surf "   << rawSurfPts   << " -> " << globalSurfCloud->size()
+                << std::endl;
+            }
+
             if(req->resolution != 0)
             {
                cout << "\n\nSave resolution: " << req->resolution << endl;
@@ -402,7 +568,7 @@ public:
 
     void visualizeGlobalMapThread()
     {
-        rclcpp::Rate rate(0.2);
+        rclcpp::Rate rate(1.0);
         while (rclcpp::ok()){
             rate.sleep();
             publishGlobalMap();
@@ -411,27 +577,35 @@ public:
             return;
         cout << "****************************************************" << endl;
         cout << "Saving map to pcd files ..." << endl;
+
         savePCDDirectory = std::getenv("HOME") + savePCDDirectory;
         int unused = system((std::string("exec rm -r ") + savePCDDirectory).c_str());
         unused = system((std::string("mkdir ") + savePCDDirectory).c_str());
+
         pcl::io::savePCDFileASCII(savePCDDirectory + "trajectory.pcd", *cloudKeyPoses3D);
         pcl::io::savePCDFileASCII(savePCDDirectory + "transformations.pcd", *cloudKeyPoses6D);
+
         pcl::PointCloud<PointType>::Ptr globalCornerCloud(new pcl::PointCloud<PointType>());
         pcl::PointCloud<PointType>::Ptr globalCornerCloudDS(new pcl::PointCloud<PointType>());
         pcl::PointCloud<PointType>::Ptr globalSurfCloud(new pcl::PointCloud<PointType>());
         pcl::PointCloud<PointType>::Ptr globalSurfCloudDS(new pcl::PointCloud<PointType>());
         pcl::PointCloud<PointType>::Ptr globalMapCloud(new pcl::PointCloud<PointType>());
-        for (int i = 0; i < (int)cloudKeyPoses3D->size(); i++) {
-            *globalCornerCloud += *transformPointCloud(cornerCloudKeyFrames[i],  &cloudKeyPoses6D->points[i]);
-            *globalSurfCloud   += *transformPointCloud(surfCloudKeyFrames[i],    &cloudKeyPoses6D->points[i]);
-            cout << "\r" << std::flush << "Processing feature cloud " << i << " of " << cloudKeyPoses6D->size() << " ...";
+
+        for (int i = 1; i < (int)cloudKeyPoses3D->size() - 1; i++) 
+        {
+            *globalCornerCloud += *transformPointCloud(cornerCloudKeyFrames[i], &cloudKeyPoses6D->points[i]);
+            *globalSurfCloud   += *transformPointCloud(surfCloudKeyFrames[i],   &cloudKeyPoses6D->points[i]);
+
+            cout << "\r" << std::flush << "Processing frame " << i << " of " << cloudKeyPoses3D->size() << " ..." << endl;;
         }
         downSizeFilterCorner.setInputCloud(globalCornerCloud);
         downSizeFilterCorner.filter(*globalCornerCloudDS);
         pcl::io::savePCDFileASCII(savePCDDirectory + "cloudCorner.pcd", *globalCornerCloudDS);
+
         downSizeFilterSurf.setInputCloud(globalSurfCloud);
         downSizeFilterSurf.filter(*globalSurfCloudDS);
         pcl::io::savePCDFileASCII(savePCDDirectory + "cloudSurf.pcd", *globalSurfCloudDS);
+
         *globalMapCloud += *globalCornerCloud;
         *globalMapCloud += *globalSurfCloud;
         pcl::io::savePCDFileASCII(savePCDDirectory + "cloudGlobal.pcd", *globalMapCloud);
@@ -469,6 +643,7 @@ public:
         downSizeFilterGlobalMapKeyPoses.setLeafSize(globalMapVisualizationPoseDensity, globalMapVisualizationPoseDensity, globalMapVisualizationPoseDensity); // for global map visualization
         downSizeFilterGlobalMapKeyPoses.setInputCloud(globalMapKeyPoses);
         downSizeFilterGlobalMapKeyPoses.filter(*globalMapKeyPosesDS);
+
         for(auto& pt : globalMapKeyPosesDS->points)
         {
             kdtreeGlobalMap->nearestKSearch(pt, 1, pointSearchIndGlobalMap, pointSearchSqDisGlobalMap);
@@ -476,31 +651,45 @@ public:
         }
 
         // extract visualized and downsampled key frames
-        for (int i = 0; i < (int)globalMapKeyPosesDS->size(); ++i){
-            if (pointDistance(globalMapKeyPosesDS->points[i], cloudKeyPoses3D->back()) > globalMapVisualizationSearchRadius)
-                continue;
-            int thisKeyInd = (int)globalMapKeyPosesDS->points[i].intensity;
-            *globalMapKeyFrames += *transformPointCloud(cornerCloudKeyFrames[thisKeyInd],  &cloudKeyPoses6D->points[thisKeyInd]);
-            *globalMapKeyFrames += *transformPointCloud(surfCloudKeyFrames[thisKeyInd],    &cloudKeyPoses6D->points[thisKeyInd]);
+        if (globalStaticMapFilterEnable && globalStaticVoxelSize > 1e-3f && globalStaticMinKF > 1)
+        {
+            std::unordered_map<VoxelIndex, VoxelAcc, VoxelIndexHash> vox;
+            // Rough reserve: (num keyframes) * (points per keyframe / (voxel aggregation factor))
+            vox.reserve((size_t)globalMapKeyPosesDS->size() * 200);
+
+            for (int i = 0; i < (int)globalMapKeyPosesDS->size(); ++i){
+                if (pointDistance(globalMapKeyPosesDS->points[i], cloudKeyPoses3D->back()) > globalMapVisualizationSearchRadius)
+                    continue;
+                int thisKeyInd = (int)globalMapKeyPosesDS->points[i].intensity;
+
+                pcl::PointCloud<PointType>::Ptr corner = transformPointCloud(cornerCloudKeyFrames[thisKeyInd], &cloudKeyPoses6D->points[thisKeyInd]);
+                pcl::PointCloud<PointType>::Ptr surf   = transformPointCloud(surfCloudKeyFrames[thisKeyInd],   &cloudKeyPoses6D->points[thisKeyInd]);
+
+                if (globalStaticFilterCorners)
+                    accumulateVoxelMap(vox, corner, thisKeyInd, globalStaticVoxelSize);
+                accumulateVoxelMap(vox, surf, thisKeyInd, globalStaticVoxelSize);
+            }
+
+            globalMapKeyFrames = voxelMapToCloud(vox, globalStaticMinKF);
+        }
+        else
+        {
+            for (int i = 0; i < (int)globalMapKeyPosesDS->size(); ++i){
+                if (pointDistance(globalMapKeyPosesDS->points[i], cloudKeyPoses3D->back()) > globalMapVisualizationSearchRadius)
+                    continue;
+                int thisKeyInd = (int)globalMapKeyPosesDS->points[i].intensity;
+                *globalMapKeyFrames += *transformPointCloud(cornerCloudKeyFrames[thisKeyInd],  &cloudKeyPoses6D->points[thisKeyInd]);
+                *globalMapKeyFrames += *transformPointCloud(surfCloudKeyFrames[thisKeyInd],    &cloudKeyPoses6D->points[thisKeyInd]);
+            }
         }
         // downsample visualized points
         pcl::VoxelGrid<PointType> downSizeFilterGlobalMapKeyFrames; // for global map visualization
         downSizeFilterGlobalMapKeyFrames.setLeafSize(globalMapVisualizationLeafSize, globalMapVisualizationLeafSize, globalMapVisualizationLeafSize); // for global map visualization
         downSizeFilterGlobalMapKeyFrames.setInputCloud(globalMapKeyFrames);
         downSizeFilterGlobalMapKeyFrames.filter(*globalMapKeyFramesDS);
+
         publishCloud(pubLaserCloudSurround, globalMapKeyFramesDS, timeLaserInfoStamp, odometryFrame);
     }
-
-
-
-
-
-
-
-
-
-
-
 
     void loopClosureThread()
     {
@@ -1497,6 +1686,156 @@ public:
         aLoopIsClosed = true;
     }
 
+    pcl::PointCloud<PointType>::Ptr makeSurfKeyFrameCloud()
+    {
+        pcl::PointCloud<PointType>::Ptr out(new pcl::PointCloud<PointType>());
+
+        const bool canFilter =
+            dynamicKeyframeFilterEnable &&
+            (cloudKeyPoses3D->size() > 3) &&
+            (laserCloudSurfFromMapDS->size() > 200);
+
+        if (!canFilter) {
+            pcl::copyPointCloud(*laserCloudSurfLastDS, *out);
+            return out;
+        }
+
+        // 保证坐标变换矩阵是最新的
+        updatePointAssociateToMap();
+
+        const float knnMaxSq = dynamicSurfKnnMaxDist * dynamicSurfKnnMaxDist;
+
+        std::vector<int> pointSearchInd(5);
+        std::vector<float> pointSearchSqDis(5);
+
+        out->reserve(laserCloudSurfLastDS->size());
+
+        size_t seen_no_match = 0;
+        size_t added_no_match = 0;
+        size_t kept_match_pass = 0;
+        size_t dropped = 0;
+
+        pcl::PointCloud<PointType>::Ptr noMatchCloud(new pcl::PointCloud<PointType>());
+        noMatchCloud->reserve(laserCloudSurfLastDS->size());
+
+        // 经验值：至少保留原始 surfDS 的 50%（你这帧总数大约 3000，就先设 1500）
+        const size_t minKept = (size_t)std::max(500.0, 0.50 * (double)laserCloudSurfLastDS->size());
+
+        for (int i = 0; i < (int)laserCloudSurfLastDS->size(); ++i) {
+            PointType pointOri = laserCloudSurfLastDS->points[i];
+            PointType pointSel;
+            pointAssociateToMap(&pointOri, &pointSel);
+
+            int found = kdtreeSurfFromMap->nearestKSearch(pointSel, 5, pointSearchInd, pointSearchSqDis);
+
+            // 新区域/局部地图稀疏：先放行，避免阻断地图扩展
+            if (found < 5 || pointSearchSqDis[4] > knnMaxSq) {
+                seen_no_match++;
+                noMatchCloud->push_back(pointOri);   // 先缓存
+                continue;
+            }
+
+            // 5点拟合平面（复用 surfOptimization 思路）
+            Eigen::Matrix<float, 5, 3> matA0;
+            Eigen::Matrix<float, 5, 1> matB0;
+            Eigen::Vector3f matX0;
+
+            matA0.setZero();
+            matB0.fill(-1);
+            matX0.setZero();
+
+            for (int j = 0; j < 5; j++) {
+                const auto &pj = laserCloudSurfFromMapDS->points[pointSearchInd[j]];
+                matA0(j, 0) = pj.x;
+                matA0(j, 1) = pj.y;
+                matA0(j, 2) = pj.z;
+            }
+
+            matX0 = matA0.colPivHouseholderQr().solve(matB0);
+
+            float pa = matX0(0, 0);
+            float pb = matX0(1, 0);
+            float pc = matX0(2, 0);
+            float pd = 1.0f;
+
+            float ps = std::sqrt(pa*pa + pb*pb + pc*pc);
+            if (ps < 1e-6f) {
+                dropped++;
+                continue;
+            }
+            pa /= ps; pb /= ps; pc /= ps; pd /= ps;
+
+            // 平面有效性检查：沿用 LIO-SAM 常用 0.2m 的一致性门槛
+            bool planeValid = true;
+            for (int j = 0; j < 5; j++) {
+                const auto &pj = laserCloudSurfFromMapDS->points[pointSearchInd[j]];
+                float dist = std::fabs(pa*pj.x + pb*pj.y + pc*pj.z + pd);
+                if (dist > 0.2f) { planeValid = false; break; }
+            }
+            if (!planeValid) {
+                dropped++;
+                // 能匹配到附近但几何不一致：更像动态/不稳定，直接不入 keyframe
+                continue;
+            }
+
+            float pd2 = pa*pointSel.x + pb*pointSel.y + pc*pointSel.z + pd;
+
+            // 最终门控：点到平面距离过大 => 不一致 => 不入 keyframe
+            if (std::fabs(pd2) > dynamicSurfPlaneMaxDist) {
+                dropped++;
+                continue;
+            }
+            kept_match_pass++;
+            out->push_back(pointOri);
+        }
+
+        const size_t total = laserCloudSurfLastDS->size();
+
+        // 缺口：还差多少点才能到 minKept
+        size_t need = 0;
+        if (out->size() < minKept) need = minKept - out->size();
+
+        // 稳定阶段上限（结构丰富场景建议更严格）：最多补 3% 或 150 点
+        // 说明：你 canFilter 里已经要求 cloudKeyPoses3D->size()>10，所以这里默认就是“稳定阶段”
+        size_t cap = std::min((size_t)(0.03 * (double)total), (size_t)150);
+
+        // 最终预算：只补缺口，且不超过 cap
+        size_t budget = std::min(need, cap);
+
+        if (budget > 0 && !noMatchCloud->empty()) {
+            pcl::PointCloud<PointType>::Ptr noMatchDS(new pcl::PointCloud<PointType>());
+            pcl::VoxelGrid<PointType> vg;
+
+            float leaf = mappingSurfLeafSize * 4.0f;   // 强下采样，降低动态细节残留
+            vg.setLeafSize(leaf, leaf, leaf);
+            vg.setInputCloud(noMatchCloud); 
+            vg.filter(*noMatchDS);
+
+            for (const auto &p : noMatchDS->points) {
+                out->push_back(p);
+                added_no_match++;
+                if (added_no_match >= budget) break;
+            }
+        }
+
+        //const size_t total = laserCloudSurfLastDS->size();
+        const size_t kept  = out->size();
+        const double pct_kept = (total ? 100.0 * (double)kept / (double)total : 0.0);
+        const double pct_match_pass = (total ? 100.0 * (double)kept_match_pass / (double)total : 0.0);
+
+        RCLCPP_INFO(
+            this->get_logger(),
+            "Surf KF filter: kept %zu/%zu (%.1f%%) | matchPass=%zu (%.1f%%) | seenNoMatch=%zu (%.1f%%) | addedNoMatch=%zu (%.1f%%) | dropped=%zu",
+            kept, total, pct_kept,
+            kept_match_pass, pct_match_pass,
+            seen_no_match, (total ? 100.0*seen_no_match/total : 0.0),
+            added_no_match, (total ? 100.0*added_no_match/total : 0.0),
+            dropped
+        );
+
+        return out;
+    }
+
     void saveKeyFramesAndFactor()
     {
         if (saveFrame() == false)
@@ -1571,9 +1910,10 @@ public:
 
         // save all the received edge and surf points
         pcl::PointCloud<PointType>::Ptr thisCornerKeyFrame(new pcl::PointCloud<PointType>());
-        pcl::PointCloud<PointType>::Ptr thisSurfKeyFrame(new pcl::PointCloud<PointType>());
+        //pcl::PointCloud<PointType>::Ptr thisSurfKeyFrame(new pcl::PointCloud<PointType>());
         pcl::copyPointCloud(*laserCloudCornerLastDS,  *thisCornerKeyFrame);
-        pcl::copyPointCloud(*laserCloudSurfLastDS,    *thisSurfKeyFrame);
+        //pcl::copyPointCloud(*laserCloudSurfLastDS,    *thisSurfKeyFrame);
+        pcl::PointCloud<PointType>::Ptr thisSurfKeyFrame = makeSurfKeyFrameCloud();
 
         // save key frame cloud
         cornerCloudKeyFrames.push_back(thisCornerKeyFrame);

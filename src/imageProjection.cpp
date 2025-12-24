@@ -675,9 +675,8 @@ public:
     {
         int cloudSize = laserCloudIn->points.size();
         
-        if (sensor == SensorType::LIVOX || sensor == SensorType::LSLIDAR)
-        {
-            std::fill(columnIdnCountVec.begin(), columnIdnCountVec.end(), 0);
+        if (sensor == SensorType::LIVOX || sensor == SensorType::LSLIDAR) {
+        std::fill(columnIdnCountVec.begin(), columnIdnCountVec.end(), 0);
     	}
         // range image projection
         #pragma omp parallel for
