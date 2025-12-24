@@ -1,9 +1,9 @@
-# LIO_SAM_MID360 (ROS 2)
+# LIO_SAM_HESAI (ROS 2)
 
-Adapted LIO-SAM for Livox MID-360. This fork renames the package to `lio_sam_mid360` (ROS package names must be lowercase) and updates configs/launch for MID-360 usage.
+Adapted LIO-SAM for Hesai XT16. This fork renames the package to `lio_sam_hesai` (ROS package names must be lowercase) and updates configs/launch for hesai xt16 usage.
 
 ## Features
-- Livox MID-360 point cloud and timing assumptions
+- Hesai XT16 point cloud and timing assumptions
 - Clean ROS 2 launch (`run.launch.py`)
 - Same node graph as LIO-SAM (image projection, feature extraction, IMU preintegration, map optimization)
 - Directly supports ROS Bag Integration
@@ -27,21 +27,21 @@ sudo apt install \
 ## Build
 ```
 cd ~/ros2_ws/src
-# this folder should be at ~/ros2_ws/src/LIO_SAM_MID360
+# this folder should be at ~/ros2_ws/src/LIO_SAM_HESAI
 cd ..
 colcon build --symlink-install
 source install/setup.bash
 ```
 
-## Configure for Livox MID-360
+## Configure for Hesai XT16
 Edit `config/params.yaml`:
-- Set sensor to Livox settings (rings, horizon) appropriate for MID-360
-- Set topics to match your Livox driver output
+- Set sensor to Livox settings (rings, horizon) appropriate for XT16
+- Set topics to match your Hesai driver output
 - Set IMU extrinsics so IMU -> lidar follows REP-105 (x forward, y left, z up)
 
 Default static TFs in `launch/run.launch.py` assume co-located IMU and lidar; adjust if your mounting differs.
 
-Edit the fov of the Lidar setting. For Livox MID360 (Default) it is -7 to 52 degree.
+Edit the fov of the Lidar setting. For Hesai XT16 (Default) it is -15 to 15 degree.
 
 ## Run
 ```
