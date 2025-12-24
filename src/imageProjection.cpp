@@ -1,5 +1,5 @@
 #include "utility.hpp"
-#include "lio_sam_mid360/msg/cloud_info.hpp"
+#include "lio_sam_hesai/msg/cloud_info.hpp"
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 
@@ -65,7 +65,7 @@ private:
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloud;
 
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubExtractedCloud;
-    rclcpp::Publisher<lio_sam_mid360::msg::CloudInfo>::SharedPtr pubLaserCloudInfo;
+    rclcpp::Publisher<lio_sam_hesai::msg::CloudInfo>::SharedPtr pubLaserCloudInfo;
 
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr subImu;
     rclcpp::CallbackGroup::SharedPtr callbackGroupImu;
@@ -101,7 +101,7 @@ private:
     float odomIncreY;
     float odomIncreZ;
 
-    lio_sam_mid360::msg::CloudInfo cloudInfo;
+    lio_sam_hesai::msg::CloudInfo cloudInfo;
     double timeScanCur;
     double timeScanEnd;
     std_msgs::msg::Header cloudHeader;
@@ -142,7 +142,7 @@ public:
 
         pubExtractedCloud = create_publisher<sensor_msgs::msg::PointCloud2>(
             "lio_sam/deskew/cloud_deskewed", 1);
-        pubLaserCloudInfo = create_publisher<lio_sam_mid360::msg::CloudInfo>(
+        pubLaserCloudInfo = create_publisher<lio_sam_hesai::msg::CloudInfo>(
             "lio_sam/deskew/cloud_info", qos);
 
         allocateMemory();

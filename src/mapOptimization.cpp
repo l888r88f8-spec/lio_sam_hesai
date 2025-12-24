@@ -72,13 +72,13 @@ public:
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubCloudRegisteredRaw;
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pubLoopConstraintEdge;
 
-    rclcpp::Service<lio_sam_mid360::srv::SaveMap>::SharedPtr srvSaveMap;
-    rclcpp::Subscription<lio_sam_mid360::msg::CloudInfo>::SharedPtr subCloud;
+    rclcpp::Service<lio_sam_hesai::srv::SaveMap>::SharedPtr srvSaveMap;
+    rclcpp::Subscription<lio_sam_hesai::msg::CloudInfo>::SharedPtr subCloud;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr subGPS;
     rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr subLoop;
 
     std::deque<nav_msgs::msg::Odometry> gpsQueue;
-    lio_sam_mid360::msg::CloudInfo cloudInfo;
+    lio_sam_hesai::msg::CloudInfo cloudInfo;
 
     vector<pcl::PointCloud<PointType>::Ptr> cornerCloudKeyFrames;
     vector<pcl::PointCloud<PointType>::Ptr> surfCloudKeyFrames;
@@ -166,7 +166,7 @@ public:
         pubPath = create_publisher<nav_msgs::msg::Path>("lio_sam/mapping/path", 1);
         br = std::make_unique<tf2_ros::TransformBroadcaster>(this);
 
-        subCloud = create_subscription<lio_sam_mid360::msg::CloudInfo>(
+        subCloud = create_subscription<lio_sam_hesai::msg::CloudInfo>(
             "lio_sam/feature/cloud_info", qos,
             std::bind(&mapOptimization::laserCloudInfoHandler, this, std::placeholders::_1));
         subGPS = create_subscription<nav_msgs::msg::Odometry>(
@@ -176,7 +176,7 @@ public:
             "lio_loop/loop_closure_detection", qos,
             std::bind(&mapOptimization::loopInfoHandler, this, std::placeholders::_1));
 
-        auto saveMapService = [this](const std::shared_ptr<rmw_request_id_t> request_header, const std::shared_ptr<lio_sam_mid360::srv::SaveMap::Request> req, std::shared_ptr<lio_sam_mid360::srv::SaveMap::Response> res) -> void {
+        auto saveMapService = [this](const std::shared_ptr<rmw_request_id_t> request_header, const std::shared_ptr<lio_sam_hesai::srv::SaveMap::Request> req, std::shared_ptr<lio_sam_hesai::srv::SaveMap::Response> res) -> void {
             (void)request_header;
             string saveMapDirectory;
             cout << "****************************************************" << endl;
@@ -236,7 +236,7 @@ public:
             return;
         };
         
-        srvSaveMap = create_service<lio_sam_mid360::srv::SaveMap>("lio_sam/save_map", saveMapService);
+        srvSaveMap = create_service<lio_sam_hesai::srv::SaveMap>("lio_sam/save_map", saveMapService);
         pubHistoryKeyFrames = create_publisher<sensor_msgs::msg::PointCloud2>("lio_sam/mapping/icp_loop_closure_history_cloud", 1);
         pubIcpKeyFrames = create_publisher<sensor_msgs::msg::PointCloud2>("lio_sam/mapping/icp_loop_closure_history_cloud", 1);
         pubLoopConstraintEdge = create_publisher<visualization_msgs::msg::MarkerArray>("/lio_sam/mapping/loop_closure_constraints", 1);
@@ -296,7 +296,7 @@ public:
         matP.setZero();
     }
 
-    void laserCloudInfoHandler(const lio_sam_mid360::msg::CloudInfo::SharedPtr msgIn)
+    void laserCloudInfoHandler(const lio_sam_hesai::msg::CloudInfo::SharedPtr msgIn)
     {
         // extract time stamp
         timeLaserInfoStamp = msgIn->header.stamp;
