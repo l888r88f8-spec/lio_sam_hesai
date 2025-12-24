@@ -1,6 +1,6 @@
 #include "utility.hpp"
-#include "lio_sam_mid360/msg/cloud_info.hpp"
-#include "lio_sam_mid360/srv/save_map.hpp"
+#include "lio_sam_hesai/msg/cloud_info.hpp"
+#include "lio_sam_hesai/srv/save_map.hpp"
 #include <gtsam/geometry/Rot3.h>
 #include <gtsam/geometry/Pose3.h>
 #include <gtsam/slam/PriorFactor.h>
