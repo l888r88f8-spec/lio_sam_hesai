@@ -77,7 +77,8 @@ def generate_launch_description():
             executable='lio_sam_hesai_mapOptimization',
             name='lio_sam_hesai_mapOptimization',
             parameters=[parameter_file],
-            output='screen'
+            output='screen',
+            sigterm_timeout='30'
         ),
         Node(
             package='rviz2',

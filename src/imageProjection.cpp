@@ -62,10 +62,12 @@ private:
 
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr subLaserCloud;
     rclcpp::CallbackGroup::SharedPtr callbackGroupLidar;
-    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloud;
 
+    // rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloud;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubExtractedCloud;
     rclcpp::Publisher<lio_sam_hesai::msg::CloudInfo>::SharedPtr pubLaserCloudInfo;
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubGroundCloud;
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubNonGroundCloud;
 
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr subImu;
     rclcpp::CallbackGroup::SharedPtr callbackGroupImu;
@@ -146,7 +148,6 @@ public:
             "lio_sam/deskew/cloud_info", qos);
 
         allocateMemory();
-        resetParameters();
 
         pcl::console::setVerbosityLevel(pcl::console::L_ERROR);
     }
@@ -343,20 +344,17 @@ public:
             pcl::moveFromROSMsg(currentCloudMsg, *laserCloudIn);
 
             // 2. 时间归一化处理
-            // 如果数据非空，且存在时间字段
             if (!laserCloudIn->points.empty())
             {
-                // 获取这一帧第一个点的相对时间（例如 0.0049s）
+                // 获取这一帧第一个点的相对时间
                 double start_time_offset = laserCloudIn->points[0].time;
 
                 // 修正 Header 时间戳：将 offset 加到 header 上
-                // 这样 timeScanCur (Scan开始的绝对时间) 就变成了真正的首点物理时间
                 rclcpp::Time current_header_time(currentCloudMsg.header.stamp);
                 // 加上 duration (秒)
                 currentCloudMsg.header.stamp = (current_header_time + rclcpp::Duration::from_seconds(start_time_offset));
 
                 // 归一化点云时间：所有点减去首点时间，使得首点 time 变为 0
-                // 这样既保证了相对时间从0开始，又保证了 (Header + point.time) 的绝对物理值不变
                 for (size_t i = 0; i < laserCloudIn->points.size(); i++)
                 {
                     PointType tempPoint;
@@ -676,7 +674,7 @@ public:
         int cloudSize = laserCloudIn->points.size();
         
         if (sensor == SensorType::LIVOX || sensor == SensorType::LSLIDAR) {
-        std::fill(columnIdnCountVec.begin(), columnIdnCountVec.end(), 0);
+            std::fill(columnIdnCountVec.begin(), columnIdnCountVec.end(), 0);
     	}
         // range image projection
         #pragma omp parallel for
@@ -773,7 +771,7 @@ public:
                     // save range info
                     cloudInfo.point_range[count] = rangeMat.at<float>(i,j);
                     // save extracted cloud
-                    extractedCloud->push_back(fullCloud->points[j + i*Horizon_SCAN]);
+                    extractedCloud->push_back(fullCloud->points[j + i * Horizon_SCAN]);
                     // size of extracted cloud
                     ++count;
                 }

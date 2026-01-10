@@ -128,6 +128,15 @@ public:
     float odometrySurfLeafSize;
     float mappingCornerLeafSize;
     float mappingSurfLeafSize ;
+    bool dynamicKeyframeFilterEnable;
+    float dynamicSurfKnnMaxDist;
+    float dynamicSurfPlaneMaxDist;
+
+    bool globalStaticMapFilterEnable;
+    float globalStaticVoxelSize;
+    int globalStaticMinKF;
+    bool globalStaticFilterCorners;
+
 
     float z_tollerance;
     float rotation_tollerance;
@@ -220,8 +229,8 @@ public:
                 "Invalid sensor type (must be either 'velodyne' or 'ouster' or 'livox'): " << sensorStr);
             rclcpp::shutdown();
         }
-	declare_parameter("imuType", 0);
-	get_parameter("imuType", imuType);
+        declare_parameter("imuType", 0);
+        get_parameter("imuType", imuType);
         declare_parameter("N_SCAN", 64);
         get_parameter("N_SCAN", N_SCAN);
         declare_parameter("Horizon_SCAN", 512);
@@ -279,6 +288,21 @@ public:
         get_parameter("mappingCornerLeafSize", mappingCornerLeafSize);
         declare_parameter("mappingSurfLeafSize", 0.4);
         get_parameter("mappingSurfLeafSize", mappingSurfLeafSize);
+        declare_parameter("dynamicKeyframeFilterEnable", true);
+        get_parameter("dynamicKeyframeFilterEnable", dynamicKeyframeFilterEnable);
+        declare_parameter("dynamicSurfKnnMaxDist", 1.0);
+        get_parameter("dynamicSurfKnnMaxDist", dynamicSurfKnnMaxDist);
+        declare_parameter("dynamicSurfPlaneMaxDist", 0.3);
+        get_parameter("dynamicSurfPlaneMaxDist", dynamicSurfPlaneMaxDist);
+
+        declare_parameter("globalStaticMapFilterEnable", false);
+        get_parameter("globalStaticMapFilterEnable", globalStaticMapFilterEnable);
+        declare_parameter("globalStaticVoxelSize", 0.4);
+        get_parameter("globalStaticVoxelSize", globalStaticVoxelSize);
+        declare_parameter("globalStaticMinKF", 3);
+        get_parameter("globalStaticMinKF", globalStaticMinKF);
+        declare_parameter("globalStaticFilterCorners", true);
+        get_parameter("globalStaticFilterCorners", globalStaticFilterCorners);
 
         declare_parameter("z_tollerance", 1000.0);
         get_parameter("z_tollerance", z_tollerance);
