@@ -5,11 +5,11 @@
   <version>1.0.0</version>
   <description>Lidar Odometry</description>
 
-  <maintainer email="l888r88f8@gmail.com">Vishnuraj</maintainer>
+  <maintainer email="anilkumarvishnuraj@gmail.com">Vishnuraj</maintainer>
 
   <license>TODO</license>
 
-  <author email="l888r88f8@gmail.com">Vishnuraj A</author>
+  <author email="anilkumarvishnuraj@gmail.com">Vishnuraj A</author>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
   <buildtool_depend>rosidl_default_generators</buildtool_depend>

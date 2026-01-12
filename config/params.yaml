@@ -3,7 +3,7 @@
   ros__parameters:
 
     # Topics
-    pointCloudTopic: "/lidar_points"       # "/ls/lslidar_point_cloud"                   # Point cloud data
+    pointCloudTopic: "/lidar_points"            # "/ls/lslidar_point_cloud"                   # Point cloud data
     imuTopic: "/imu"                            # IMU data
     odomTopic: "odometry/imu"                   # IMU pre-preintegration odometry, same frequency as IMU
     gpsTopic: "odometry/gps"                    # GPS odometry topic from navsat, see module_navsat.launch file
@@ -31,7 +31,7 @@
     downsampleRate: 1                            # default: 1. Downsample your data if too many
     # points. i.e., 16 = 64 / 4, 16 = 16 / 1
     lidarMinRange: 0.3                           # default: 1.0, minimum lidar range to be used
-    lidarMaxRange: 80.0                        # default: 1000.0, maximum lidar range to be used
+    lidarMaxRange: 30.0                        # default: 1000.0, maximum lidar range to be used
 
     # IMU Settings
     imuType: 1                                  # default: 0 = 6-axis imu 1= 9 axis imu
@@ -62,7 +62,7 @@
     mappingSurfLeafSize: 0.4                      # default: 0.4 - outdoor, 0.2 - indoor
 
     # 局部几何一致性滤波（KNN，cap + 强下采样从 no-match 少量补点）
-    dynamicKeyframeFilterEnable: true
+    dynamicKeyframeFilterEnable: false
     dynamicSurfKnnMaxDist: 1.5 # 局部地图5NN阈值
     dynamicSurfPlaneMaxDist: 0.15 # 点到平面距离阈值
     # kept：40%–65% seenNoMatch：15%–35%
@@ -103,5 +103,5 @@
 
     # Visualization
     globalMapVisualizationSearchRadius: 2000.0    # meters, global map visualization radius
-    globalMapVisualizationPoseDensity: 0.8       # meters, global map visualization keyframe density
-    globalMapVisualizationLeafSize: 0.5           # meters, global map visualization cloud density
+    globalMapVisualizationPoseDensity: 0.5       # meters, global map visualization keyframe density
+    globalMapVisualizationLeafSize: 0.2           # meters, global map visualization cloud density

@@ -8,8 +8,9 @@ Adapted LIO-SAM for Hesai XT16. This fork renames the package to `lio_sam_hesai`
 - Same node graph as LIO-SAM (image projection, feature extraction, IMU preintegration, map optimization)
 - Directly supports ROS Bag Integration
 - Supports both 6-axis and 9-axis IMUs
-- Using Local Geometric Consistency Filtering (KNN)
-- Use voxel persistence filtering and edge filtering to filter dynamic obstacles*
+- Using Local Geometric Consistency Filtering (KNN and Planar consistency)
+- Use voxel persistence filtering and edge filtering to filter dynamic obstacles
+- Use kdtree
 
 ## Requirements
 - Ubuntu 22.04 + ROS 2 Humble (other ROS 2 distros may work)
@@ -37,7 +38,7 @@ source install/setup.bash
 
 ## Configure for Hesai XT16
 Edit `config/params.yaml`:
-- Set sensor to Livox settings (rings, horizon) appropriate for XT16
+- Set sensor to Hesai settings (rings, horizon) appropriate for XT16
 - Set topics to match your Hesai driver output
 - Set IMU extrinsics so IMU -> lidar follows REP-105 (x forward, y left, z up)
 
@@ -47,7 +48,7 @@ Edit the fov of the Lidar setting. For Hesai XT16 (Default) it is -15 to 15 degr
 
 ## Run
 ```
-ros2 launch lio_sam_mid360 run.launch.py
+ros2 launch lio_sam_hesai run.launch.py
 ```
 
 Play a bag in another terminal:
@@ -59,8 +60,8 @@ ros2 bag play your_data
 ```
 ros2 service call /lio_sam/save_map lio_sam_hesai/srv/SaveMap "{resolution: 0.2, destination: /tmp/LOAM}"
 ```
-<img width="1900" height="938" alt="image" src="https://github.com/user-attachments/assets/71c4b066-bc69-43f3-b2f0-d133372c79ad" />
-<img width="1885" height="931" alt="image_1" src="https://github.com/user-attachments/assets/e914fd49-680f-42c4-94af-ef969f65a800" />
+<img width="1387" height="992" alt="image" src="image.png" />
+<img width="1453" height="964" alt="image_1" src="image_1.png" />
 
 
 Note: The service name `/lio_sam/save_map` follows the original namespace; the type is from this package.
@@ -74,4 +75,4 @@ Note: The service name `/lio_sam/save_map` follows the original namespace; the t
   
 ## Credits
 - Adaptation and maintenance: Vishnuraj A
-- Based on the original LIO-SAM by Tixiao Shan and LIO_SAM_MID360 by Christoph Gruberetet al. See `LICENSE` and original repository for citations.
+- Based on the original LIO-SAM by Tixiao Shan and LIO_SAM_MID360 by Christoph Gruberet et al. See `LICENSE` and original repository for citations.
