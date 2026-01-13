@@ -76,4 +76,4 @@ Note: The service name `/lio_sam/save_map` follows the original namespace; the t
   
 ## Credits
 - Adaptation and maintenance: Vishnuraj A
-- Based on the original LIO-SAM by Tixiao Shan and LIO_SAM_MID360 by Christoph Gruberet et al. See `LICENSE` and original repository for citations.
+- Based on the original LIO-SAM by Tixiao Shan and LIO_SAM_MID360 by rajvishnu07 et al. See `LICENSE` and original repository for citations.
