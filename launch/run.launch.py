@@ -36,7 +36,7 @@ def generate_launch_description():
             executable='static_transform_publisher',
             arguments=['0.02', '0.0', '0.32',
                        '0.0', '0.0', '0.0',
-                       'base_link', 'lidar_link'],
+                       'base_link', 'hesai_lidar'],
             output='screen'
         ),
 

@@ -9,7 +9,7 @@
     gpsTopic: "odometry/gps"                    # GPS odometry topic from navsat, see module_navsat.launch file
 
     # Frames
-    lidarFrame: "lidar_link"
+    lidarFrame: "hesai_lidar"
     baselinkFrame: "base_link"
     odometryFrame: "odom"
     mapFrame: "map"
