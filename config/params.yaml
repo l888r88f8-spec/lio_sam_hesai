@@ -1,4 +1,3 @@
-
 /**:
   ros__parameters:
 
@@ -21,8 +20,9 @@
     poseCovThreshold: 25.0                       # m^2, threshold for using GPS data
 
     # Export settings
-    savePCD: true                               # https://github.com/TixiaoShan/LIO-SAM/issues/3
+    savePCD: false                               # https://github.com/TixiaoShan/LIO-SAM/issues/3
     savePCDDirectory: "/Downloads/LOAM/"         # in your home folder, starts and ends with "/". Warning: the code deletes "LOAM" folder then recreates it. See "mapOptimization" for implementation
+    mappingMode: true                            # true=mapping, false=localization (disable loop closure and map saving)
 
     # Sensor Settings
     sensor: HESAI                               # lidar sensor type, either 'velodyne', 'ouster', 'LSLIDAR' or 'livox'
@@ -72,7 +72,7 @@
     globalStaticMapFilterEnable: true
     globalStaticVoxelSize: 0.4 # 将全局点云划分为体素格，单位m
     globalStaticMinKF: 3 # 保存阈值
-    globalStaticFilterCorners: true # 体素边缘滤波
+    globalStaticFilterCorners: false # 体素边缘滤波
 
     # robot motion constraint (in case you are using a 2D robot)
     z_tollerance: 1000.0                          # meters
@@ -85,7 +85,7 @@
     # Surrounding map
     surroundingkeyframeAddingDistThreshold: 1.0   # meters, regulate keyframe adding threshold
     surroundingkeyframeAddingAngleThreshold: 0.2  # radians, regulate keyframe adding threshold
-    surroundingKeyframeDensity: 2.0               # meters, downsample surrounding keyframe poses   
+    surroundingKeyframeDensity: 1.0               # meters, downsample surrounding keyframe poses   
     surroundingKeyframeSearchRadius: 20.0         # meters, within n meters scan-to-map optimization -indoor 30,outdoor 20
     # (when loop closure disabled)
 

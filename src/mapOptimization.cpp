@@ -270,6 +270,13 @@ public:
         parameters.relinearizeSkip = 1;
         isam = new ISAM2(parameters);
 
+        if (!mappingMode)
+        {
+            loopClosureEnableFlag = false;
+            savePCD = false;
+            RCLCPP_WARN(get_logger(), "mappingMode=false: disable loop closure and map saving");
+        }
+
         pubKeyPoses = create_publisher<sensor_msgs::msg::PointCloud2>("lio_sam/mapping/trajectory", 1);
         pubLaserCloudSurround = create_publisher<sensor_msgs::msg::PointCloud2>("lio_sam/mapping/map_global", 1);
         pubLaserOdometryGlobal = create_publisher<nav_msgs::msg::Odometry>("lio_sam/mapping/odometry", qos);
@@ -288,7 +295,9 @@ public:
             "lio_loop/loop_closure_detection", qos,
             std::bind(&mapOptimization::loopInfoHandler, this, std::placeholders::_1));
 
-        auto saveMapService = [this](const std::shared_ptr<rmw_request_id_t> request_header, const std::shared_ptr<lio_sam_hesai::srv::SaveMap::Request> req, std::shared_ptr<lio_sam_hesai::srv::SaveMap::Response> res) -> void {
+        if (mappingMode)
+        {
+            auto saveMapService = [this](const std::shared_ptr<rmw_request_id_t> request_header, const std::shared_ptr<lio_sam_hesai::srv::SaveMap::Request> req, std::shared_ptr<lio_sam_hesai::srv::SaveMap::Response> res) -> void {
             (void)request_header;
             string saveMapDirectory;
             cout << "****************************************************" << endl;
@@ -400,9 +409,14 @@ public:
             cout << "****************************************************" << endl;
             cout << "Saving map to pcd files completed\n" << endl;
             return;
-        };
-        
-        srvSaveMap = create_service<lio_sam_hesai::srv::SaveMap>("lio_sam/save_map", saveMapService);
+            };
+
+            srvSaveMap = create_service<lio_sam_hesai::srv::SaveMap>("lio_sam/save_map", saveMapService);
+        }
+        else
+        {
+            RCLCPP_WARN(get_logger(), "mappingMode=false: save_map service disabled");
+        }
         pubHistoryKeyFrames = create_publisher<sensor_msgs::msg::PointCloud2>("lio_sam/mapping/icp_loop_closure_history_cloud", 1);
         pubIcpKeyFrames = create_publisher<sensor_msgs::msg::PointCloud2>("lio_sam/mapping/icp_loop_closure_history_cloud", 1);
         pubLoopConstraintEdge = create_publisher<visualization_msgs::msg::MarkerArray>("/lio_sam/mapping/loop_closure_constraints", 1);
@@ -494,7 +508,8 @@ public:
 
             publishOdometry();
 
-            publishFrames();
+            if (mappingMode)
+                publishFrames();
         }
     }
 
@@ -571,6 +586,8 @@ public:
         rclcpp::Rate rate(1.0);
         while (rclcpp::ok()){
             rate.sleep();
+            if (!mappingMode)
+                continue;
             publishGlobalMap();
         }
         if (savePCD == false)
@@ -615,6 +632,8 @@ public:
 
     void publishGlobalMap()
     {
+        if (!mappingMode)
+            return;
         if (pubLaserCloudSurround->get_subscription_count() == 0)
             return;
 
@@ -1991,7 +2010,7 @@ public:
         laserOdometryROS.pose.pose.orientation = quat_msg;
         pubLaserOdometryGlobal->publish(laserOdometryROS);
 
-        // Publish TF(not need)
+        // Publish TF
         quat_tf.setRPY(transformTobeMapped[0], transformTobeMapped[1], transformTobeMapped[2]);
         tf2::Transform t_odom_to_lidar = tf2::Transform(quat_tf, tf2::Vector3(transformTobeMapped[3], transformTobeMapped[4], transformTobeMapped[5]));
         tf2::TimePoint time_point = tf2_ros::fromRclcpp(timeLaserInfoStamp);
@@ -2058,6 +2077,8 @@ public:
 
     void publishFrames()
     {
+        if (!mappingMode)
+            return;
         if (cloudKeyPoses3D->points.empty())
             return;
         // publish key poses
@@ -2107,14 +2128,17 @@ int main(int argc, char** argv)
     RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "\033[1;32m----> Map Optimization Started.\033[0m");
 
     std::thread loopthread(&mapOptimization::loopClosureThread, MO);
-    std::thread visualizeMapThread(&mapOptimization::visualizeGlobalMapThread, MO);
+    std::unique_ptr<std::thread> visualizeMapThread;
+    if (MO->mappingMode)
+        visualizeMapThread = std::make_unique<std::thread>(&mapOptimization::visualizeGlobalMapThread, MO);
 
     exec.spin();
 
     rclcpp::shutdown();
 
     loopthread.join();
-    visualizeMapThread.join();
+    if (visualizeMapThread)
+        visualizeMapThread->join();
 
     return 0;
 }
