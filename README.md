@@ -11,6 +11,7 @@ Adapted LIO-SAM for Hesai XT16. This fork renames the package to `lio_sam_hesai`
 - Using Local Geometric Consistency Filtering (KNN and Planar consistency)
 - Use voxel persistence filtering and edge filtering to filter dynamic obstacles
 - Use kdtree
+- Fixed TF tree
 
 ## Requirements
 - Ubuntu 22.04 + ROS 2 Humble (other ROS 2 distros may work)
