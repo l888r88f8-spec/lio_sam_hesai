@@ -30,7 +30,7 @@ def generate_launch_description():
             output='screen'
         ),
 
-        # base_link -> lidar_link
+        # base_link -> hesai_lidar
         Node(
             package='tf2_ros',
             executable='static_transform_publisher',
