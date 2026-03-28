@@ -6,6 +6,7 @@
     imuTopic: "/imu"                            # IMU data
     odomTopic: "odometry/imu"                   # IMU pre-preintegration odometry, same frequency as IMU
     gpsTopic: "odometry/gps"                    # GPS odometry topic from navsat, see module_navsat.launch file
+    globalMapTopic: "lio_sam/mapping/map_global"
 
     # Frames
     lidarFrame: "hesai_lidar"
@@ -22,16 +23,37 @@
     # Export settings
     savePCD: false                               # https://github.com/TixiaoShan/LIO-SAM/issues/3
     savePCDDirectory: "/Downloads/LOAM/"         # in your home folder, starts and ends with "/". Warning: the code deletes "LOAM" folder then recreates it. See "mapOptimization" for implementation
+    savePCDDirectory: "/Downloads/LOAM_hesai/"   # in your home folder, starts and ends with "/". Warning: the code deletes "LOAM" folder then recreates it. See "mapOptimization" for implementation
+    savePCDResolution: 0.0                       # 0 = no extra downsample, same as save_map resolution
+    saveGroundPCD: true
+    groundPCDDirectory: "/Downloads/LOAM_ground_hesai/"
+    groundPCDDirectoryGlobal: "/Downloads/LOAM_ground_global_hesai/"
+    groundFinalUseOdom: true
+    groundLeafSize: 0.1
+    useGlobalMapGround: true
+    globalMapGroundRadius: 30.0
+    globalMapGroundZRange: 3.0                 # note: 2.0 (prev: 5.0)
+    globalMapGroundVoxelSize: 0.05              # note: 0.1 (prev: 0.2)
+    globalMapGroundDistance: 0.12              # note: 0.1 (prev: 0.2)
+    globalMapGroundMaxAngle: 10.0               # note: 5.0 (prev: 15.0)
+    globalMapGroundMinPoints: 200
+    groundFlattenZ: false
+    groundFlattenValue: 3.0
     mappingMode: true                            # true=mapping, false=localization (disable loop closure and map saving)
-
+    
+    # ros2 service call /lio_sam/save_map lio_sam_hesai/srv/SaveMap "{resolution: 0.05, destination: /map/hesai_outdoor2}"
+    
     # Sensor Settings
     sensor: HESAI                               # lidar sensor type, either 'velodyne', 'ouster', 'LSLIDAR' or 'livox'
     N_SCAN: 16                                  # number of lidar channels (i.e., Velodyne/Ouster: 16, 32, 64, 128, Livox Horizon: 6)
-    Horizon_SCAN: 2000                           # lidar horizontal resolution (Velodyne:1800, Ouster:512,1024,2048, Livox Horizon: 4000)
+    Horizon_SCAN: 1000                           # lidar horizontal resolution (Velodyne:1800, Ouster:512,1024,2048, Livox Horizon: 4000)
     downsampleRate: 1                            # default: 1. Downsample your data if too many
     # points. i.e., 16 = 64 / 4, 16 = 16 / 1
     lidarMinRange: 0.3                           # default: 1.0, minimum lidar range to be used
-    lidarMaxRange: 30.0                        # default: 1000.0, maximum lidar range to be used
+    lidarMaxRange: 60.0                        # default: 1000.0, maximum lidar range to be used
+    groundScanIndex: 15                          # rings used for ground extraction; note: 6 (prev: 10)
+    distanceForPatchBetweenRings: 0.0           # meters, patching distance between rings; note: 0.0 (prev: 1.0)
+    groundAngleThreshold: 5.0                  # degrees, ground angle threshold
 
     # IMU Settings
     imuType: 1                                  # default: 0 = 6-axis imu 1= 9 axis imu
@@ -58,8 +80,8 @@
 
     # voxel filter paprams
     odometrySurfLeafSize: 0.4                     # default: 0.4 - outdoor, 0.2 - indoor
-    mappingCornerLeafSize: 0.2                    # default: 0.2 - outdoor, 0.1 - indoor
-    mappingSurfLeafSize: 0.4                      # default: 0.4 - outdoor, 0.2 - indoor
+    mappingCornerLeafSize: 0.05                    # default: 0.2 - outdoor, 0.1 - indoor
+    mappingSurfLeafSize: 0.05                      # default: 0.4 - outdoor, 0.2 - indoor
 
     # 局部几何一致性滤波（KNN，cap + 强下采样从 no-match 少量补点）
     dynamicKeyframeFilterEnable: false
@@ -72,7 +94,7 @@
     globalStaticMapFilterEnable: true
     globalStaticVoxelSize: 0.4 # 将全局点云划分为体素格，单位m
     globalStaticMinKF: 3 # 保存阈值
-    globalStaticFilterCorners: false # 体素边缘滤波
+    globalStaticFilterCorners: true # 体素边缘滤波
 
     # robot motion constraint (in case you are using a 2D robot)
     z_tollerance: 1000.0                          # meters
@@ -85,7 +107,7 @@
     # Surrounding map
     surroundingkeyframeAddingDistThreshold: 1.0   # meters, regulate keyframe adding threshold
     surroundingkeyframeAddingAngleThreshold: 0.2  # radians, regulate keyframe adding threshold
-    surroundingKeyframeDensity: 1.0               # meters, downsample surrounding keyframe poses   
+    surroundingKeyframeDensity: 0.2               # meters, downsample surrounding keyframe poses   
     surroundingKeyframeSearchRadius: 20.0         # meters, within n meters scan-to-map optimization -indoor 30,outdoor 20
     # (when loop closure disabled)
 

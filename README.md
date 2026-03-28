@@ -12,13 +12,14 @@ Adapted LIO-SAM for Hesai XT16. This fork renames the package to `lio_sam_hesai`
 - Use voxel persistence filtering and edge filtering to filter dynamic obstacles
 - Use kdtree
 - Fixed TF tree
+- Add relocalization
 
 ## Requirements
 - Ubuntu 22.04 + ROS 2 Humble (other ROS 2 distros may work)
 - GTSAM 4.x (`libgtsam-dev` and `libgtsam-unstable-dev`)
 - PCL, OpenCV (installed via ROS packages below)
 
-Install ROS packages (replace `<ros2>` with your distro, e.g., `humble`):
+1.Install ROS packages (replace `<ros2>` with your distro, e.g., `humble`):
 ```
 sudo apt update
 sudo apt install \
@@ -26,6 +27,22 @@ sudo apt install \
   ros-<ros2>-pcl-msgs \
   ros-<ros2>-vision-opencv \
   libgtsam-dev libgtsam-unstable-dev
+```
+2.Install glog && gflag && gtest
+```
+sudo apt-get install libgoogle-glog-dev libgflags-dev libgtest-dev
+```
+3.Install g2o
+```
+sudo apt install libeigen3-dev libspdlog-dev libsuitesparse-dev qtdeclarative5-dev qt5-qmake libqglviewer-dev-qt5 # g2o requirements
+
+git clone https://github.com/RainerKuemmerle/g2o.git
+cd g2o
+mkdir build
+cd build
+cmake ..
+make -j
+sudo make install
 ```
 
 ## Build
@@ -38,18 +55,19 @@ source install/setup.bash
 ```
 
 ## Configure for Hesai XT16
-Edit `config/params.yaml`:
+Edit `config/mapping.yaml`and`config/relocalization.yaml`:
 - Set sensor to Hesai settings (rings, horizon) appropriate for XT16
 - Set topics to match your Hesai driver output
 - Set IMU extrinsics so IMU -> lidar follows REP-105 (x forward, y left, z up)
 
-Default static TFs in `launch/run.launch.py` assume co-located IMU and lidar; adjust if your mounting differs.
+Default static TFs in `launch/mapping.launch.py` assume co-located IMU and lidar; adjust if your mounting differs.
 
 Edit the fov of the Lidar setting. For Hesai XT16 (Default) it is -15 to 15 degree.
 
-## Run
+## Mapping
+### 1.Run
 ```
-ros2 launch lio_sam_hesai run.launch.py
+ros2 launch lio_sam_hesai mapping.launch.py
 ```
 
 Play a bag in another terminal:
@@ -57,7 +75,7 @@ Play a bag in another terminal:
 ros2 bag play your_data
 ```
 
-## Save map service
+### 2.Save map service
 ```
 ros2 service call /lio_sam/save_map lio_sam_hesai/srv/SaveMap "{resolution: 0.2, destination: /tmp/LOAM}"
 ```
@@ -67,6 +85,13 @@ ros2 service call /lio_sam/save_map lio_sam_hesai/srv/SaveMap "{resolution: 0.2,
 
 Note: The service name `/lio_sam/save_map` follows the original namespace; the type is from this package.
 
+## Relocalization
+### 1.Run
+```
+ros2 launch lio_sam_hesai relocalization.launch.py
+```
+### 2.Set the initial position through rviz
+
 ## Notes
 - Ensure Livox point type provides per-point time (relative within scan) and ring/channel index. Adapt `imageProjection.cpp` if your fields differ.
 - DDS/QoS: tune if running over networks with Livox drivers.
@@ -75,4 +100,6 @@ Note: The service name `/lio_sam/save_map` follows the original namespace; the t
 - There was a large bias when using Livox IMU. This lead to an inaccurate incremental odometry estimate.
   
 ## Credits
-- Based on the original LIO-SAM by Tixiao Shan and LIO_SAM_MID360 by Vishnuraj A et al. See `LICENSE` and original repository for citations.
+- Adaptation and maintenance: LRF
+- Based on the original [LIO-SAM](https://github.com/TixiaoShan/LIO-SAM) by Tixiao Shan and [LIO_SAM_MID360](https://github.com/rajvishnu07/lio_sam_mid360) by Vishnuraj A et al. See `LICENSE` and original repository for citations.
+- This project's relocalization is inspired by [funny_lidar_slam](https://github.com/zm0612/funny_lidar_slam).

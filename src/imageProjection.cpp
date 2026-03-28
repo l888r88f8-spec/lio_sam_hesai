@@ -2,6 +2,9 @@
 #include "lio_sam_hesai/msg/cloud_info.hpp"
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
+#include <cstdlib>
+#include <pcl/filters/extract_indices.h>
+#include <pcl/segmentation/sac_segmentation.h>
 
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/point_cloud.h>
@@ -63,11 +66,11 @@ private:
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr subLaserCloud;
     rclcpp::CallbackGroup::SharedPtr callbackGroupLidar;
 
-    // rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloud;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubExtractedCloud;
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubGroundCloudGlobal;
     rclcpp::Publisher<lio_sam_hesai::msg::CloudInfo>::SharedPtr pubLaserCloudInfo;
-    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubGroundCloud;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubNonGroundCloud;
+    rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr subGlobalMap;
 
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr subImu;
     rclcpp::CallbackGroup::SharedPtr callbackGroupImu;
@@ -93,10 +96,32 @@ private:
     pcl::PointCloud<OusterPointXYZIRT>::Ptr tmpOusterCloudIn;
     pcl::PointCloud<PointType>::Ptr   fullCloud;
     pcl::PointCloud<PointType>::Ptr   extractedCloud;
+    pcl::PointCloud<PointType>::Ptr   groundCloud;
+    pcl::PointCloud<PointType>::Ptr   groundCloudDS;
+    pcl::PointCloud<PointType>::Ptr   groundCloudAll;
+    //pcl::PointCloud<PointType>::Ptr   groundCloudAllLocal;
+    pcl::PointCloud<PointType>::Ptr   groundCloudAllGlobal;
+    pcl::PointCloud<PointType>::Ptr   globalMapCloud;
+    pcl::PointCloud<PointType>::Ptr   patchedGround;
+    pcl::PointCloud<PointType>::Ptr   patchedGroundEdge;
+    pcl::VoxelGrid<PointType> dsfPatchedGround;
+    pcl::VoxelGrid<PointType> groundDownSizeFilter;
 
     int ringFlag = 0;
     int deskewFlag;
     cv::Mat rangeMat;
+    cv::Mat groundMat;
+    int firstFrameProcessed;
+    //bool groundPCDDirectoryReadyLocal;
+    bool groundPCDDirectoryReadyGlobal;
+    //size_t groundPCDSaveCount;
+    //std::string groundPCDDirectoryAbsLocal;
+    std::string groundPCDDirectoryAbsGlobal;
+    //bool groundFinalSavedLocal;
+    bool groundFinalSavedGlobal;
+    bool groundIsGlobal;
+    std::mutex globalMapMutex;
+    bool globalMapReceived;
 
     bool odomDeskewFlag;
     float odomIncreX;
@@ -113,7 +138,10 @@ private:
 
 public:
     ImageProjection(const rclcpp::NodeOptions & options) :
-            ParamServer("lio_sam_imageProjection", options), deskewFlag(0)
+            ParamServer("lio_sam_imageProjection", options), deskewFlag(0), firstFrameProcessed(0),
+            groundPCDDirectoryReadyGlobal(false),
+            groundFinalSavedGlobal(false),
+            groundIsGlobal(false), globalMapReceived(false)
     {
         callbackGroupLidar = create_callback_group(
             rclcpp::CallbackGroupType::MutuallyExclusive);
@@ -141,9 +169,15 @@ public:
             pointCloudTopic, qos_lidar,
             std::bind(&ImageProjection::cloudHandler, this, std::placeholders::_1),
             lidarOpt);
+        subGlobalMap = create_subscription<sensor_msgs::msg::PointCloud2>(
+            globalMapTopic, qos_lidar,
+            std::bind(&ImageProjection::globalMapHandler, this, std::placeholders::_1),
+            lidarOpt);
 
         pubExtractedCloud = create_publisher<sensor_msgs::msg::PointCloud2>(
             "lio_sam/deskew/cloud_deskewed", 1);
+        pubGroundCloudGlobal = create_publisher<sensor_msgs::msg::PointCloud2>(
+            "lio_sam/deskew/ground_cloud_global", 1);
         pubLaserCloudInfo = create_publisher<lio_sam_hesai::msg::CloudInfo>(
             "lio_sam/deskew/cloud_info", qos);
 
@@ -158,6 +192,16 @@ public:
         tmpOusterCloudIn.reset(new pcl::PointCloud<OusterPointXYZIRT>());
         fullCloud.reset(new pcl::PointCloud<PointType>());
         extractedCloud.reset(new pcl::PointCloud<PointType>());
+        groundCloud.reset(new pcl::PointCloud<PointType>());
+        groundCloudDS.reset(new pcl::PointCloud<PointType>());
+        groundCloudAll.reset(new pcl::PointCloud<PointType>());
+        //groundCloudAllLocal.reset(new pcl::PointCloud<PointType>());
+        groundCloudAllGlobal.reset(new pcl::PointCloud<PointType>());
+        globalMapCloud.reset(new pcl::PointCloud<PointType>());
+        patchedGround.reset(new pcl::PointCloud<PointType>());
+        patchedGroundEdge.reset(new pcl::PointCloud<PointType>());
+
+        dsfPatchedGround.setLeafSize(0.1f, 0.1f, 0.1f);
 
         fullCloud->points.resize(N_SCAN*Horizon_SCAN);
 
@@ -174,8 +218,13 @@ public:
     {
         laserCloudIn->clear();
         extractedCloud->clear();
+        groundCloud->clear();
+        groundCloudDS->clear();
+        patchedGround->clear();
+        patchedGroundEdge->clear();
         // reset range matrix for range image projection
         rangeMat = cv::Mat(N_SCAN, Horizon_SCAN, CV_32F, cv::Scalar::all(FLT_MAX));
+        groundMat = cv::Mat(N_SCAN, Horizon_SCAN, CV_8S, cv::Scalar::all(0));
 
         imuPointerCur = 0;
         firstPointFlag = true;
@@ -191,7 +240,10 @@ public:
         columnIdnCountVec.assign(N_SCAN, 0);
     }
 
-    ~ImageProjection(){}
+    ~ImageProjection()
+    {
+        saveGroundFinalClouds();
+    }
 
     void imuHandler(const sensor_msgs::msg::Imu::SharedPtr imuMsg)
     {
@@ -224,6 +276,15 @@ public:
         odomQueue.push_back(*odometryMsg);
     }
 
+    void globalMapHandler(const sensor_msgs::msg::PointCloud2::SharedPtr mapMsg)
+    {
+        pcl::PointCloud<PointType>::Ptr temp(new pcl::PointCloud<PointType>());
+        pcl::fromROSMsg(*mapMsg, *temp);
+        std::lock_guard<std::mutex> lock(globalMapMutex);
+        *globalMapCloud = *temp;
+        globalMapReceived = true;
+    }
+
     void cloudHandler(const sensor_msgs::msg::PointCloud2::SharedPtr laserCloudMsg)
     {
         if (!cachePointCloud(laserCloudMsg))
@@ -233,6 +294,8 @@ public:
             return;
 
         projectPointCloud();
+
+        groundRemoval();
 
         cloudExtraction();
 
@@ -755,6 +818,343 @@ public:
         }
     }
 
+    void groundRemoval()
+    {
+        groundCloud->clear();
+        patchedGround->clear();
+        patchedGroundEdge->clear();
+        groundIsGlobal = false;
+
+        if (useGlobalMapGround && globalMapReceived && cloudInfo.odom_available)
+        {
+            if (extractGroundFromGlobalMap())
+            {
+                groundIsGlobal = true;
+                downsampleGroundCloud();
+                return;
+            }
+        }
+
+        if (groundMat.rows != N_SCAN || groundMat.cols != Horizon_SCAN)
+        {
+            groundMat = cv::Mat(N_SCAN, Horizon_SCAN, CV_8S, cv::Scalar::all(0));
+        }
+        else
+        {
+            groundMat.setTo(cv::Scalar::all(0));
+        }
+
+        int groundScanLimit = std::min(groundScanIndex, N_SCAN - 1);
+        if (groundScanLimit <= 0)
+            return;
+
+        const float groundAngleThresholdRad = groundAngleThreshold * static_cast<float>(M_PI) / 180.0f;
+        for (int j = 0; j < Horizon_SCAN; ++j)
+        {
+            int ringEdge = 0;
+            int closestRingEdge = groundScanLimit;
+            bool doPatch = false;
+            for (int i = 0; i < groundScanLimit; ++i)
+            {
+                if (rangeMat.at<float>(i, j) == FLT_MAX ||
+                    rangeMat.at<float>(i + 1, j) == FLT_MAX)
+                {
+                    groundMat.at<signed char>(i, j) = -1;
+                    continue;
+                }
+
+                int lowerInd = j + i * Horizon_SCAN;
+                int upperInd = j + (i + 1) * Horizon_SCAN;
+
+                float dX = fullCloud->points[upperInd].x - fullCloud->points[lowerInd].x;
+                float dY = fullCloud->points[upperInd].y - fullCloud->points[lowerInd].y;
+                float dZ = fullCloud->points[upperInd].z - fullCloud->points[lowerInd].z;
+
+                float verticalAngle = std::atan2(dZ, std::sqrt(dX * dX + dY * dY + dZ * dZ));
+
+                if (verticalAngle <= groundAngleThresholdRad)
+                {
+                    groundMat.at<signed char>(i, j) = 1;
+                    groundMat.at<signed char>(i + 1, j) = 1;
+
+                    if (i < closestRingEdge && i != groundScanLimit)
+                        closestRingEdge = i;
+
+                    float ds = std::sqrt(dX * dX + dY * dY + dZ * dZ);
+                    if (distanceForPatchBetweenRings > 0.0f &&
+                        ds < distanceForPatchBetweenRings)
+                    {
+                        ringEdge = i + 1;
+                        float dt = 1.0f / (ds / 0.1f + 1.0f);
+                        for (float t = 0.0f; t <= 1.0f; t += dt)
+                        {
+                            PointType aPt;
+                            aPt.intensity = 0.0f;
+                            aPt.x = fullCloud->points[lowerInd].x + dX * t;
+                            aPt.y = fullCloud->points[lowerInd].y + dY * t;
+                            aPt.z = fullCloud->points[lowerInd].z + dZ * t;
+                            patchedGround->push_back(aPt);
+                        }
+                        PointType aPt;
+                        aPt.intensity = 0.0f;
+                        aPt.x = fullCloud->points[lowerInd].x + dX;
+                        aPt.y = fullCloud->points[lowerInd].y + dY;
+                        aPt.z = fullCloud->points[lowerInd].z + dZ;
+                        patchedGround->push_back(aPt);
+                        doPatch = true;
+                    }
+                }
+            }
+
+            int ringEdgeInd = j + ringEdge * Horizon_SCAN;
+            if (rangeMat.at<float>(ringEdge, j) != FLT_MAX)
+            {
+                PointType aPt;
+                aPt.x = fullCloud->points[ringEdgeInd].x;
+                aPt.y = fullCloud->points[ringEdgeInd].y;
+                aPt.z = fullCloud->points[ringEdgeInd].z;
+                aPt.intensity = 100.0f;
+                patchedGroundEdge->push_back(aPt);
+            }
+
+            if (doPatch && firstFrameProcessed < 5 && closestRingEdge < groundScanLimit)
+            {
+                int closestRingEdgeInd = j + closestRingEdge * Horizon_SCAN;
+                if (rangeMat.at<float>(closestRingEdge, j) == FLT_MAX)
+                    continue;
+
+                float dXf = -fullCloud->points[closestRingEdgeInd].x;
+                float dYf = -fullCloud->points[closestRingEdgeInd].y;
+                float dZf = -fullCloud->points[closestRingEdgeInd].z;
+
+                for (float t = 0.0f; t <= 1.0f; t += 0.05f)
+                {
+                    PointType aPtf;
+                    aPtf.intensity = 0.0f;
+                    aPtf.x = fullCloud->points[closestRingEdgeInd].x + dXf * t;
+                    aPtf.y = fullCloud->points[closestRingEdgeInd].y + dYf * t;
+                    aPtf.z = fullCloud->points[closestRingEdgeInd].z;
+                    patchedGround->push_back(aPtf);
+                }
+                PointType aPtf;
+                aPtf.intensity = 0.0f;
+                aPtf.x = fullCloud->points[closestRingEdgeInd].x + dXf;
+                aPtf.y = fullCloud->points[closestRingEdgeInd].y + dYf;
+                aPtf.z = fullCloud->points[closestRingEdgeInd].z;
+                patchedGround->push_back(aPtf);
+            }
+        }
+
+        if (!patchedGround->empty())
+        {
+            dsfPatchedGround.setInputCloud(patchedGround);
+            dsfPatchedGround.filter(*patchedGround);
+        }
+        if (!patchedGroundEdge->empty())
+        {
+            dsfPatchedGround.setInputCloud(patchedGroundEdge);
+            dsfPatchedGround.filter(*patchedGroundEdge);
+        }
+
+        for (int i = 0; i <= groundScanLimit; ++i)
+        {
+            for (int j = 0; j < Horizon_SCAN; ++j)
+            {
+                if (groundMat.at<signed char>(i, j) == 1)
+                    groundCloud->push_back(fullCloud->points[j + i * Horizon_SCAN]);
+            }
+        }
+
+        if (!patchedGround->empty())
+            *groundCloud += *patchedGround;
+
+        downsampleGroundCloud();
+    }
+
+    bool extractGroundFromGlobalMap()
+    {
+        pcl::PointCloud<PointType>::Ptr mapCopy(new pcl::PointCloud<PointType>());
+        {
+            std::lock_guard<std::mutex> lock(globalMapMutex);
+            if (globalMapCloud->empty())
+                return false;
+            *mapCopy = *globalMapCloud;
+        }
+
+        if (mapCopy->empty())
+            return false;
+
+        const float cx = cloudInfo.initial_guess_x;
+        const float cy = cloudInfo.initial_guess_y;
+        const float cz = cloudInfo.initial_guess_z;
+
+        pcl::CropBox<PointType> crop;
+        crop.setInputCloud(mapCopy);
+        crop.setMin(Eigen::Vector4f(cx - globalMapGroundRadius,
+                                    cy - globalMapGroundRadius,
+                                    cz - globalMapGroundZRange, 1.0f));
+        crop.setMax(Eigen::Vector4f(cx + globalMapGroundRadius,
+                                    cy + globalMapGroundRadius,
+                                    cz + globalMapGroundZRange, 1.0f));
+
+        pcl::PointCloud<PointType>::Ptr cropped(new pcl::PointCloud<PointType>());
+        crop.filter(*cropped);
+        if (cropped->size() < static_cast<size_t>(globalMapGroundMinPoints))
+            return false;
+
+        pcl::PointCloud<PointType>::Ptr filtered(new pcl::PointCloud<PointType>());
+        if (globalMapGroundVoxelSize > 0.0f)
+        {
+            pcl::VoxelGrid<PointType> vg;
+            vg.setLeafSize(globalMapGroundVoxelSize, globalMapGroundVoxelSize, globalMapGroundVoxelSize);
+            vg.setInputCloud(cropped);
+            vg.filter(*filtered);
+        }
+        else
+        {
+            *filtered = *cropped;
+        }
+
+        if (filtered->size() < static_cast<size_t>(globalMapGroundMinPoints))
+            return false;
+
+        pcl::SACSegmentation<PointType> seg;
+        seg.setOptimizeCoefficients(true);
+        seg.setModelType(pcl::SACMODEL_PERPENDICULAR_PLANE);
+        seg.setMethodType(pcl::SAC_RANSAC);
+        seg.setMaxIterations(200);
+        seg.setDistanceThreshold(globalMapGroundDistance);
+        seg.setAxis(Eigen::Vector3f(0.0f, 0.0f, 1.0f));
+        seg.setEpsAngle(globalMapGroundMaxAngle * static_cast<float>(M_PI) / 180.0f);
+        seg.setInputCloud(filtered);
+
+        pcl::PointIndices::Ptr inliers(new pcl::PointIndices());
+        pcl::ModelCoefficients::Ptr coeff(new pcl::ModelCoefficients());
+        seg.segment(*inliers, *coeff);
+
+        if (inliers->indices.size() < static_cast<size_t>(globalMapGroundMinPoints))
+            return false;
+
+        pcl::PointCloud<PointType>::Ptr groundOdom(new pcl::PointCloud<PointType>());
+        pcl::ExtractIndices<PointType> extract;
+        extract.setInputCloud(filtered);
+        extract.setIndices(inliers);
+        extract.setNegative(false);
+        extract.filter(*groundOdom);
+
+        if (groundOdom->empty())
+            return false;
+
+        Eigen::Affine3f trans = pcl::getTransformation(
+            cloudInfo.initial_guess_x, cloudInfo.initial_guess_y, cloudInfo.initial_guess_z,
+            cloudInfo.initial_guess_roll, cloudInfo.initial_guess_pitch, cloudInfo.initial_guess_yaw);
+
+        pcl::transformPointCloud(*groundOdom, *groundCloud, trans.inverse());
+        return true;
+    }
+
+    bool prepareGroundPCDDirectory(const std::string &dir, std::string *absPath, bool *ready)
+    {
+        if (*ready)
+            return true;
+
+        const char *homeDir = std::getenv("HOME");
+        if (homeDir == nullptr)
+        {
+            RCLCPP_WARN(get_logger(), "HOME is not set, cannot save ground PCD.");
+            return false;
+        }
+        *absPath = std::string(homeDir) + dir;
+        if (!absPath->empty() && absPath->back() != '/')
+            *absPath += "/";
+
+        std::string cmd = "mkdir -p \"" + *absPath + "\"";
+        int ret = system(cmd.c_str());
+        if (ret != 0)
+        {
+            RCLCPP_WARN(get_logger(), "Failed to create ground PCD directory: %s", absPath->c_str());
+            return false;
+        }
+
+        *ready = true;
+        return true;
+    }
+
+    void flattenCloudZ(pcl::PointCloud<PointType> &cloud)
+    {
+        if (!groundFlattenZ)
+            return;
+        for (auto &pt : cloud.points)
+            pt.z = groundFlattenValue;
+    }
+
+    void downsampleGroundCloud()
+    {
+        groundCloudDS->clear();
+        if (groundLeafSize <= 0.0f)
+        {
+            *groundCloudDS = *groundCloud;
+            flattenCloudZ(*groundCloudDS);
+            return;
+        }
+
+        groundDownSizeFilter.setLeafSize(groundLeafSize, groundLeafSize, groundLeafSize);
+        groundDownSizeFilter.setInputCloud(groundCloud);
+        groundDownSizeFilter.filter(*groundCloudDS);
+        flattenCloudZ(*groundCloudDS);
+    }
+
+    void accumulateGroundCloud(bool isGlobal)
+    {
+        if (!saveGroundPCD || groundCloudDS->empty())
+            return;
+
+        pcl::PointCloud<PointType> cloudToAdd;
+        if (groundFinalUseOdom && cloudInfo.odom_available)
+        {
+            Eigen::Affine3f trans = pcl::getTransformation(
+                cloudInfo.initial_guess_x, cloudInfo.initial_guess_y, cloudInfo.initial_guess_z,
+                cloudInfo.initial_guess_roll, cloudInfo.initial_guess_pitch, cloudInfo.initial_guess_yaw);
+            pcl::transformPointCloud(*groundCloudDS, cloudToAdd, trans);
+        }
+        else
+        {
+            cloudToAdd = *groundCloudDS;
+        }
+        flattenCloudZ(cloudToAdd);
+
+        //if (isGlobal)
+            *groundCloudAllGlobal += cloudToAdd;
+        //else
+        //    *groundCloudAllLocal += cloudToAdd;
+    }
+
+    void saveGroundFinalCloud(pcl::PointCloud<PointType>::Ptr cloud,
+                              const std::string &dir,
+                              std::string *absPath,
+                              bool *ready,
+                              bool *saved)
+    {
+        if (*saved || !saveGroundPCD || cloud->empty())
+            return;
+
+        if (!prepareGroundPCDDirectory(dir, absPath, ready))
+            return;
+
+        std::string filename = *absPath + "ground_final.pcd";
+        flattenCloudZ(*cloud);
+        pcl::io::savePCDFileBinary(filename, *cloud);
+        *saved = true;
+    }
+
+    void saveGroundFinalClouds()
+    {
+        // saveGroundFinalCloud(groundCloudAllLocal, groundPCDDirectory, &groundPCDDirectoryAbsLocal,
+        //                      &groundPCDDirectoryReadyLocal, &groundFinalSavedLocal);
+        saveGroundFinalCloud(groundCloudAllGlobal, groundPCDDirectoryGlobal, &groundPCDDirectoryAbsGlobal,
+                             &groundPCDDirectoryReadyGlobal, &groundFinalSavedGlobal);
+    }
+
     void cloudExtraction()
     {
         int count = 0;
@@ -779,12 +1179,21 @@ public:
             cloudInfo.end_ring_index[i] = count -1 - 5;
         }
     }
-    
+
     void publishClouds()
     {
         cloudInfo.header = cloudHeader;
         cloudInfo.cloud_deskewed  = publishCloud(pubExtractedCloud, extractedCloud, cloudHeader.stamp, lidarFrame);
+        pcl::PointCloud<PointType>::Ptr groundMap(new pcl::PointCloud<PointType>());
+        Eigen::Affine3f trans = pcl::getTransformation(
+            cloudInfo.initial_guess_x, cloudInfo.initial_guess_y, cloudInfo.initial_guess_z,
+            cloudInfo.initial_guess_roll, cloudInfo.initial_guess_pitch, cloudInfo.initial_guess_yaw);
+        pcl::transformPointCloud(*groundCloudDS, *groundMap, trans);
+        publishCloud(pubGroundCloudGlobal, groundMap, cloudHeader.stamp, mapFrame);
         pubLaserCloudInfo->publish(cloudInfo);
+        ++firstFrameProcessed;
+        accumulateGroundCloud(groundIsGlobal);
+        //saveGroundCloud(groundIsGlobal);
     }
 };
 
@@ -802,6 +1211,8 @@ int main(int argc, char** argv)
     RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "\033[1;32m----> Image Projection Started.\033[0m");
 
     exec.spin();
+
+    IP->saveGroundFinalClouds();
 
     rclcpp::shutdown();
     return 0;

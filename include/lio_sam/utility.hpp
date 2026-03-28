@@ -74,6 +74,7 @@ public:
     string imuTopic;
     string odomTopic;
     string gpsTopic;
+    string globalMapTopic;
 
     //Frames
     string lidarFrame;
@@ -91,6 +92,21 @@ public:
     bool savePCD;
     string savePCDDirectory;
     bool mappingMode;
+    float savePCDResolution;
+    bool saveGroundPCD;
+    string groundPCDDirectory;
+    string groundPCDDirectoryGlobal;
+    bool groundFinalUseOdom;
+    float groundLeafSize;
+    bool useGlobalMapGround;
+    float globalMapGroundRadius;
+    float globalMapGroundZRange;
+    float globalMapGroundVoxelSize;
+    float globalMapGroundDistance;
+    float globalMapGroundMaxAngle;
+    int globalMapGroundMinPoints;
+    bool groundFlattenZ;
+    float groundFlattenValue;
 
     // Lidar Sensor Configuration
     SensorType sensor = SensorType::OUSTER;
@@ -99,6 +115,9 @@ public:
     int downsampleRate;
     float lidarMinRange;
     float lidarMaxRange;
+    int groundScanIndex;
+    float distanceForPatchBetweenRings;
+    float groundAngleThreshold;
 
     // IMU
     int imuType;
@@ -176,6 +195,8 @@ public:
         get_parameter("odomTopic", odomTopic);
         declare_parameter("gpsTopic", "lio_sam/odometry/gps");
         get_parameter("gpsTopic", gpsTopic);
+        declare_parameter("globalMapTopic", "lio_sam/mapping/map_global");
+        get_parameter("globalMapTopic", globalMapTopic);
 
         declare_parameter("lidarFrame", "laser_data_frame");
         get_parameter("lidarFrame", lidarFrame);
@@ -201,6 +222,36 @@ public:
         get_parameter("savePCDDirectory", savePCDDirectory);
         declare_parameter("mappingMode", true);
         get_parameter("mappingMode", mappingMode);
+        declare_parameter("savePCDResolution", 0.0);
+        get_parameter("savePCDResolution", savePCDResolution);
+        declare_parameter("saveGroundPCD", false);
+        get_parameter("saveGroundPCD", saveGroundPCD);
+        declare_parameter("groundPCDDirectory", "/Downloads/LOAM_ground/");
+        get_parameter("groundPCDDirectory", groundPCDDirectory);
+        declare_parameter("groundPCDDirectoryGlobal", "/Downloads/LOAM_ground_global/");
+        get_parameter("groundPCDDirectoryGlobal", groundPCDDirectoryGlobal);
+        declare_parameter("groundFinalUseOdom", true);
+        get_parameter("groundFinalUseOdom", groundFinalUseOdom);
+        declare_parameter("groundLeafSize", 0.1);
+        get_parameter("groundLeafSize", groundLeafSize);
+        declare_parameter("useGlobalMapGround", false);
+        get_parameter("useGlobalMapGround", useGlobalMapGround);
+        declare_parameter("globalMapGroundRadius", 20.0);
+        get_parameter("globalMapGroundRadius", globalMapGroundRadius);
+        declare_parameter("globalMapGroundZRange", 5.0);
+        get_parameter("globalMapGroundZRange", globalMapGroundZRange);
+        declare_parameter("globalMapGroundVoxelSize", 0.2);
+        get_parameter("globalMapGroundVoxelSize", globalMapGroundVoxelSize);
+        declare_parameter("globalMapGroundDistance", 0.2);
+        get_parameter("globalMapGroundDistance", globalMapGroundDistance);
+        declare_parameter("globalMapGroundMaxAngle", 15.0);
+        get_parameter("globalMapGroundMaxAngle", globalMapGroundMaxAngle);
+        declare_parameter("globalMapGroundMinPoints", 200);
+        get_parameter("globalMapGroundMinPoints", globalMapGroundMinPoints);
+        declare_parameter("groundFlattenZ", false);
+        get_parameter("groundFlattenZ", groundFlattenZ);
+        declare_parameter("groundFlattenValue", 0.0);
+        get_parameter("groundFlattenValue", groundFlattenValue);
 
         std::string sensorStr;
         declare_parameter("sensor", "ouster");
@@ -244,6 +295,12 @@ public:
         get_parameter("lidarMinRange", lidarMinRange);
         declare_parameter("lidarMaxRange", 1000.0);
         get_parameter("lidarMaxRange", lidarMaxRange);
+        declare_parameter("groundScanIndex", 10);
+        get_parameter("groundScanIndex", groundScanIndex);
+        declare_parameter("distanceForPatchBetweenRings", 1.0);
+        get_parameter("distanceForPatchBetweenRings", distanceForPatchBetweenRings);
+        declare_parameter("groundAngleThreshold", 10.0);
+        get_parameter("groundAngleThreshold", groundAngleThreshold);
 
         declare_parameter("imuAccNoise", 9e-4);
         get_parameter("imuAccNoise", imuAccNoise);

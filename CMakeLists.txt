@@ -5,6 +5,13 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+add_definitions(-DPROJECT_SOURCE_DIR=\"${PROJECT_SOURCE_DIR}\")
+
+include(cmake/glog.cmake)
+include(cmake/g2o.cmake)
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
@@ -32,7 +39,10 @@ find_package(Eigen REQUIRED)
 find_package(OpenMP REQUIRED)
 
 include_directories(
+  include
   include/lio_sam
+  ${GLOG_INCLUDE_DIRS}
+  ${G2O_INCLUDE_DIR}
 )
 
 rosidl_generate_interfaces(${PROJECT_NAME} "msg/CloudInfo.msg" "srv/SaveMap.srv" DEPENDENCIES std_msgs sensor_msgs)
@@ -54,12 +64,59 @@ target_link_libraries(${PROJECT_NAME}_imuPreintegration gtsam "${cpp_typesupport
 
 add_executable(${PROJECT_NAME}_mapOptimization src/mapOptimization.cpp)
 ament_target_dependencies(${PROJECT_NAME}_mapOptimization rclcpp rclpy std_msgs sensor_msgs geometry_msgs nav_msgs pcl_conversions pcl_msgs visualization_msgs tf2 tf2_ros tf2_eigen tf2_sensor_msgs tf2_geometry_msgs OpenCV PCL GTSAM)
+
 if (OpenMP_CXX_FOUND)
   target_link_libraries(${PROJECT_NAME}_mapOptimization gtsam "${cpp_typesupport_target}" OpenMP::OpenMP_CXX)
 else()
   target_link_libraries(${PROJECT_NAME}_mapOptimization gtsam "${cpp_typesupport_target}")
 endif()
 
+add_library(${PROJECT_NAME}_relocalization_lib
+  src/imu/data_synchronizer.cpp
+  src/imu/pre_integration.cpp
+  src/lidar/lidar_model.cpp
+  src/lidar/lidar_distortion_corrector.cpp
+  src/loam/feature_extractor.cpp
+  src/loam/pointcloud_projector.cpp
+  src/ivox_map/ivox_map.cpp
+  src/ivox_map/voxel_grid_node.cpp
+  src/optimization/g2o/accel_bias_prior_edge.cpp
+  src/optimization/g2o/accel_bias_rw_edge.cpp
+  src/optimization/g2o/gyro_bias_prior_edge.cpp
+  src/optimization/g2o/gyro_bias_rw_edge.cpp
+  src/optimization/g2o/position_edge.cpp
+  src/optimization/g2o/pre_integration_edge.cpp
+  src/optimization/g2o/prior_nav_state_edge.cpp
+  src/optimization/g2o/relative_pose_edge.cpp
+  src/optimization/g2o/rotation_edge.cpp
+  src/optimization/g2o/velocity_edge.cpp
+  src/slam/config_parameters.cpp
+  src/slam/preprocessing.cpp
+  src/slam/localization.cpp
+  src/slam/split_map.cpp
+  src/slam/system.cpp
+)
+ament_target_dependencies(${PROJECT_NAME}_relocalization_lib
+  rclcpp rclpy std_msgs sensor_msgs geometry_msgs nav_msgs pcl_conversions
+  pcl_msgs visualization_msgs tf2 tf2_ros tf2_eigen tf2_sensor_msgs
+  tf2_geometry_msgs OpenCV PCL
+)
+target_link_libraries(${PROJECT_NAME}_relocalization_lib
+  ${GLOG_LIBRARIES}
+  ${G2O_LIBRARIES}
+)
+
+add_executable(${PROJECT_NAME}_relocalization src/relocalization_node.cpp)
+ament_target_dependencies(${PROJECT_NAME}_relocalization
+  rclcpp rclpy std_msgs sensor_msgs geometry_msgs nav_msgs pcl_conversions
+  pcl_msgs visualization_msgs tf2 tf2_ros tf2_eigen tf2_sensor_msgs
+  tf2_geometry_msgs OpenCV PCL
+)
+target_link_libraries(${PROJECT_NAME}_relocalization
+  ${PROJECT_NAME}_relocalization_lib
+  ${GLOG_LIBRARIES}
+  ${G2O_LIBRARIES}
+)
 
 install(
   DIRECTORY launch
@@ -92,6 +149,11 @@ install(
 )
 
 install(
+  TARGETS ${PROJECT_NAME}_relocalization
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+install(
   DIRECTORY "include/"
   DESTINATION include
 )
@@ -110,4 +172,3 @@ if(BUILD_TESTING)
 endif()
 
 ament_package()
-
