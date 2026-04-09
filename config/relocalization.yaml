@@ -1,5 +1,8 @@
 /**:
   ros__parameters:
+    # =========================
+    # 重定位参数
+    # =========================
     mappingMode: false
 
     sensor_topic:
@@ -18,7 +21,7 @@
       mapping_odom_topic: "lio_sam/localization/odometry"
 
     localization:
-      map_path: "/home/robot/map/hesai_outdoor/GlobalMap.pcd"
+      map_path: "/home/clab/map/hesai_sim/GlobalMap.pcd"
 
     lidar:
       lidar_sensor_type: Hesai
@@ -77,3 +80,29 @@
           point_to_planar_thres: 0.1
           position_converge_thres: 0.01
           rotation_converge_thres: 0.01
+
+    # =========================
+    # 去地点云参数
+    # =========================
+    pointCloudTopic: "/lidar_points"                            # 输入原始激光点云话题
+    lidarFrame: "hesai_lidar"                                   # 输出点云使用的雷达坐标系
+
+    segmentation_only_mode: true                                # 地面分割模式
+    nonGroundCloudTopic: "lio_sam/localization/cloud_nonground" # 去地后的非地面点云输出话题
+
+    sensor: HESAI                                               # 雷达类型与点云组织参数
+    N_SCAN: 16                                                  # 雷达线数
+    Horizon_SCAN: 1000                                          # 单圈水平方向点数
+    lidarMinRange: 0.5                                          # 参与分割的最小有效距离，过近点会被过滤
+    lidarMaxRange: 60.0                                         # 参与分割的最大有效距离，过远点会被过滤
+
+    groundScanStartIndex: 0                                     # 参与地面提取的起始 ring 编号
+    groundScanEndIndex: 15                                      # 参与地面提取的结束 ring 编号，设为-1时表示使用全部 ring
+    groundAngleThreshold: 15.0                                  # 相邻上下线束点对的竖直夹角阈值，越小越严格
+    groundPlaneDistance: 0.12                                   # 点到拟合地面平面的距离阈值，越小越严格
+    groundPlaneMaxAngle: 30.0                                   # 地面法向与竖直方向允许的最大夹角，越小越严格
+    groundPlaneMinPoints: 80                                    # 地面平面拟合所需的最少种子点数
+    distanceForPatchBetweenRings: 0.0                           # 相邻线束地面补点的最大距离，减小后会减少地面补全
+
+    useGlobalMapGround: false                                   # 是否使用全局地图辅助补充地面
+    groundFlattenZ: false                                       # 是否把地面点云压平到固定高度

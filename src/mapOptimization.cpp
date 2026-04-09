@@ -14,7 +14,6 @@
 #include <gtsam/nonlinear/Values.h>
 #include <gtsam/inference/Symbol.h>
 #include <gtsam/nonlinear/ISAM2.h>
-#include <pcl/filters/radius_outlier_removal.h>
 #include <pcl/segmentation/extract_clusters.h>
 #include <pcl/search/kdtree.h>
 #include <unordered_map>
@@ -172,6 +171,7 @@ public:
     Eigen::MatrixXd poseCovariance;
 
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloudSurround;
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubGroundCloudSurround;
     rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pubLaserOdometryGlobal;
     rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pubLaserOdometryIncremental;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubKeyPoses;
@@ -194,6 +194,7 @@ public:
 
     vector<pcl::PointCloud<PointType>::Ptr> cornerCloudKeyFrames;
     vector<pcl::PointCloud<PointType>::Ptr> surfCloudKeyFrames;
+    vector<pcl::PointCloud<PointType>::Ptr> groundCloudKeyFrames;
     
     pcl::PointCloud<PointType>::Ptr cloudKeyPoses3D;
     pcl::PointCloud<PointTypePose>::Ptr cloudKeyPoses6D;
@@ -202,6 +203,7 @@ public:
 
     pcl::PointCloud<PointType>::Ptr laserCloudCornerLast; // corner feature set from odoOptimization
     pcl::PointCloud<PointType>::Ptr laserCloudSurfLast; // surf feature set from odoOptimization
+    pcl::PointCloud<PointType>::Ptr laserCloudGroundLast; // ground feature set from imageProjection
     pcl::PointCloud<PointType>::Ptr laserCloudCornerLastDS; // downsampled corner feature set from odoOptimization
     pcl::PointCloud<PointType>::Ptr laserCloudSurfLastDS; // downsampled surf feature set from odoOptimization
 
@@ -279,6 +281,7 @@ public:
 
         pubKeyPoses = create_publisher<sensor_msgs::msg::PointCloud2>("lio_sam/mapping/trajectory", 1);
         pubLaserCloudSurround = create_publisher<sensor_msgs::msg::PointCloud2>("lio_sam/mapping/map_global", 1);
+        pubGroundCloudSurround = create_publisher<sensor_msgs::msg::PointCloud2>("lio_sam/mapping/ground_cloud_global", 1);
         pubLaserOdometryGlobal = create_publisher<nav_msgs::msg::Odometry>("lio_sam/mapping/odometry", qos);
         pubLaserOdometryIncremental = create_publisher<nav_msgs::msg::Odometry>(
             "lio_sam/mapping/odometry_incremental", qos);
@@ -403,7 +406,9 @@ public:
             *globalMapCloud += *globalCornerCloud;
             *globalMapCloud += *globalSurfCloud;
             int ret = pcl::io::savePCDFileBinary(saveMapDirectory + "/GlobalMap.pcd", *globalMapCloud);
-            res->success = ret == 0;
+            const bool groundSaved = saveGlobalGroundMap(
+                saveMapDirectory + "/GroundMap.pcd", req->resolution, true);
+            res->success = (ret == 0) && groundSaved;
             downSizeFilterCorner.setLeafSize(mappingCornerLeafSize, mappingCornerLeafSize, mappingCornerLeafSize);
             downSizeFilterSurf.setLeafSize(mappingSurfLeafSize, mappingSurfLeafSize, mappingSurfLeafSize);
             cout << "****************************************************" << endl;
@@ -445,6 +450,7 @@ public:
 
         laserCloudCornerLast.reset(new pcl::PointCloud<PointType>()); // corner feature set from odoOptimization
         laserCloudSurfLast.reset(new pcl::PointCloud<PointType>()); // surf feature set from odoOptimization
+        laserCloudGroundLast.reset(new pcl::PointCloud<PointType>()); // ground feature set from imageProjection
         laserCloudCornerLastDS.reset(new pcl::PointCloud<PointType>()); // downsampled corner featuer set from odoOptimization
         laserCloudSurfLastDS.reset(new pcl::PointCloud<PointType>()); // downsampled surf featuer set from odoOptimization
 
@@ -486,6 +492,7 @@ public:
         cloudInfo = *msgIn;
         pcl::fromROSMsg(msgIn->cloud_corner,  *laserCloudCornerLast);
         pcl::fromROSMsg(msgIn->cloud_surface, *laserCloudSurfLast);
+        pcl::fromROSMsg(msgIn->cloud_ground,  *laserCloudGroundLast);
 
         std::lock_guard<std::mutex> lock(mtx);
 
@@ -589,6 +596,7 @@ public:
             if (!mappingMode)
                 continue;
             publishGlobalMap();
+            publishGlobalGroundMap();
         }
         if (savePCD == false)
             return;
@@ -626,8 +634,185 @@ public:
         *globalMapCloud += *globalCornerCloud;
         *globalMapCloud += *globalSurfCloud;
         pcl::io::savePCDFileASCII(savePCDDirectory + "cloudGlobal.pcd", *globalMapCloud);
+        saveGlobalGroundMap(savePCDDirectory + "cloudGround.pcd", savePCDResolution, false);
         cout << "****************************************************" << endl;
         cout << "Saving map to pcd files completed" << endl;
+    }
+
+    // 在导出地面地图前按配置压平高度，便于与现有地面导出参数兼容。
+    void flattenGroundCloudForSave(const pcl::PointCloud<PointType>::Ptr &cloud) const
+    {
+        if (!groundFlattenZ || cloud == nullptr)
+            return;
+
+        for (auto &point : cloud->points)
+            point.z = groundFlattenValue;
+    }
+
+    // 根据关键帧索引拼接全局地面点云，并按需要执行体素下采样。
+    pcl::PointCloud<PointType>::Ptr buildGlobalGroundMapFromIndices(
+        const std::vector<int> &keyFrameIndices, float leafSize)
+    {
+        pcl::PointCloud<PointType>::Ptr globalGroundKeyFrames(
+            new pcl::PointCloud<PointType>());
+        if (keyFrameIndices.empty())
+            return globalGroundKeyFrames;
+
+        const bool useStaticFilter =
+            globalStaticMapFilterEnable && globalStaticVoxelSize > 1e-3f &&
+            globalStaticMinKF > 1;
+
+        if (useStaticFilter)
+        {
+            std::unordered_map<VoxelIndex, VoxelAcc, VoxelIndexHash> vox;
+            vox.reserve(keyFrameIndices.size() * 200);
+
+            for (const int keyIndex : keyFrameIndices)
+            {
+                if (keyIndex < 0 || keyIndex >= static_cast<int>(groundCloudKeyFrames.size()) ||
+                    keyIndex >= static_cast<int>(cloudKeyPoses6D->size()))
+                {
+                    continue;
+                }
+
+                pcl::PointCloud<PointType>::Ptr ground = transformPointCloud(
+                    groundCloudKeyFrames[keyIndex], &cloudKeyPoses6D->points[keyIndex]);
+                accumulateVoxelMap(vox, ground, keyIndex, globalStaticVoxelSize);
+            }
+            globalGroundKeyFrames = voxelMapToCloud(vox, globalStaticMinKF);
+        }
+        else
+        {
+            for (const int keyIndex : keyFrameIndices)
+            {
+                if (keyIndex < 0 || keyIndex >= static_cast<int>(groundCloudKeyFrames.size()) ||
+                    keyIndex >= static_cast<int>(cloudKeyPoses6D->size()))
+                {
+                    continue;
+                }
+
+                *globalGroundKeyFrames += *transformPointCloud(
+                    groundCloudKeyFrames[keyIndex], &cloudKeyPoses6D->points[keyIndex]);
+            }
+        }
+
+        if (leafSize <= 0.0f || globalGroundKeyFrames->empty())
+            return globalGroundKeyFrames;
+
+        pcl::PointCloud<PointType>::Ptr globalGroundKeyFramesDS(
+            new pcl::PointCloud<PointType>());
+        pcl::VoxelGrid<PointType> downSizeFilterGlobalGroundKeyFrames;
+        downSizeFilterGlobalGroundKeyFrames.setLeafSize(leafSize, leafSize, leafSize);
+        downSizeFilterGlobalGroundKeyFrames.setInputCloud(globalGroundKeyFrames);
+        downSizeFilterGlobalGroundKeyFrames.filter(*globalGroundKeyFramesDS);
+        return globalGroundKeyFramesDS;
+    }
+
+    // 基于所有地面关键帧构建完整全局地面点云，用于最终导出。
+    pcl::PointCloud<PointType>::Ptr buildFullGlobalGroundMap(float leafSize)
+    {
+        std::vector<int> keyFrameIndices;
+        keyFrameIndices.reserve(groundCloudKeyFrames.size());
+        for (int i = 0; i < static_cast<int>(groundCloudKeyFrames.size()); ++i)
+            keyFrameIndices.push_back(i);
+
+        return buildGlobalGroundMapFromIndices(keyFrameIndices, leafSize);
+    }
+
+    // 将全局地面点云保存到与全局地图相同的输出目录中。
+    bool saveGlobalGroundMap(const std::string &filePath, float leafSize, bool useBinary)
+    {
+        if (!saveGroundPCD)
+            return true;
+
+        pcl::PointCloud<PointType>::Ptr globalGroundMap =
+            buildFullGlobalGroundMap(leafSize);
+        if (globalGroundMap->empty())
+        {
+            RCLCPP_WARN(get_logger(), "Ground map is empty, skip saving: %s",
+                        filePath.c_str());
+            return true;
+        }
+
+        flattenGroundCloudForSave(globalGroundMap);
+        const int ret = useBinary
+                            ? pcl::io::savePCDFileBinary(filePath, *globalGroundMap)
+                            : pcl::io::savePCDFileASCII(filePath, *globalGroundMap);
+        if (ret != 0)
+        {
+            RCLCPP_WARN(get_logger(), "Failed to save ground map: %s",
+                        filePath.c_str());
+        }
+        return ret == 0;
+    }
+
+    pcl::PointCloud<PointType>::Ptr buildGlobalGroundMapFromKeyPoses(
+        const pcl::PointCloud<PointType>::Ptr &globalMapKeyPosesDS)
+    {
+        std::vector<int> keyFrameIndices;
+        keyFrameIndices.reserve(globalMapKeyPosesDS->size());
+
+        for (const auto &pose : globalMapKeyPosesDS->points)
+        {
+            if (pointDistance(pose, cloudKeyPoses3D->back()) >
+                globalMapVisualizationSearchRadius)
+            {
+                continue;
+            }
+
+            keyFrameIndices.push_back(static_cast<int>(pose.intensity));
+        }
+
+        return buildGlobalGroundMapFromIndices(
+            keyFrameIndices, globalMapVisualizationLeafSize);
+    }
+
+    void publishGlobalGroundMap()
+    {
+        if (!mappingMode)
+            return;
+        if (pubGroundCloudSurround->get_subscription_count() == 0)
+            return;
+        if (cloudKeyPoses3D->points.empty() || groundCloudKeyFrames.empty())
+            return;
+
+        pcl::KdTreeFLANN<PointType>::Ptr kdtreeGlobalMap(new pcl::KdTreeFLANN<PointType>());
+        pcl::PointCloud<PointType>::Ptr globalMapKeyPoses(new pcl::PointCloud<PointType>());
+        pcl::PointCloud<PointType>::Ptr globalMapKeyPosesDS(new pcl::PointCloud<PointType>());
+
+        std::vector<int> pointSearchIndGlobalMap;
+        std::vector<float> pointSearchSqDisGlobalMap;
+
+        mtx.lock();
+        kdtreeGlobalMap->setInputCloud(cloudKeyPoses3D);
+        kdtreeGlobalMap->radiusSearch(
+            cloudKeyPoses3D->back(),
+            globalMapVisualizationSearchRadius,
+            pointSearchIndGlobalMap,
+            pointSearchSqDisGlobalMap,
+            0);
+        mtx.unlock();
+
+        for (int i = 0; i < (int)pointSearchIndGlobalMap.size(); ++i)
+            globalMapKeyPoses->push_back(cloudKeyPoses3D->points[pointSearchIndGlobalMap[i]]);
+
+        pcl::VoxelGrid<PointType> downSizeFilterGlobalMapKeyPoses;
+        downSizeFilterGlobalMapKeyPoses.setLeafSize(
+            globalMapVisualizationPoseDensity,
+            globalMapVisualizationPoseDensity,
+            globalMapVisualizationPoseDensity);
+        downSizeFilterGlobalMapKeyPoses.setInputCloud(globalMapKeyPoses);
+        downSizeFilterGlobalMapKeyPoses.filter(*globalMapKeyPosesDS);
+
+        for (auto &pt : globalMapKeyPosesDS->points)
+        {
+            kdtreeGlobalMap->nearestKSearch(pt, 1, pointSearchIndGlobalMap, pointSearchSqDisGlobalMap);
+            pt.intensity = cloudKeyPoses3D->points[pointSearchIndGlobalMap[0]].intensity;
+        }
+
+        pcl::PointCloud<PointType>::Ptr globalGroundKeyFramesDS =
+            buildGlobalGroundMapFromKeyPoses(globalMapKeyPosesDS);
+        publishCloud(pubGroundCloudSurround, globalGroundKeyFramesDS, timeLaserInfoStamp, odometryFrame);
     }
 
     void publishGlobalMap()
@@ -1930,13 +2115,16 @@ public:
         // save all the received edge and surf points
         pcl::PointCloud<PointType>::Ptr thisCornerKeyFrame(new pcl::PointCloud<PointType>());
         //pcl::PointCloud<PointType>::Ptr thisSurfKeyFrame(new pcl::PointCloud<PointType>());
+        pcl::PointCloud<PointType>::Ptr thisGroundKeyFrame(new pcl::PointCloud<PointType>());
         pcl::copyPointCloud(*laserCloudCornerLastDS,  *thisCornerKeyFrame);
         //pcl::copyPointCloud(*laserCloudSurfLastDS,    *thisSurfKeyFrame);
         pcl::PointCloud<PointType>::Ptr thisSurfKeyFrame = makeSurfKeyFrameCloud();
+        pcl::copyPointCloud(*laserCloudGroundLast, *thisGroundKeyFrame);
 
         // save key frame cloud
         cornerCloudKeyFrames.push_back(thisCornerKeyFrame);
         surfCloudKeyFrames.push_back(thisSurfKeyFrame);
+        groundCloudKeyFrames.push_back(thisGroundKeyFrame);
 
         // save path for visualization
         updatePath(thisPose6D);

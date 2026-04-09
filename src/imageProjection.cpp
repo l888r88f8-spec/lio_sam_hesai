@@ -3,6 +3,7 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 #include <cstdlib>
+#include <limits>
 #include <pcl/filters/extract_indices.h>
 #include <pcl/segmentation/sac_segmentation.h>
 
@@ -56,6 +57,50 @@ using PointXYZIRT = VelodynePointXYZIRT;
 
 const int queueLength = 2000;
 
+namespace {
+
+constexpr float kDegToRad = static_cast<float>(M_PI) / 180.0f;
+constexpr float kMinPlaneNorm = 1e-6f;
+
+// 计算点到平面的无符号距离。
+float pointToPlaneDistance(const PointType &point,
+                           const pcl::ModelCoefficients &coefficients)
+{
+    if (coefficients.values.size() < 4)
+        return std::numeric_limits<float>::max();
+
+    const float a = coefficients.values[0];
+    const float b = coefficients.values[1];
+    const float c = coefficients.values[2];
+    const float d = coefficients.values[3];
+    const float norm = std::sqrt(a * a + b * b + c * c);
+    if (norm < kMinPlaneNorm)
+        return std::numeric_limits<float>::max();
+
+    return std::fabs(a * point.x + b * point.y + c * point.z + d) / norm;
+}
+
+// 判断平面法向量相对竖直方向的倾角是否在允许范围内。
+bool isPlaneNormalWithinAngle(const pcl::ModelCoefficients &coefficients,
+                              const float max_angle_rad)
+{
+    if (coefficients.values.size() < 3)
+        return false;
+
+    const float a = coefficients.values[0];
+    const float b = coefficients.values[1];
+    const float c = coefficients.values[2];
+    const float norm = std::sqrt(a * a + b * b + c * c);
+    if (norm < kMinPlaneNorm)
+        return false;
+
+    const float cos_angle = std::fabs(c) / norm;
+    const float clamped = std::clamp(cos_angle, 0.0f, 1.0f);
+    return std::acos(clamped) <= max_angle_rad;
+}
+
+}  // namespace
+
 class ImageProjection : public ParamServer
 {
 private:
@@ -96,11 +141,12 @@ private:
     pcl::PointCloud<OusterPointXYZIRT>::Ptr tmpOusterCloudIn;
     pcl::PointCloud<PointType>::Ptr   fullCloud;
     pcl::PointCloud<PointType>::Ptr   extractedCloud;
+    pcl::PointCloud<PointType>::Ptr   nonGroundCloud;
     pcl::PointCloud<PointType>::Ptr   groundCloud;
     pcl::PointCloud<PointType>::Ptr   groundCloudDS;
-    pcl::PointCloud<PointType>::Ptr   groundCloudAll;
-    //pcl::PointCloud<PointType>::Ptr   groundCloudAllLocal;
-    pcl::PointCloud<PointType>::Ptr   groundCloudAllGlobal;
+    pcl::PointCloud<PointType>::Ptr   groundCloudScanOnly;
+    pcl::PointCloud<PointType>::Ptr   groundCloudScanOnlyDS;
+    pcl::PointCloud<PointType>::Ptr   groundCloudGlobalSeed;
     pcl::PointCloud<PointType>::Ptr   globalMapCloud;
     pcl::PointCloud<PointType>::Ptr   patchedGround;
     pcl::PointCloud<PointType>::Ptr   patchedGroundEdge;
@@ -112,14 +158,6 @@ private:
     cv::Mat rangeMat;
     cv::Mat groundMat;
     int firstFrameProcessed;
-    //bool groundPCDDirectoryReadyLocal;
-    bool groundPCDDirectoryReadyGlobal;
-    //size_t groundPCDSaveCount;
-    //std::string groundPCDDirectoryAbsLocal;
-    std::string groundPCDDirectoryAbsGlobal;
-    //bool groundFinalSavedLocal;
-    bool groundFinalSavedGlobal;
-    bool groundIsGlobal;
     std::mutex globalMapMutex;
     bool globalMapReceived;
 
@@ -127,6 +165,9 @@ private:
     float odomIncreX;
     float odomIncreY;
     float odomIncreZ;
+
+    bool segmentationOnlyMode_;
+    std::string nonGroundCloudTopic_;
 
     lio_sam_hesai::msg::CloudInfo cloudInfo;
     double timeScanCur;
@@ -137,12 +178,16 @@ private:
 
 
 public:
+    // 初始化点云投影节点的订阅、发布和运行时缓存。
     ImageProjection(const rclcpp::NodeOptions & options) :
-            ParamServer("lio_sam_imageProjection", options), deskewFlag(0), firstFrameProcessed(0),
-            groundPCDDirectoryReadyGlobal(false),
-            groundFinalSavedGlobal(false),
-            groundIsGlobal(false), globalMapReceived(false)
+            ParamServer("lio_sam_imageProjection", options), deskewFlag(0),
+            firstFrameProcessed(0), globalMapReceived(false)
     {
+        declare_parameter("segmentation_only_mode", false);
+        get_parameter("segmentation_only_mode", segmentationOnlyMode_);
+        declare_parameter("nonGroundCloudTopic", "lio_sam/deskew/cloud_nonground");
+        get_parameter("nonGroundCloudTopic", nonGroundCloudTopic_);
+
         callbackGroupLidar = create_callback_group(
             rclcpp::CallbackGroupType::MutuallyExclusive);
         callbackGroupImu = create_callback_group(
@@ -180,23 +225,33 @@ public:
             "lio_sam/deskew/ground_cloud_global", 1);
         pubLaserCloudInfo = create_publisher<lio_sam_hesai::msg::CloudInfo>(
             "lio_sam/deskew/cloud_info", qos);
+        pubNonGroundCloud = create_publisher<sensor_msgs::msg::PointCloud2>(
+            nonGroundCloudTopic_, 1);
+
+        RCLCPP_INFO(
+            get_logger(),
+            "segmentation_only_mode=%s, nonground topic=%s",
+            segmentationOnlyMode_ ? "true" : "false",
+            nonGroundCloudTopic_.c_str());
 
         allocateMemory();
 
         pcl::console::setVerbosityLevel(pcl::console::L_ERROR);
     }
 
+    // 分配点云容器并初始化固定大小的元数据缓冲区。
     void allocateMemory()
     {
         laserCloudIn.reset(new pcl::PointCloud<PointXYZIRT>());
         tmpOusterCloudIn.reset(new pcl::PointCloud<OusterPointXYZIRT>());
         fullCloud.reset(new pcl::PointCloud<PointType>());
         extractedCloud.reset(new pcl::PointCloud<PointType>());
+        nonGroundCloud.reset(new pcl::PointCloud<PointType>());
         groundCloud.reset(new pcl::PointCloud<PointType>());
         groundCloudDS.reset(new pcl::PointCloud<PointType>());
-        groundCloudAll.reset(new pcl::PointCloud<PointType>());
-        //groundCloudAllLocal.reset(new pcl::PointCloud<PointType>());
-        groundCloudAllGlobal.reset(new pcl::PointCloud<PointType>());
+        groundCloudScanOnly.reset(new pcl::PointCloud<PointType>());
+        groundCloudScanOnlyDS.reset(new pcl::PointCloud<PointType>());
+        groundCloudGlobalSeed.reset(new pcl::PointCloud<PointType>());
         globalMapCloud.reset(new pcl::PointCloud<PointType>());
         patchedGround.reset(new pcl::PointCloud<PointType>());
         patchedGroundEdge.reset(new pcl::PointCloud<PointType>());
@@ -214,12 +269,17 @@ public:
         resetParameters();
     }
 
+    // 在处理下一帧激光点云前重置当前帧状态。
     void resetParameters()
     {
         laserCloudIn->clear();
         extractedCloud->clear();
+        nonGroundCloud->clear();
         groundCloud->clear();
         groundCloudDS->clear();
+        groundCloudScanOnly->clear();
+        groundCloudScanOnlyDS->clear();
+        groundCloudGlobalSeed->clear();
         patchedGround->clear();
         patchedGroundEdge->clear();
         // reset range matrix for range image projection
@@ -240,11 +300,12 @@ public:
         columnIdnCountVec.assign(N_SCAN, 0);
     }
 
+    // 节点退出时不再执行额外的地面点云保存逻辑。
     ~ImageProjection()
     {
-        saveGroundFinalClouds();
     }
 
+    // 缓存经过坐标系转换后的 IMU 数据，供后续去畸变使用。
     void imuHandler(const sensor_msgs::msg::Imu::SharedPtr imuMsg)
     {
         sensor_msgs::msg::Imu thisImu = imuConverter(*imuMsg);
@@ -270,12 +331,14 @@ public:
         // cout << "roll: " << imuRoll << ", pitch: " << imuPitch << ", yaw: " << imuYaw << endl << endl;
     }
 
+    // 缓存增量里程计，用于扫描去畸变和全局位姿初值。
     void odometryHandler(const nav_msgs::msg::Odometry::SharedPtr odometryMsg)
     {
         std::lock_guard<std::mutex> lock2(odoLock);
         odomQueue.push_back(*odometryMsg);
     }
 
+    // 缓存最新的全局地图，用于地面提取时的补充或回退。
     void globalMapHandler(const sensor_msgs::msg::PointCloud2::SharedPtr mapMsg)
     {
         pcl::PointCloud<PointType>::Ptr temp(new pcl::PointCloud<PointType>());
@@ -285,13 +348,31 @@ public:
         globalMapReceived = true;
     }
 
+    // 执行单帧点云的完整处理流程，从缓存到发布依次完成。
     void cloudHandler(const sensor_msgs::msg::PointCloud2::SharedPtr laserCloudMsg)
     {
         if (!cachePointCloud(laserCloudMsg))
             return;
 
-        if (!deskewInfo())
-            return;
+        if (!segmentationOnlyMode_)
+        {
+            if (!deskewInfo())
+                return;
+        }
+        else
+        {
+            cloudInfo.imu_available = false;
+            cloudInfo.odom_available = false;
+            cloudInfo.imu_roll_init = 0.0f;
+            cloudInfo.imu_pitch_init = 0.0f;
+            cloudInfo.imu_yaw_init = 0.0f;
+            cloudInfo.initial_guess_x = 0.0f;
+            cloudInfo.initial_guess_y = 0.0f;
+            cloudInfo.initial_guess_z = 0.0f;
+            cloudInfo.initial_guess_roll = 0.0f;
+            cloudInfo.initial_guess_pitch = 0.0f;
+            cloudInfo.initial_guess_yaw = 0.0f;
+        }
 
         projectPointCloud();
 
@@ -304,7 +385,7 @@ public:
         resetParameters();
     }
     
-    // Artificial ring for livox
+    // 为 Livox 点云根据垂直角近似计算 ring 编号。
     int calculateLivoxRing(const PointType& point) {
         // Calculate vertical angle
         float verticalAngle = atan2(point.z, sqrt(point.x * point.x + point.y * point.y)) * 180.0 / M_PI;
@@ -322,6 +403,18 @@ public:
         return ring;
     }
 
+    // 判断输入 ROS 点云是否包含指定字段。
+    bool hasCloudField(const sensor_msgs::msg::PointCloud2 & cloud, const std::string & field_name)
+    {
+        for (const auto & field : cloud.fields)
+        {
+            if (field.name == field_name)
+                return true;
+        }
+        return false;
+    }
+
+    // 将输入 ROS 点云转换为内部格式，并补齐 ring 与时间信息。
     bool cachePointCloud(const sensor_msgs::msg::PointCloud2::SharedPtr& laserCloudMsg)
     {
         // cache point cloud
@@ -342,15 +435,49 @@ public:
 
             if (!laserCloudIn->points.empty())
             {
-                sensor_msgs::PointCloud2ConstIterator<double> iter_ts(currentCloudMsg, "timestamp");
-
-                // 用第一个点的 timestamp 作为本帧起点（double）
-                const double t0 = *iter_ts;
-
-                for (size_t i = 0; i < laserCloudIn->points.size(); ++i, ++iter_ts)
+                if (hasCloudField(currentCloudMsg, "timestamp"))
                 {
-                    const double ts = *iter_ts;  // 绝对时间（double）
-                    laserCloudIn->points[i].time = static_cast<float>(ts - t0); // 相对时间（float）
+                    sensor_msgs::PointCloud2ConstIterator<double> iter_ts(currentCloudMsg, "timestamp");
+                    double t0 = std::numeric_limits<double>::max();
+                    std::vector<double> timestamps;
+                    timestamps.reserve(laserCloudIn->points.size());
+
+                    for (size_t i = 0; i < laserCloudIn->points.size(); ++i, ++iter_ts)
+                    {
+                        const double ts = *iter_ts;
+                        timestamps.push_back(ts);
+                        t0 = std::min(t0, ts);
+                    }
+
+                    for (size_t i = 0; i < laserCloudIn->points.size(); ++i)
+                    {
+                        laserCloudIn->points[i].time = static_cast<float>(timestamps[i] - t0);
+                    }
+                }
+                else if (hasCloudField(currentCloudMsg, "time"))
+                {
+                    sensor_msgs::PointCloud2ConstIterator<float> iter_time(currentCloudMsg, "time");
+                    float t0 = std::numeric_limits<float>::max();
+                    std::vector<float> rel_times;
+                    rel_times.reserve(laserCloudIn->points.size());
+
+                    for (size_t i = 0; i < laserCloudIn->points.size(); ++i, ++iter_time)
+                    {
+                        const float rel_time = *iter_time;
+                        rel_times.push_back(rel_time);
+                        t0 = std::min(t0, rel_time);
+                    }
+
+                    for (size_t i = 0; i < laserCloudIn->points.size(); ++i)
+                    {
+                        laserCloudIn->points[i].time = rel_times[i] - t0;
+                    }
+                }
+                else
+                {
+                    RCLCPP_WARN_THROTTLE(
+                        get_logger(), *get_clock(), 5000,
+                        "HESAI point cloud has no timestamp/time field. Deskew will be disabled for this frame.");
                 }
             }
         }
@@ -435,21 +562,33 @@ public:
             rclcpp::shutdown();
         }
 
-        // get timestamp
-        cloudHeader = currentCloudMsg.header;
-        timeScanCur = stamp2Sec(cloudHeader.stamp);
-        timeScanEnd = timeScanCur + laserCloudIn->points.back().time;
-    
         // remove Nan
         vector<int> indices;
         pcl::removeNaNFromPointCloud(*laserCloudIn, *laserCloudIn, indices);
 
-        // check dense flag
+        if (laserCloudIn->empty())
+        {
+            RCLCPP_WARN(get_logger(), "Input point cloud is empty after NaN filtering, skip this frame.");
+            return false;
+        }
+
         if (laserCloudIn->is_dense == false)
         {
-            RCLCPP_ERROR(get_logger(), "Point cloud is not in dense format, please remove NaN points first!");
-            rclcpp::shutdown();
+            RCLCPP_WARN_THROTTLE(
+                get_logger(), *get_clock(), 5000,
+                "Input point cloud reports is_dense=false. NaN points have been filtered and processing will continue.");
         }
+        laserCloudIn->is_dense = true;
+
+        // get timestamp
+        cloudHeader = currentCloudMsg.header;
+        timeScanCur = stamp2Sec(cloudHeader.stamp);
+        double max_point_time = 0.0;
+        for (const auto & point : laserCloudIn->points)
+        {
+            max_point_time = std::max(max_point_time, static_cast<double>(point.time));
+        }
+        timeScanEnd = timeScanCur + max_point_time;
 
         // check ring channel
         // we will skip the ring check in case of velodyne - as we calculate the ring value downstream (line 572)
@@ -496,6 +635,7 @@ public:
         return true;
     }
 
+    // 检查 IMU 和里程计是否齐全，并准备去畸变插值所需数据。
     bool deskewInfo()
     {
         std::lock_guard<std::mutex> lock1(imuLock);
@@ -517,6 +657,7 @@ public:
         return true;
     }
 
+    // 在当前扫描时间段内积分 IMU 角速度，用于旋转去畸变。
     void imuDeskewInfo()
     {
         cloudInfo.imu_available = false;
@@ -575,6 +716,7 @@ public:
         cloudInfo.imu_available = true;
     }
 
+    // 提取扫描起止时刻的里程计信息，构造位姿初值与运动增量。
     void odomDeskewInfo()
     {
         cloudInfo.odom_available = false;
@@ -657,6 +799,7 @@ public:
         odomDeskewFlag = true;
     }
 
+    // 按点时间戳插值计算该点对应的 IMU 旋转量。
     void findRotation(double pointTime, float *rotXCur, float *rotYCur, float *rotZCur)
     {
         *rotXCur = 0; *rotYCur = 0; *rotZCur = 0;
@@ -684,6 +827,7 @@ public:
         }
     }
 
+    // 在启用位置去畸变时，为点插值计算平移量。
     void findPosition(double relTime, float *posXCur, float *posYCur, float *posZCur)
     {
         *posXCur = 0; *posYCur = 0; *posZCur = 0;
@@ -700,6 +844,7 @@ public:
         // *posZCur = ratio * odomIncreZ;
     }
 
+    // 利用 IMU 和里程计运动信息将原始点变换到扫描起始时刻坐标系。
     PointType deskewPoint(PointType *point, double relTime)
     {
         if (deskewFlag == -1 || cloudInfo.imu_available == false)
@@ -732,6 +877,7 @@ public:
         return newPoint;
     }
 
+    // 将输入点云投影到按 ring 和列索引组织的距离图上。
     void projectPointCloud()
     {
         int cloudSize = laserCloudIn->points.size();
@@ -818,43 +964,35 @@ public:
         }
     }
 
-    void groundRemoval()
+    // 清空或重建当前帧的地面分类矩阵。
+    void resetGroundMatrix()
     {
-        groundCloud->clear();
-        patchedGround->clear();
-        patchedGroundEdge->clear();
-        groundIsGlobal = false;
-
-        if (useGlobalMapGround && globalMapReceived && cloudInfo.odom_available)
-        {
-            if (extractGroundFromGlobalMap())
-            {
-                groundIsGlobal = true;
-                downsampleGroundCloud();
-                return;
-            }
-        }
-
         if (groundMat.rows != N_SCAN || groundMat.cols != Horizon_SCAN)
         {
             groundMat = cv::Mat(N_SCAN, Horizon_SCAN, CV_8S, cv::Scalar::all(0));
+            return;
         }
-        else
-        {
-            groundMat.setTo(cv::Scalar::all(0));
-        }
+        groundMat.setTo(cv::Scalar::all(0));
+    }
 
-        int groundScanLimit = std::min(groundScanIndex, N_SCAN - 1);
-        if (groundScanLimit <= 0)
+    // 利用低线束相邻点和补点策略构造初始地面种子点云。
+    void buildGroundSeedCloud(pcl::PointCloud<PointType>::Ptr seedCloud)
+    {
+        seedCloud->clear();
+        patchedGround->clear();
+        patchedGroundEdge->clear();
+
+        const auto [groundScanStart, groundScanEnd] = getGroundScanRange();
+        if (groundScanEnd <= groundScanStart)
             return;
 
-        const float groundAngleThresholdRad = groundAngleThreshold * static_cast<float>(M_PI) / 180.0f;
+        const float groundAngleThresholdRad = groundAngleThreshold * kDegToRad;
         for (int j = 0; j < Horizon_SCAN; ++j)
         {
-            int ringEdge = 0;
-            int closestRingEdge = groundScanLimit;
+            int ringEdge = groundScanStart;
+            int closestRingEdge = groundScanEnd;
             bool doPatch = false;
-            for (int i = 0; i < groundScanLimit; ++i)
+            for (int i = groundScanStart; i < groundScanEnd; ++i)
             {
                 if (rangeMat.at<float>(i, j) == FLT_MAX ||
                     rangeMat.at<float>(i + 1, j) == FLT_MAX)
@@ -863,116 +1001,359 @@ public:
                     continue;
                 }
 
-                int lowerInd = j + i * Horizon_SCAN;
-                int upperInd = j + (i + 1) * Horizon_SCAN;
+                const int lowerInd = j + i * Horizon_SCAN;
+                const int upperInd = j + (i + 1) * Horizon_SCAN;
+                const PointType &lowerPoint = fullCloud->points[lowerInd];
+                const PointType &upperPoint = fullCloud->points[upperInd];
 
-                float dX = fullCloud->points[upperInd].x - fullCloud->points[lowerInd].x;
-                float dY = fullCloud->points[upperInd].y - fullCloud->points[lowerInd].y;
-                float dZ = fullCloud->points[upperInd].z - fullCloud->points[lowerInd].z;
+                const float dX = upperPoint.x - lowerPoint.x;
+                const float dY = upperPoint.y - lowerPoint.y;
+                const float dZ = upperPoint.z - lowerPoint.z;
+                const float horizontalDistance = std::sqrt(dX * dX + dY * dY);
+                if (horizontalDistance < kMinPlaneNorm)
+                    continue;
 
-                float verticalAngle = std::atan2(dZ, std::sqrt(dX * dX + dY * dY + dZ * dZ));
-
-                if (verticalAngle <= groundAngleThresholdRad)
+                const float verticalAngle = std::atan2(dZ, horizontalDistance);
+                if (std::fabs(verticalAngle) <= groundAngleThresholdRad)
                 {
                     groundMat.at<signed char>(i, j) = 1;
                     groundMat.at<signed char>(i + 1, j) = 1;
+                    seedCloud->push_back(lowerPoint);
+                    seedCloud->push_back(upperPoint);
 
-                    if (i < closestRingEdge && i != groundScanLimit)
+                    if (i < closestRingEdge)
                         closestRingEdge = i;
 
-                    float ds = std::sqrt(dX * dX + dY * dY + dZ * dZ);
+                    const float ds = std::sqrt(dX * dX + dY * dY + dZ * dZ);
                     if (distanceForPatchBetweenRings > 0.0f &&
                         ds < distanceForPatchBetweenRings)
                     {
                         ringEdge = i + 1;
-                        float dt = 1.0f / (ds / 0.1f + 1.0f);
+                        const float dt = 1.0f / (ds / 0.1f + 1.0f);
                         for (float t = 0.0f; t <= 1.0f; t += dt)
                         {
-                            PointType aPt;
-                            aPt.intensity = 0.0f;
-                            aPt.x = fullCloud->points[lowerInd].x + dX * t;
-                            aPt.y = fullCloud->points[lowerInd].y + dY * t;
-                            aPt.z = fullCloud->points[lowerInd].z + dZ * t;
-                            patchedGround->push_back(aPt);
+                            PointType patchPoint;
+                            patchPoint.intensity = 0.0f;
+                            patchPoint.x = lowerPoint.x + dX * t;
+                            patchPoint.y = lowerPoint.y + dY * t;
+                            patchPoint.z = lowerPoint.z + dZ * t;
+                            patchedGround->push_back(patchPoint);
                         }
-                        PointType aPt;
-                        aPt.intensity = 0.0f;
-                        aPt.x = fullCloud->points[lowerInd].x + dX;
-                        aPt.y = fullCloud->points[lowerInd].y + dY;
-                        aPt.z = fullCloud->points[lowerInd].z + dZ;
-                        patchedGround->push_back(aPt);
+                        PointType patchPoint;
+                        patchPoint.intensity = 0.0f;
+                        patchPoint.x = upperPoint.x;
+                        patchPoint.y = upperPoint.y;
+                        patchPoint.z = upperPoint.z;
+                        patchedGround->push_back(patchPoint);
                         doPatch = true;
                     }
                 }
             }
 
-            int ringEdgeInd = j + ringEdge * Horizon_SCAN;
+            const int ringEdgeInd = j + ringEdge * Horizon_SCAN;
             if (rangeMat.at<float>(ringEdge, j) != FLT_MAX)
             {
-                PointType aPt;
-                aPt.x = fullCloud->points[ringEdgeInd].x;
-                aPt.y = fullCloud->points[ringEdgeInd].y;
-                aPt.z = fullCloud->points[ringEdgeInd].z;
-                aPt.intensity = 100.0f;
-                patchedGroundEdge->push_back(aPt);
+                PointType edgePoint;
+                edgePoint.x = fullCloud->points[ringEdgeInd].x;
+                edgePoint.y = fullCloud->points[ringEdgeInd].y;
+                edgePoint.z = fullCloud->points[ringEdgeInd].z;
+                edgePoint.intensity = 100.0f;
+                patchedGroundEdge->push_back(edgePoint);
             }
 
-            if (doPatch && firstFrameProcessed < 5 && closestRingEdge < groundScanLimit)
-            {
-                int closestRingEdgeInd = j + closestRingEdge * Horizon_SCAN;
-                if (rangeMat.at<float>(closestRingEdge, j) == FLT_MAX)
-                    continue;
-
-                float dXf = -fullCloud->points[closestRingEdgeInd].x;
-                float dYf = -fullCloud->points[closestRingEdgeInd].y;
-                float dZf = -fullCloud->points[closestRingEdgeInd].z;
-
-                for (float t = 0.0f; t <= 1.0f; t += 0.05f)
-                {
-                    PointType aPtf;
-                    aPtf.intensity = 0.0f;
-                    aPtf.x = fullCloud->points[closestRingEdgeInd].x + dXf * t;
-                    aPtf.y = fullCloud->points[closestRingEdgeInd].y + dYf * t;
-                    aPtf.z = fullCloud->points[closestRingEdgeInd].z;
-                    patchedGround->push_back(aPtf);
-                }
-                PointType aPtf;
-                aPtf.intensity = 0.0f;
-                aPtf.x = fullCloud->points[closestRingEdgeInd].x + dXf;
-                aPtf.y = fullCloud->points[closestRingEdgeInd].y + dYf;
-                aPtf.z = fullCloud->points[closestRingEdgeInd].z;
-                patchedGround->push_back(aPtf);
-            }
+            (void)closestRingEdge;
+            (void)doPatch;
         }
 
         if (!patchedGround->empty())
         {
             dsfPatchedGround.setInputCloud(patchedGround);
             dsfPatchedGround.filter(*patchedGround);
+            *seedCloud += *patchedGround;
         }
         if (!patchedGroundEdge->empty())
         {
             dsfPatchedGround.setInputCloud(patchedGroundEdge);
             dsfPatchedGround.filter(*patchedGroundEdge);
         }
+    }
 
-        for (int i = 0; i <= groundScanLimit; ++i)
+    // 对地面种子点云拟合局部平面，并检查法向方向是否合理。
+    bool fitGroundPlane(const pcl::PointCloud<PointType>::Ptr &seedCloud,
+                        pcl::ModelCoefficients::Ptr coefficients,
+                        pcl::PointIndices::Ptr inliers)
+    {
+        if (seedCloud->size() < static_cast<size_t>(groundPlaneMinPoints))
+            return false;
+
+        pcl::SACSegmentation<PointType> segmentation;
+        segmentation.setOptimizeCoefficients(true);
+        segmentation.setModelType(pcl::SACMODEL_PLANE);
+        segmentation.setMethodType(pcl::SAC_RANSAC);
+        segmentation.setMaxIterations(200);
+        segmentation.setDistanceThreshold(groundPlaneDistance);
+        segmentation.setInputCloud(seedCloud);
+        segmentation.segment(*inliers, *coefficients);
+
+        if (inliers->indices.size() < static_cast<size_t>(groundPlaneMinPoints))
+            return false;
+
+        return isPlaneNormalWithinAngle(*coefficients, groundPlaneMaxAngle * kDegToRad);
+    }
+
+    // 判断距离图中的指定单元是否包含有效点。
+    bool hasValidGroundCell(int row, int column) const
+    {
+        return row >= 0 && row < N_SCAN &&
+               column >= 0 && column < Horizon_SCAN &&
+               rangeMat.at<float>(row, column) != FLT_MAX;
+    }
+
+    // 返回允许参与地面提取的 ring 行号范围 [start, end]。
+    std::pair<int, int> getGroundScanRange() const
+    {
+        int groundScanStart = groundScanStartIndex;
+        int groundScanEnd = groundScanEndIndex;
+
+        if (groundScanEnd < 0)
+            groundScanEnd = N_SCAN - 1;
+
+        groundScanStart = std::min(std::max(groundScanStart, 0), N_SCAN - 1);
+        groundScanEnd = std::min(std::max(groundScanEnd, 0), N_SCAN - 1);
+        if (groundScanStart > groundScanEnd)
+            std::swap(groundScanStart, groundScanEnd);
+
+        return {groundScanStart, groundScanEnd};
+    }
+
+    // 判断两个相邻候选点是否在局部几何上连续，可视为同一片地面。
+    bool isGroundConnected(int fromRow, int fromColumn, int toRow, int toColumn) const
+    {
+        if (!hasValidGroundCell(fromRow, fromColumn) ||
+            !hasValidGroundCell(toRow, toColumn))
+        {
+            return false;
+        }
+
+        const PointType &fromPoint =
+            fullCloud->points[fromColumn + fromRow * Horizon_SCAN];
+        const PointType &toPoint =
+            fullCloud->points[toColumn + toRow * Horizon_SCAN];
+
+        const float dX = toPoint.x - fromPoint.x;
+        const float dY = toPoint.y - fromPoint.y;
+        const float dZ = toPoint.z - fromPoint.z;
+        const float horizontalDistance = std::sqrt(dX * dX + dY * dY);
+        if (horizontalDistance < kMinPlaneNorm)
+            return std::fabs(dZ) <= groundPlaneDistance;
+
+        const float localAngle = std::atan2(std::fabs(dZ), horizontalDistance);
+        const float maxLinkAngle = std::max(groundPlaneMaxAngle * kDegToRad,
+                                            groundAngleThreshold * 2.0f * kDegToRad);
+        return localAngle <= maxLinkAngle;
+    }
+
+    // 从 groundMat 中收集真实量测到的地面种子点，避免把人工补点输出到最终地面云。
+    void collectMeasuredGroundSeeds(pcl::PointCloud<PointType>::Ptr groundOutput)
+    {
+        groundOutput->clear();
+        const auto [groundScanStart, groundScanEnd] = getGroundScanRange();
+        for (int i = groundScanStart; i <= groundScanEnd; ++i)
         {
             for (int j = 0; j < Horizon_SCAN; ++j)
             {
-                if (groundMat.at<signed char>(i, j) == 1)
-                    groundCloud->push_back(fullCloud->points[j + i * Horizon_SCAN]);
+                if (groundMat.at<signed char>(i, j) != 1 || !hasValidGroundCell(i, j))
+                    continue;
+
+                groundOutput->push_back(fullCloud->points[j + i * Horizon_SCAN]);
+            }
+        }
+    }
+
+    // 仅在相邻 ring 都已确认是地面时补充插值点，用于填补扫描线之间的空洞。
+    void appendConfirmedGroundPatches(const pcl::ModelCoefficients::Ptr &coefficients,
+                                      pcl::PointCloud<PointType>::Ptr groundOutput)
+    {
+        if (distanceForPatchBetweenRings <= 0.0f)
+            return;
+
+        const auto [groundScanStart, groundScanEnd] = getGroundScanRange();
+        const float interpolationSpacing =
+            std::max(0.02f, groundLeafSize > 0.0f ? groundLeafSize * 0.5f : 0.05f);
+
+        for (int j = 0; j < Horizon_SCAN; ++j)
+        {
+            for (int i = groundScanStart; i < groundScanEnd; ++i)
+            {
+                if (groundMat.at<signed char>(i, j) != 1 ||
+                    groundMat.at<signed char>(i + 1, j) != 1)
+                {
+                    continue;
+                }
+
+                if (!hasValidGroundCell(i, j) || !hasValidGroundCell(i + 1, j))
+                    continue;
+
+                if (!isGroundConnected(i, j, i + 1, j))
+                    continue;
+
+                const PointType &lowerPoint =
+                    fullCloud->points[j + i * Horizon_SCAN];
+                const PointType &upperPoint =
+                    fullCloud->points[j + (i + 1) * Horizon_SCAN];
+
+                const float dX = upperPoint.x - lowerPoint.x;
+                const float dY = upperPoint.y - lowerPoint.y;
+                const float dZ = upperPoint.z - lowerPoint.z;
+                const float ds = std::sqrt(dX * dX + dY * dY + dZ * dZ);
+                if (ds <= interpolationSpacing ||
+                    ds > distanceForPatchBetweenRings)
+                {
+                    continue;
+                }
+
+                const int segmentCount =
+                    std::max(2, static_cast<int>(std::ceil(ds / interpolationSpacing)));
+                for (int step = 1; step < segmentCount; ++step)
+                {
+                    const float t = static_cast<float>(step) /
+                                    static_cast<float>(segmentCount);
+
+                    PointType patchPoint;
+                    patchPoint.x = lowerPoint.x + dX * t;
+                    patchPoint.y = lowerPoint.y + dY * t;
+                    patchPoint.z = lowerPoint.z + dZ * t;
+                    patchPoint.intensity = 0.0f;
+
+                    if (coefficients &&
+                        pointToPlaneDistance(patchPoint, *coefficients) >
+                            groundPlaneDistance)
+                    {
+                        continue;
+                    }
+
+                    groundOutput->push_back(patchPoint);
+                }
+            }
+        }
+    }
+
+    // 根据拟合平面按列向上连续提取地面，避免把悬空同平面点误判为地面。
+    void extractGroundPointsFromPlane(const pcl::ModelCoefficients::Ptr &coefficients,
+                                      pcl::PointCloud<PointType>::Ptr groundOutput)
+    {
+        groundOutput->clear();
+        const auto [groundScanStart, groundScanEnd] = getGroundScanRange();
+
+        for (int j = 0; j < Horizon_SCAN; ++j)
+        {
+            bool groundStarted = false;
+            int previousGroundRow = -1;
+
+            for (int i = groundScanStart; i <= groundScanEnd; ++i)
+            {
+                if (!hasValidGroundCell(i, j))
+                {
+                    if (groundStarted)
+                        break;
+                    continue;
+                }
+
+                const int index = j + i * Horizon_SCAN;
+                const PointType &point = fullCloud->points[index];
+                const bool nearPlane =
+                    pointToPlaneDistance(point, *coefficients) <= groundPlaneDistance;
+
+                if (!groundStarted)
+                {
+                    if (groundMat.at<signed char>(i, j) != 1 || !nearPlane)
+                        continue;
+
+                    groundStarted = true;
+                    previousGroundRow = i;
+                    groundMat.at<signed char>(i, j) = 1;
+                    groundOutput->push_back(point);
+                    continue;
+                }
+
+                if (!nearPlane || !isGroundConnected(previousGroundRow, j, i, j))
+                    break;
+
+                groundMat.at<signed char>(i, j) = 1;
+                groundOutput->push_back(point);
+                previousGroundRow = i;
             }
         }
 
-        if (!patchedGround->empty())
-            *groundCloud += *patchedGround;
-
-        downsampleGroundCloud();
+        appendConfirmedGroundPatches(coefficients, groundOutput);
     }
 
-    bool extractGroundFromGlobalMap()
+    // 通过种子构造与平面拟合，从当前扫描中提取局部地面。
+    bool extractLocalGroundFromScan(pcl::PointCloud<PointType>::Ptr groundOutput)
     {
+        pcl::PointCloud<PointType>::Ptr seedCloud(new pcl::PointCloud<PointType>());
+        buildGroundSeedCloud(seedCloud);
+        if (seedCloud->empty())
+            return false;
+
+        pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients());
+        pcl::PointIndices::Ptr inliers(new pcl::PointIndices());
+        if (!fitGroundPlane(seedCloud, coefficients, inliers))
+        {
+            collectMeasuredGroundSeeds(groundOutput);
+            appendConfirmedGroundPatches(nullptr, groundOutput);
+            return !groundOutput->empty();
+        }
+
+        extractGroundPointsFromPlane(coefficients, groundOutput);
+        if (groundOutput->empty())
+        {
+            collectMeasuredGroundSeeds(groundOutput);
+            appendConfirmedGroundPatches(coefficients, groundOutput);
+        }
+        return !groundOutput->empty();
+    }
+
+    // 融合当前扫描地面与可选的全局地图地面补偿结果。
+    void groundRemoval()
+    {
+        groundCloud->clear();
+        groundCloudDS->clear();
+        groundCloudScanOnly->clear();
+        groundCloudScanOnlyDS->clear();
+        groundCloudGlobalSeed->clear();
+
+        resetGroundMatrix();
+
+        const bool hasLocalGround = extractLocalGroundFromScan(groundCloudScanOnly);
+        const bool needGlobalGroundFallback =
+            !hasLocalGround || groundCloudScanOnly->size() <
+                                   static_cast<size_t>(groundPlaneMinPoints);
+        const bool hasGlobalGround =
+            useGlobalMapGround && needGlobalGroundFallback && globalMapReceived &&
+            cloudInfo.odom_available &&
+            extractGroundFromGlobalMap(groundCloudGlobalSeed);
+
+        if (hasLocalGround)
+            *groundCloud = *groundCloudScanOnly;
+
+        if (hasGlobalGround)
+        {
+            if (groundCloud->empty())
+                *groundCloud = *groundCloudGlobalSeed;
+        }
+
+        if (!groundCloud->empty())
+            downsampleGroundCloud(groundCloud, groundCloudDS);
+        if (!groundCloudScanOnly->empty())
+            downsampleGroundCloud(groundCloudScanOnly, groundCloudScanOnlyDS);
+    }
+
+    // 从全局地图中提取附近地面，作为当前扫描地面的补充或回退方案。
+    bool extractGroundFromGlobalMap(pcl::PointCloud<PointType>::Ptr groundOutput)
+    {
+        groundOutput->clear();
+
         pcl::PointCloud<PointType>::Ptr mapCopy(new pcl::PointCloud<PointType>());
         {
             std::lock_guard<std::mutex> lock(globalMapMutex);
@@ -1005,10 +1386,12 @@ public:
         pcl::PointCloud<PointType>::Ptr filtered(new pcl::PointCloud<PointType>());
         if (globalMapGroundVoxelSize > 0.0f)
         {
-            pcl::VoxelGrid<PointType> vg;
-            vg.setLeafSize(globalMapGroundVoxelSize, globalMapGroundVoxelSize, globalMapGroundVoxelSize);
-            vg.setInputCloud(cropped);
-            vg.filter(*filtered);
+            pcl::VoxelGrid<PointType> voxelGrid;
+            voxelGrid.setLeafSize(globalMapGroundVoxelSize,
+                                  globalMapGroundVoxelSize,
+                                  globalMapGroundVoxelSize);
+            voxelGrid.setInputCloud(cropped);
+            voxelGrid.filter(*filtered);
         }
         else
         {
@@ -1018,19 +1401,19 @@ public:
         if (filtered->size() < static_cast<size_t>(globalMapGroundMinPoints))
             return false;
 
-        pcl::SACSegmentation<PointType> seg;
-        seg.setOptimizeCoefficients(true);
-        seg.setModelType(pcl::SACMODEL_PERPENDICULAR_PLANE);
-        seg.setMethodType(pcl::SAC_RANSAC);
-        seg.setMaxIterations(200);
-        seg.setDistanceThreshold(globalMapGroundDistance);
-        seg.setAxis(Eigen::Vector3f(0.0f, 0.0f, 1.0f));
-        seg.setEpsAngle(globalMapGroundMaxAngle * static_cast<float>(M_PI) / 180.0f);
-        seg.setInputCloud(filtered);
+        pcl::SACSegmentation<PointType> segmentation;
+        segmentation.setOptimizeCoefficients(true);
+        segmentation.setModelType(pcl::SACMODEL_PERPENDICULAR_PLANE);
+        segmentation.setMethodType(pcl::SAC_RANSAC);
+        segmentation.setMaxIterations(200);
+        segmentation.setDistanceThreshold(globalMapGroundDistance);
+        segmentation.setAxis(Eigen::Vector3f(0.0f, 0.0f, 1.0f));
+        segmentation.setEpsAngle(globalMapGroundMaxAngle * kDegToRad);
+        segmentation.setInputCloud(filtered);
 
         pcl::PointIndices::Ptr inliers(new pcl::PointIndices());
-        pcl::ModelCoefficients::Ptr coeff(new pcl::ModelCoefficients());
-        seg.segment(*inliers, *coeff);
+        pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients());
+        segmentation.segment(*inliers, *coefficients);
 
         if (inliers->indices.size() < static_cast<size_t>(globalMapGroundMinPoints))
             return false;
@@ -1049,37 +1432,11 @@ public:
             cloudInfo.initial_guess_x, cloudInfo.initial_guess_y, cloudInfo.initial_guess_z,
             cloudInfo.initial_guess_roll, cloudInfo.initial_guess_pitch, cloudInfo.initial_guess_yaw);
 
-        pcl::transformPointCloud(*groundOdom, *groundCloud, trans.inverse());
+        pcl::transformPointCloud(*groundOdom, *groundOutput, trans.inverse());
         return true;
     }
 
-    bool prepareGroundPCDDirectory(const std::string &dir, std::string *absPath, bool *ready)
-    {
-        if (*ready)
-            return true;
-
-        const char *homeDir = std::getenv("HOME");
-        if (homeDir == nullptr)
-        {
-            RCLCPP_WARN(get_logger(), "HOME is not set, cannot save ground PCD.");
-            return false;
-        }
-        *absPath = std::string(homeDir) + dir;
-        if (!absPath->empty() && absPath->back() != '/')
-            *absPath += "/";
-
-        std::string cmd = "mkdir -p \"" + *absPath + "\"";
-        int ret = system(cmd.c_str());
-        if (ret != 0)
-        {
-            RCLCPP_WARN(get_logger(), "Failed to create ground PCD directory: %s", absPath->c_str());
-            return false;
-        }
-
-        *ready = true;
-        return true;
-    }
-
+    // 在需要平面化导出时，将点云高度压到固定的 Z 值。
     void flattenCloudZ(pcl::PointCloud<PointType> &cloud)
     {
         if (!groundFlattenZ)
@@ -1088,76 +1445,32 @@ public:
             pt.z = groundFlattenValue;
     }
 
-    void downsampleGroundCloud()
+    // 对单帧地面点云做下采样，便于发布和后续处理。
+    void downsampleGroundCloud(const pcl::PointCloud<PointType>::Ptr &source,
+                               pcl::PointCloud<PointType>::Ptr target)
     {
-        groundCloudDS->clear();
+        target->clear();
+        if (source->empty())
+            return;
+
         if (groundLeafSize <= 0.0f)
         {
-            *groundCloudDS = *groundCloud;
-            flattenCloudZ(*groundCloudDS);
+            *target = *source;
+            flattenCloudZ(*target);
             return;
         }
 
         groundDownSizeFilter.setLeafSize(groundLeafSize, groundLeafSize, groundLeafSize);
-        groundDownSizeFilter.setInputCloud(groundCloud);
-        groundDownSizeFilter.filter(*groundCloudDS);
-        flattenCloudZ(*groundCloudDS);
+        groundDownSizeFilter.setInputCloud(source);
+        groundDownSizeFilter.filter(*target);
+        flattenCloudZ(*target);
     }
 
-    void accumulateGroundCloud(bool isGlobal)
-    {
-        if (!saveGroundPCD || groundCloudDS->empty())
-            return;
-
-        pcl::PointCloud<PointType> cloudToAdd;
-        if (groundFinalUseOdom && cloudInfo.odom_available)
-        {
-            Eigen::Affine3f trans = pcl::getTransformation(
-                cloudInfo.initial_guess_x, cloudInfo.initial_guess_y, cloudInfo.initial_guess_z,
-                cloudInfo.initial_guess_roll, cloudInfo.initial_guess_pitch, cloudInfo.initial_guess_yaw);
-            pcl::transformPointCloud(*groundCloudDS, cloudToAdd, trans);
-        }
-        else
-        {
-            cloudToAdd = *groundCloudDS;
-        }
-        flattenCloudZ(cloudToAdd);
-
-        //if (isGlobal)
-            *groundCloudAllGlobal += cloudToAdd;
-        //else
-        //    *groundCloudAllLocal += cloudToAdd;
-    }
-
-    void saveGroundFinalCloud(pcl::PointCloud<PointType>::Ptr cloud,
-                              const std::string &dir,
-                              std::string *absPath,
-                              bool *ready,
-                              bool *saved)
-    {
-        if (*saved || !saveGroundPCD || cloud->empty())
-            return;
-
-        if (!prepareGroundPCDDirectory(dir, absPath, ready))
-            return;
-
-        std::string filename = *absPath + "ground_final.pcd";
-        flattenCloudZ(*cloud);
-        pcl::io::savePCDFileBinary(filename, *cloud);
-        *saved = true;
-    }
-
-    void saveGroundFinalClouds()
-    {
-        // saveGroundFinalCloud(groundCloudAllLocal, groundPCDDirectory, &groundPCDDirectoryAbsLocal,
-        //                      &groundPCDDirectoryReadyLocal, &groundFinalSavedLocal);
-        saveGroundFinalCloud(groundCloudAllGlobal, groundPCDDirectoryGlobal, &groundPCDDirectoryAbsGlobal,
-                             &groundPCDDirectoryReadyGlobal, &groundFinalSavedGlobal);
-    }
-
+    // 从距离图中提取有效点，生成有序的输出点云。
     void cloudExtraction()
     {
         int count = 0;
+        nonGroundCloud->clear();
         // extract segmented cloud for lidar odometry
         for (int i = 0; i < N_SCAN; ++i)
         {
@@ -1172,6 +1485,8 @@ public:
                     cloudInfo.point_range[count] = rangeMat.at<float>(i,j);
                     // save extracted cloud
                     extractedCloud->push_back(fullCloud->points[j + i * Horizon_SCAN]);
+                    if (groundMat.at<signed char>(i, j) != 1)
+                        nonGroundCloud->push_back(fullCloud->points[j + i * Horizon_SCAN]);
                     // size of extracted cloud
                     ++count;
                 }
@@ -1180,23 +1495,36 @@ public:
         }
     }
 
+    // 发布去畸变点云、地面结果以及当前帧的 CloudInfo 消息。
     void publishClouds()
     {
         cloudInfo.header = cloudHeader;
         cloudInfo.cloud_deskewed  = publishCloud(pubExtractedCloud, extractedCloud, cloudHeader.stamp, lidarFrame);
+        publishCloud(pubNonGroundCloud, nonGroundCloud, cloudHeader.stamp, lidarFrame);
+        pcl::toROSMsg(*groundCloudScanOnlyDS, cloudInfo.cloud_ground);
+        cloudInfo.cloud_ground.header.stamp = cloudHeader.stamp;
+        cloudInfo.cloud_ground.header.frame_id = lidarFrame;
+
         pcl::PointCloud<PointType>::Ptr groundMap(new pcl::PointCloud<PointType>());
-        Eigen::Affine3f trans = pcl::getTransformation(
-            cloudInfo.initial_guess_x, cloudInfo.initial_guess_y, cloudInfo.initial_guess_z,
-            cloudInfo.initial_guess_roll, cloudInfo.initial_guess_pitch, cloudInfo.initial_guess_yaw);
-        pcl::transformPointCloud(*groundCloudDS, *groundMap, trans);
+        if (cloudInfo.odom_available)
+        {
+            Eigen::Affine3f trans = pcl::getTransformation(
+                cloudInfo.initial_guess_x, cloudInfo.initial_guess_y, cloudInfo.initial_guess_z,
+                cloudInfo.initial_guess_roll, cloudInfo.initial_guess_pitch, cloudInfo.initial_guess_yaw);
+            pcl::transformPointCloud(*groundCloudDS, *groundMap, trans);
+        }
+        else
+        {
+            *groundMap = *groundCloudDS;
+        }
         publishCloud(pubGroundCloudGlobal, groundMap, cloudHeader.stamp, mapFrame);
+
         pubLaserCloudInfo->publish(cloudInfo);
         ++firstFrameProcessed;
-        accumulateGroundCloud(groundIsGlobal);
-        //saveGroundCloud(groundIsGlobal);
     }
 };
 
+// 启动图像投影节点并持续运行直到系统关闭。
 int main(int argc, char** argv)
 {
     rclcpp::init(argc, argv);
@@ -1211,8 +1539,6 @@ int main(int argc, char** argv)
     RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "\033[1;32m----> Image Projection Started.\033[0m");
 
     exec.spin();
-
-    IP->saveGroundFinalClouds();
 
     rclcpp::shutdown();
     return 0;

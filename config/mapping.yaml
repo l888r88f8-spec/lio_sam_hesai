@@ -1,11 +1,11 @@
 /**:
   ros__parameters:
-
+    # ros2 service call /lio_sam/save_map lio_sam_hesai/srv/SaveMap "{resolution: 0.01, destination: /map/hesai_sim}"
     # Topics
-    pointCloudTopic: "/lidar_points"            # "/ls/lslidar_point_cloud"                   # Point cloud data
-    imuTopic: "/imu"                            # IMU data
-    odomTopic: "odometry/imu"                   # IMU pre-preintegration odometry, same frequency as IMU
-    gpsTopic: "odometry/gps"                    # GPS odometry topic from navsat, see module_navsat.launch file
+    pointCloudTopic: "/lidar_points"            # "/ls/lslidar_point_cloud"# Point cloud data in
+    imuTopic: "/imu"                       # IMU data in
+    odomTopic: "odometry/imu"                   # IMU pre-preintegration odometry out, same frequency as IMU
+    gpsTopic: "odometry/gps"                    # GPS odometry topic from navsat out, see module_navsat.
     globalMapTopic: "lio_sam/mapping/map_global"
 
     # Frames
@@ -14,116 +14,113 @@
     odometryFrame: "odom"
     mapFrame: "map"
 
-    # GPS Settings
-    useImuHeadingInitialization: false           # if using GPS data, set to "true"
-    useGpsElevation: false                       # if GPS elevation is bad, set to "false"
-    gpsCovThreshold: 2.0                         # m^2, threshold for using GPS data
-    poseCovThreshold: 25.0                       # m^2, threshold for using GPS data
+    # GPS 相关参数
+    useImuHeadingInitialization: false           # 使用 GPS 时，是否用 IMU 航向角辅助初始化
+    useGpsElevation: false                       # 是否使用 GPS 高程；高程噪声大时建议关闭
+    gpsCovThreshold: 2.0                         # 接受 GPS 约束的协方差阈值，单位 m^2
+    poseCovThreshold: 25.0                       # 接受 GPS 位姿约束的协方差阈值，单位 m^2
 
-    # Export settings
-    savePCD: false                               # https://github.com/TixiaoShan/LIO-SAM/issues/3
-    savePCDDirectory: "/Downloads/LOAM/"         # in your home folder, starts and ends with "/". Warning: the code deletes "LOAM" folder then recreates it. See "mapOptimization" for implementation
-    savePCDDirectory: "/Downloads/LOAM_hesai/"   # in your home folder, starts and ends with "/". Warning: the code deletes "LOAM" folder then recreates it. See "mapOptimization" for implementation
-    savePCDResolution: 0.0                       # 0 = no extra downsample, same as save_map resolution
-    saveGroundPCD: true
-    groundPCDDirectory: "/Downloads/LOAM_ground_hesai/"
-    groundPCDDirectoryGlobal: "/Downloads/LOAM_ground_global_hesai/"
-    groundFinalUseOdom: true
-    groundLeafSize: 0.1
-    useGlobalMapGround: true
-    globalMapGroundRadius: 30.0
-    globalMapGroundZRange: 3.0                 # note: 2.0 (prev: 5.0)
-    globalMapGroundVoxelSize: 0.05              # note: 0.1 (prev: 0.2)
-    globalMapGroundDistance: 0.12              # note: 0.1 (prev: 0.2)
-    globalMapGroundMaxAngle: 10.0               # note: 5.0 (prev: 15.0)
-    globalMapGroundMinPoints: 200
-    groundFlattenZ: false
-    groundFlattenValue: 3.0
-    mappingMode: true                            # true=mapping, false=localization (disable loop closure and map saving)
-    
-    # ros2 service call /lio_sam/save_map lio_sam_hesai/srv/SaveMap "{resolution: 0.05, destination: /map/hesai_outdoor2}"
-    
-    # Sensor Settings
-    sensor: HESAI                               # lidar sensor type, either 'velodyne', 'ouster', 'LSLIDAR' or 'livox'
-    N_SCAN: 16                                  # number of lidar channels (i.e., Velodyne/Ouster: 16, 32, 64, 128, Livox Horizon: 6)
-    Horizon_SCAN: 1000                           # lidar horizontal resolution (Velodyne:1800, Ouster:512,1024,2048, Livox Horizon: 4000)
-    downsampleRate: 1                            # default: 1. Downsample your data if too many
-    # points. i.e., 16 = 64 / 4, 16 = 16 / 1
-    lidarMinRange: 0.3                           # default: 1.0, minimum lidar range to be used
-    lidarMaxRange: 60.0                        # default: 1000.0, maximum lidar range to be used
-    groundScanIndex: 15                          # rings used for ground extraction; note: 6 (prev: 10)
-    distanceForPatchBetweenRings: 0.0           # meters, patching distance between rings; note: 0.0 (prev: 1.0)
-    groundAngleThreshold: 5.0                  # degrees, ground angle threshold
+    # 激光雷达参数
+    sensor: HESAI                                # 雷达类型，可选velodyne、ouster、LSLIDAR、livox、HESAI
+    N_SCAN: 16                                   # 雷达线数
+    Horizon_SCAN: 1000                           # 单圈水平方向点数
+    downsampleRate: 1                            # 输入点云按ring的下采样倍率，1表示不降采样
+    lidarMinRange: 0.3                           # 参与建图的最小量测距离，单位米
+    lidarMaxRange: 60.0                          # 参与建图的最大量测距离，单位米
 
-    # IMU Settings
-    imuType: 1                                  # default: 0 = 6-axis imu 1= 9 axis imu
-    imuAccNoise: 8.0e-04 # 1.0e-04
-    imuGyrNoise: 1.0e-04  # 1.0e-04
-    imuAccBiasN: 2.0e-3 # 0.19
-    imuGyrBiasN: 2.5e-5 # 0.04
-    imuGravity: 9.805
-    imuRPYWeight: 0.1
+    # IMU参数
+    imuType: 1                                   # IMU类型，0为六轴，1为九轴
+    imuAccNoise: 8.0e-04                         # 加速度测量噪声
+    imuGyrNoise: 1.0e-04                         # 角速度测量噪声
+    imuAccBiasN: 2.0e-3                          # 加速度零偏随机游走噪声
+    imuGyrBiasN: 2.5e-5                          # 角速度零偏随机游走噪声
+    imuGravity: 9.805                            # 重力加速度大小
+    imuRPYWeight: 0.1                            # IMU姿态先验在优化中的权重
 
-    extrinsicTrans:  [ 0.15,  0.0,  -0.15 ]
-    extrinsicRot:    [1.0,  0.0,  0.0,
-                      0.0,  1.0,  0.0,
-                      0.0,  0.0,  1.0 ]
+    extrinsicTrans: [ 0.0,  0.0,  -0.15 ]       # 雷达到IMU的平移外参[x, y, z]
+    extrinsicRot: [ 1.0,  0.0,  0.0,
+                    0.0,  1.0,  0.0,
+                    0.0,  0.0,  1.0 ]            # 雷达到IMU的旋转外参矩阵
     extrinsicRPY: [ 1.0,  0.0,  0.0,
                     0.0,  1.0,  0.0,
-                    0.0,  0.0,  1.0 ]
+                    0.0,  0.0,  1.0 ]            # 用于姿态初始化的RPY外参矩阵
 
-    # LOAM feature threshold
-    edgeThreshold: 1.0
-    surfThreshold: 0.1
-    edgeFeatureMinValidNum: 10
-    surfFeatureMinValidNum: 100
+    mappingMode: true                            # true为建图模式，false为定位模式
 
-    # voxel filter paprams
-    odometrySurfLeafSize: 0.4                     # default: 0.4 - outdoor, 0.2 - indoor
-    mappingCornerLeafSize: 0.05                    # default: 0.2 - outdoor, 0.1 - indoor
-    mappingSurfLeafSize: 0.05                      # default: 0.4 - outdoor, 0.2 - indoor
+    # CTRL+C地图与点云导出
+    savePCD: false                               # 程序退出时是否自动保存全局地图点云
+    savePCDDirectory: "/Downloads/LOAM_hesai/"   # 全局地图导出目录，相对HOME，程序会删除后重建该目录
+    savePCDResolution: 0.1                       # 自动导出地图时的额外下采样分辨率，0表示不额外下采样
 
-    # 局部几何一致性滤波（KNN，cap + 强下采样从 no-match 少量补点）
-    dynamicKeyframeFilterEnable: false
-    dynamicSurfKnnMaxDist: 1.5 # 局部地图5NN阈值
-    dynamicSurfPlaneMaxDist: 0.15 # 点到平面距离阈值
-    # kept：40%–65% seenNoMatch：15%–35%
+    # 地面分割与地面导出
+    saveGroundPCD: true                          # 是否保存全局地面点云，保存路径与全局地图一致
+    groundLeafSize: 0.02                         # 原始点云下采样体素尺寸，越大发布越稀疏
+    groundScanStartIndex: 0                      # 参与地面提取的起始 ring 编号，真实 Hesai 若 ring 顺序相反可改大
+    groundScanEndIndex: 5                        # 参与地面提取的结束 ring 编号，设为-1时表示使用全部 ring
+    distanceForPatchBetweenRings: 2.5            # 相邻ring距离小于该值时在已确认地面之间插值补点，单位米
+    groundAngleThreshold: 10.0                   # 相邻ring竖直夹角阈值，小于该值的点对可作为地面种子，单位度
 
-    # Global map static (anti-ghost) filter
-    # 体素持久性滤波
-    globalStaticMapFilterEnable: true
-    globalStaticVoxelSize: 0.4 # 将全局点云划分为体素格，单位m
-    globalStaticMinKF: 3 # 保存阈值
-    globalStaticFilterCorners: true # 体素边缘滤波
+    useGlobalMapGround: true                     # 是否使用全局地图 辅助补充当前帧地面提取
+    globalMapGroundRadius: 30.0                  # 从全局地图 裁剪候选地面的水平搜索半径，单位米
+    globalMapGroundZRange: 5.0                   # 从全局地图 裁剪候选地面的上下高度范围，单位米
+    globalMapGroundVoxelSize: 0.05               # 全局地图 候选地面预下采样体素尺寸，单位米
+    globalMapGroundDistance: 0.18                # 全局地图 地面平面拟合时的点到平面距离阈值，单位米
+    globalMapGroundMaxAngle: 30.0                # 全局地图 地面法向相对竖直方向允许的最大倾角，单位度
+    globalMapGroundMinPoints: 200                # 全局地图 提取地面时要求的最少点数
 
-    # robot motion constraint (in case you are using a 2D robot)
-    z_tollerance: 1000.0                          # meters
-    rotation_tollerance: 1000.0                   # radians
+    groundPlaneDistance: 0.12                    # 当前帧 局部地面平面拟合的点到平面距离阈值，单位米
+    groundPlaneMaxAngle: 30.0                    # 当前帧 局部地面法向相对竖直方向允许的最大倾角，单位度
+    groundPlaneMinPoints: 80                     # 当前帧 局部地面平面拟合所需的最少种子点数
 
-    # CPU Params
-    numberOfCores: 6                              # number of cores for mapping optimization
-    mappingProcessInterval: 0.1                  # seconds, regulate mapping frequency
+    groundFlattenZ: false                        # 保存或发布地面点云前是否将高度压平到固定Z
+    groundFlattenValue: 3.0                      # 启用groundFlattenZ后使用的固定高度值
 
-    # Surrounding map
-    surroundingkeyframeAddingDistThreshold: 1.0   # meters, regulate keyframe adding threshold
-    surroundingkeyframeAddingAngleThreshold: 0.2  # radians, regulate keyframe adding threshold
-    surroundingKeyframeDensity: 0.2               # meters, downsample surrounding keyframe poses   
-    surroundingKeyframeSearchRadius: 20.0         # meters, within n meters scan-to-map optimization -indoor 30,outdoor 20
-    # (when loop closure disabled)
+    # LOAM特征提取阈值
+    edgeThreshold: 1.0                           # 边缘特征曲率阈值
+    surfThreshold: 0.1                           # 平面特征曲率阈值
+    edgeFeatureMinValidNum: 10                   # 每帧最少有效边缘特征数
+    surfFeatureMinValidNum: 100                  # 每帧最少有效平面特征数
 
-    # Loop closure
-    loopClosureEnableFlag: true
-    loopClosureFrequency: 2.0                     # Hz, regulate loop closure constraint add frequency
-    surroundingKeyframeSize: 25                   # submap size (when loop closure enabled)
-    historyKeyframeSearchRadius: 15.0             # meters, key frame that is within n meters from
-    # current pose will be considerd for loop closure
-    historyKeyframeSearchTimeDiff: 30.0           # seconds, key frame that is n seconds older will be
-    # considered for loop closure
-    historyKeyframeSearchNum: 25                  # number of hostory key frames will be fused into a
-    # submap for loop closure
-    historyKeyframeFitnessScore: 0.3              # icp threshold, the smaller the better alignment
+    # 体素滤波参数
+    odometrySurfLeafSize: 0.1                    # 里程计阶段平面特征体素尺寸
+    mappingCornerLeafSize: 0.05                  # 建图阶段边缘特征体素尺寸
+    mappingSurfLeafSize: 0.05                    # 建图阶段平面特征体素尺寸
 
-    # Visualization
-    globalMapVisualizationSearchRadius: 2000.0    # meters, global map visualization radius
-    globalMapVisualizationPoseDensity: 0.5       # meters, global map visualization keyframe density
-    globalMapVisualizationLeafSize: 0.2           # meters, global map visualization cloud density
+    # 局部几何一致性滤波
+    dynamicKeyframeFilterEnable: false           # 是否启用局部几何一致性滤波
+    dynamicSurfKnnMaxDist: 1.5                   # 局部地图5NN搜索距离阈值，单位米
+    dynamicSurfPlaneMaxDist: 0.15                # 当前点到局部平面距离阈值，单位米
+
+    # 全局静态地图持久性滤波
+    globalStaticMapFilterEnable: false           # 是否启用多关键帧体素持久性滤波
+    globalStaticVoxelSize: 0.4                   # 持久性滤波体素尺寸，单位米
+    globalStaticMinKF: 3                         # 体素至少被多少个关键帧观测后才保留
+    globalStaticFilterCorners: false             # 是否对边缘点也应用静态持久性滤波
+
+    # 机器人运动约束
+    z_tollerance: 1000.0                         # Z方向允许的最大位移约束，单位米
+    rotation_tollerance: 1000.0                  # 旋转允许的最大变化约束，单位弧度
+
+    # 计算资源与建图频率
+    numberOfCores: 8                             # 建图优化可使用的CPU核数
+    mappingProcessInterval: 0.01                 # 建图主流程最小处理周期，单位秒
+
+    # 局部子地图构建
+    surroundingkeyframeAddingDistThreshold: 1.0  # 新增关键帧的平移阈值，单位米
+    surroundingkeyframeAddingAngleThreshold: 0.2 # 新增关键帧的旋转阈值，单位弧度
+    surroundingKeyframeDensity: 0.2              # 周围关键帧位姿下采样间隔，单位米
+    surroundingKeyframeSearchRadius: 20.0        # 扫描到地图优化时局部子地图搜索半径，单位米
+
+    # 回环检测参数
+    loopClosureEnableFlag: true                  # 是否启用回环检测与回环约束
+    loopClosureFrequency: 2.0                    # 回环检测频率，单位Hz
+    surroundingKeyframeSize: 25                  # 回环局部子地图包含的邻近关键帧数量
+    historyKeyframeSearchRadius: 15.0            # 历史关键帧搜索半径，单位米
+    historyKeyframeSearchTimeDiff: 30.0          # 参与回环候选的最小时间间隔，单位秒
+    historyKeyframeSearchNum: 25                 # 构建回环历史子地图时融合的关键帧数量
+    historyKeyframeFitnessScore: 0.3             # ICP回环匹配得分阈值，越小要求越严格
+
+    # 全局地图可视化
+    globalMapVisualizationSearchRadius: 2000.0   # RViz全局地图显示半径，单位米
+    globalMapVisualizationPoseDensity: 0.5       # 可视化时关键帧位姿下采样间隔，单位米
+    globalMapVisualizationLeafSize: 0.2          # 可视化全局点云下采样体素尺寸，单位米

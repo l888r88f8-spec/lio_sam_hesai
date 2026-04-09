@@ -95,6 +95,7 @@ def generate_launch_description():
             name="rviz2",
             arguments=["-d", rviz_config_file],
             output="screen",
+            emulate_tty=True,
         ),
     ]
 

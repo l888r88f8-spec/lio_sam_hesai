@@ -98,6 +98,7 @@ public:
     string groundPCDDirectoryGlobal;
     bool groundFinalUseOdom;
     float groundLeafSize;
+    float groundGlobalLeafSize;
     bool useGlobalMapGround;
     float globalMapGroundRadius;
     float globalMapGroundZRange;
@@ -105,6 +106,9 @@ public:
     float globalMapGroundDistance;
     float globalMapGroundMaxAngle;
     int globalMapGroundMinPoints;
+    float groundPlaneDistance;
+    float groundPlaneMaxAngle;
+    int groundPlaneMinPoints;
     bool groundFlattenZ;
     float groundFlattenValue;
 
@@ -115,7 +119,8 @@ public:
     int downsampleRate;
     float lidarMinRange;
     float lidarMaxRange;
-    int groundScanIndex;
+    int groundScanStartIndex;
+    int groundScanEndIndex;
     float distanceForPatchBetweenRings;
     float groundAngleThreshold;
 
@@ -234,6 +239,8 @@ public:
         get_parameter("groundFinalUseOdom", groundFinalUseOdom);
         declare_parameter("groundLeafSize", 0.1);
         get_parameter("groundLeafSize", groundLeafSize);
+        declare_parameter("groundGlobalLeafSize", 0.2);
+        get_parameter("groundGlobalLeafSize", groundGlobalLeafSize);
         declare_parameter("useGlobalMapGround", false);
         get_parameter("useGlobalMapGround", useGlobalMapGround);
         declare_parameter("globalMapGroundRadius", 20.0);
@@ -248,6 +255,12 @@ public:
         get_parameter("globalMapGroundMaxAngle", globalMapGroundMaxAngle);
         declare_parameter("globalMapGroundMinPoints", 200);
         get_parameter("globalMapGroundMinPoints", globalMapGroundMinPoints);
+        declare_parameter("groundPlaneDistance", 0.12);
+        get_parameter("groundPlaneDistance", groundPlaneDistance);
+        declare_parameter("groundPlaneMaxAngle", 35.0);
+        get_parameter("groundPlaneMaxAngle", groundPlaneMaxAngle);
+        declare_parameter("groundPlaneMinPoints", 80);
+        get_parameter("groundPlaneMinPoints", groundPlaneMinPoints);
         declare_parameter("groundFlattenZ", false);
         get_parameter("groundFlattenZ", groundFlattenZ);
         declare_parameter("groundFlattenValue", 0.0);
@@ -295,8 +308,10 @@ public:
         get_parameter("lidarMinRange", lidarMinRange);
         declare_parameter("lidarMaxRange", 1000.0);
         get_parameter("lidarMaxRange", lidarMaxRange);
-        declare_parameter("groundScanIndex", 10);
-        get_parameter("groundScanIndex", groundScanIndex);
+        declare_parameter("groundScanStartIndex", 0);
+        get_parameter("groundScanStartIndex", groundScanStartIndex);
+        declare_parameter("groundScanEndIndex", -1);
+        get_parameter("groundScanEndIndex", groundScanEndIndex);
         declare_parameter("distanceForPatchBetweenRings", 1.0);
         get_parameter("distanceForPatchBetweenRings", distanceForPatchBetweenRings);
         declare_parameter("groundAngleThreshold", 10.0);
