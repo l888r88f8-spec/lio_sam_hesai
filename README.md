@@ -81,17 +81,15 @@ ros2 bag play your_data
 ```bash
 ros2 service call /lio_sam/save_map lio_sam_hesai/srv/SaveMap "{resolution: 0.2, destination: /tmp/LOAM}"
 ```
-
+注意：服务名`/lio_sam/save_map`沿用了原始命名空间；但服务类型来自当前这个包。
 <img width="1387" height="992" alt="image" src="image.png" />
 <img width="1453" height="964" alt="image_1" src="image_1.png" />
 <img width="1453" height="964" alt="image_4" src="image_4.png" />
 
-注意：服务名`/lio_sam/save_map`沿用了原始命名空间；但服务类型来自当前这个包。
-
 ## 二、重定位
 ### 1. 运行
 ```bash
-ros2 launch lio_sam_hesai relocalization.launch.py
+ros2 launch lio_sam_hesai localization.launch.py
 ```
 
 ### 2. 在RViz中设置初始位置

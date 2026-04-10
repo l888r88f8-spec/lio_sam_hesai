@@ -28,12 +28,12 @@
       lidar_point_jump_span: 1
       lidar_point_time_scale: 1.0
       lidar_use_min_distance: 0.5
-      lidar_use_max_distance: 150.0
+      lidar_use_max_distance: 60.0
       lidar_rotation_noise_std: 0.001
       lidar_position_noise_std: 0.01
       lidar_scan: 16
       lidar_lower_angle: 15.0
-      lidar_horizon_scan: 1000
+      lidar_horizon_scan: 360 # 采样率
       lidar_vertical_resolution: 2.0
 
     imu:
@@ -51,22 +51,10 @@
     calibration:
       lidar_to_imu:
         [
-          1.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          1.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          1.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          1.0,
+          1.0, 0.0, 0.0, 0.0,
+          0.0, 1.0, 0.0, 0.0,
+          0.0, 0.0, 1.0, 0.0,
+          0.0, 0.0, 0.0, 1.0,
         ]
 
     frontend:
@@ -92,7 +80,7 @@
 
     sensor: HESAI                                               # 雷达类型与点云组织参数
     N_SCAN: 16                                                  # 雷达线数
-    Horizon_SCAN: 1000                                          # 单圈水平方向点数
+    Horizon_SCAN: 360                                           # 单圈水平方向点数，采样率
     lidarMinRange: 0.5                                          # 参与分割的最小有效距离，过近点会被过滤
     lidarMaxRange: 60.0                                         # 参与分割的最大有效距离，过远点会被过滤
 
