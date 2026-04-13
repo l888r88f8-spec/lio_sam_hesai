@@ -64,11 +64,15 @@ target_link_libraries(${PROJECT_NAME}_imuPreintegration gtsam "${cpp_typesupport
 
 add_executable(${PROJECT_NAME}_mapOptimization src/mapOptimization.cpp)
 ament_target_dependencies(${PROJECT_NAME}_mapOptimization rclcpp rclpy std_msgs sensor_msgs geometry_msgs nav_msgs pcl_conversions pcl_msgs visualization_msgs tf2 tf2_ros tf2_eigen tf2_sensor_msgs tf2_geometry_msgs OpenCV PCL GTSAM)
+target_sources(${PROJECT_NAME}_mapOptimization PRIVATE
+  src/ivox_map/ivox_map.cpp
+  src/ivox_map/voxel_grid_node.cpp
+)
 
 if (OpenMP_CXX_FOUND)
-  target_link_libraries(${PROJECT_NAME}_mapOptimization gtsam "${cpp_typesupport_target}" OpenMP::OpenMP_CXX)
+  target_link_libraries(${PROJECT_NAME}_mapOptimization gtsam "${cpp_typesupport_target}" OpenMP::OpenMP_CXX ${GLOG_LIBRARIES})
 else()
-  target_link_libraries(${PROJECT_NAME}_mapOptimization gtsam "${cpp_typesupport_target}")
+  target_link_libraries(${PROJECT_NAME}_mapOptimization gtsam "${cpp_typesupport_target}" ${GLOG_LIBRARIES})
 endif()
 
 add_library(${PROJECT_NAME}_relocalization_lib

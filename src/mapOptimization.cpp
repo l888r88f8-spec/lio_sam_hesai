@@ -1,4 +1,5 @@
 #include "utility.hpp"
+#include "ivox_map/ivox_map.h"
 #include "lio_sam_hesai/msg/cloud_info.hpp"
 #include "lio_sam_hesai/srv/save_map.hpp"
 #include <gtsam/geometry/Rot3.h>
@@ -47,6 +48,14 @@ POINT_CLOUD_REGISTER_POINT_STRUCT (PointXYZIRPYT,
                                    (double, time, time))
 
 typedef PointXYZIRPYT  PointTypePose;
+
+namespace {
+
+constexpr std::size_t kSurfMapNeighborCount = 5;
+constexpr float kSurfMapNeighborMaxDistance = 1.0f;
+constexpr float kSurfIVoxResolution = 0.5f;
+
+}  // namespace
 
 
 // ----------------------------------------------------------------------------
@@ -225,6 +234,7 @@ public:
 
     pcl::KdTreeFLANN<PointType>::Ptr kdtreeCornerFromMap;
     pcl::KdTreeFLANN<PointType>::Ptr kdtreeSurfFromMap;
+    std::shared_ptr<IVoxMap> ivoxSurfFromMap;
 
     pcl::KdTreeFLANN<PointType>::Ptr kdtreeSurroundingKeyPoses;
     pcl::KdTreeFLANN<PointType>::Ptr kdtreeHistoryKeyPoses;
@@ -438,6 +448,47 @@ public:
         allocateMemory();
     }
 
+    std::shared_ptr<IVoxMap> CreateSurfIVoxMap() const
+    {
+        IVoxMap::Options options;
+        options.resolution_ = std::max(kSurfIVoxResolution, mappingSurfLeafSize);
+        options.nearby_type_ = IVoxMap::NearbyType::NEARBY18;
+        options.capacity_ = 1000000;
+        options.num_nearest_points_ = kSurfMapNeighborCount;
+        return std::make_shared<IVoxMap>(options);
+    }
+
+    void BuildSurfIVoxMap()
+    {
+        ivoxSurfFromMap = CreateSurfIVoxMap();
+        if (laserCloudSurfFromMapDS->empty())
+            return;
+
+        IVoxMap::PointVector surfMapPoints;
+        surfMapPoints.reserve(laserCloudSurfFromMapDS->size());
+        for (const auto &point : laserCloudSurfFromMapDS->points)
+            surfMapPoints.emplace_back(point);
+
+        ivoxSurfFromMap->AddPoints(surfMapPoints);
+    }
+
+    bool GetSurfNearestNeighborsFromIVox(
+        const PointType &queryPoint, IVoxMap::PointVector *nearestPoints) const
+    {
+        if (nearestPoints == nullptr || !ivoxSurfFromMap)
+            return false;
+
+        nearestPoints->clear();
+        if (!ivoxSurfFromMap->GetClosestPoint(
+                queryPoint, *nearestPoints, kSurfMapNeighborCount,
+                kSurfMapNeighborMaxDistance))
+        {
+            return false;
+        }
+
+        return nearestPoints->size() >= kSurfMapNeighborCount;
+    }
+
     void allocateMemory()
     {
         cloudKeyPoses3D.reset(new pcl::PointCloud<PointType>());
@@ -474,6 +525,7 @@ public:
 
         kdtreeCornerFromMap.reset(new pcl::KdTreeFLANN<PointType>());
         kdtreeSurfFromMap.reset(new pcl::KdTreeFLANN<PointType>());
+        ivoxSurfFromMap = CreateSurfIVoxMap();
 
         for (int i = 0; i < 6; ++i){
             transformTobeMapped[i] = 0;
@@ -1327,6 +1379,7 @@ public:
         downSizeFilterSurf.setInputCloud(laserCloudSurfFromMap);
         downSizeFilterSurf.filter(*laserCloudSurfFromMapDS);
         laserCloudSurfFromMapDSNum = laserCloudSurfFromMapDS->size();
+        BuildSurfIVoxMap();
 
         // clear map cache if too large
         if (laserCloudMapContainer.size() > 1000)
@@ -1467,12 +1520,12 @@ public:
         for (int i = 0; i < laserCloudSurfLastDSNum; i++)
         {
             PointType pointOri, pointSel, coeff;
-            std::vector<int> pointSearchInd;
-            std::vector<float> pointSearchSqDis;
+            IVoxMap::PointVector nearestPoints;
 
             pointOri = laserCloudSurfLastDS->points[i];
-            pointAssociateToMap(&pointOri, &pointSel); 
-            kdtreeSurfFromMap->nearestKSearch(pointSel, 5, pointSearchInd, pointSearchSqDis);
+            pointAssociateToMap(&pointOri, &pointSel);
+            if (!GetSurfNearestNeighborsFromIVox(pointSel, &nearestPoints))
+                continue;
 
             Eigen::Matrix<float, 5, 3> matA0;
             Eigen::Matrix<float, 5, 1> matB0;
@@ -1482,49 +1535,47 @@ public:
             matB0.fill(-1);
             matX0.setZero();
 
-            if (pointSearchSqDis[4] < 1.0) {
-                for (int j = 0; j < 5; j++) {
-                    matA0(j, 0) = laserCloudSurfFromMapDS->points[pointSearchInd[j]].x;
-                    matA0(j, 1) = laserCloudSurfFromMapDS->points[pointSearchInd[j]].y;
-                    matA0(j, 2) = laserCloudSurfFromMapDS->points[pointSearchInd[j]].z;
+            for (std::size_t j = 0; j < kSurfMapNeighborCount; ++j) {
+                matA0(static_cast<int>(j), 0) = nearestPoints[j].x;
+                matA0(static_cast<int>(j), 1) = nearestPoints[j].y;
+                matA0(static_cast<int>(j), 2) = nearestPoints[j].z;
+            }
+
+            matX0 = matA0.colPivHouseholderQr().solve(matB0);
+
+            float pa = matX0(0, 0);
+            float pb = matX0(1, 0);
+            float pc = matX0(2, 0);
+            float pd = 1;
+
+            float ps = sqrt(pa * pa + pb * pb + pc * pc);
+            pa /= ps; pb /= ps; pc /= ps; pd /= ps;
+
+            bool planeValid = true;
+            for (std::size_t j = 0; j < kSurfMapNeighborCount; ++j) {
+                if (fabs(pa * nearestPoints[j].x +
+                         pb * nearestPoints[j].y +
+                         pc * nearestPoints[j].z + pd) > 0.2f) {
+                    planeValid = false;
+                    break;
                 }
+            }
 
-                matX0 = matA0.colPivHouseholderQr().solve(matB0);
+            if (planeValid) {
+                float pd2 = pa * pointSel.x + pb * pointSel.y + pc * pointSel.z + pd;
 
-                float pa = matX0(0, 0);
-                float pb = matX0(1, 0);
-                float pc = matX0(2, 0);
-                float pd = 1;
+                float s = 1 - 0.9 * fabs(pd2) / sqrt(sqrt(pointOri.x * pointOri.x
+                        + pointOri.y * pointOri.y + pointOri.z * pointOri.z));
 
-                float ps = sqrt(pa * pa + pb * pb + pc * pc);
-                pa /= ps; pb /= ps; pc /= ps; pd /= ps;
+                coeff.x = s * pa;
+                coeff.y = s * pb;
+                coeff.z = s * pc;
+                coeff.intensity = s * pd2;
 
-                bool planeValid = true;
-                for (int j = 0; j < 5; j++) {
-                    if (fabs(pa * laserCloudSurfFromMapDS->points[pointSearchInd[j]].x +
-                             pb * laserCloudSurfFromMapDS->points[pointSearchInd[j]].y +
-                             pc * laserCloudSurfFromMapDS->points[pointSearchInd[j]].z + pd) > 0.2) {
-                        planeValid = false;
-                        break;
-                    }
-                }
-
-                if (planeValid) {
-                    float pd2 = pa * pointSel.x + pb * pointSel.y + pc * pointSel.z + pd;
-
-                    float s = 1 - 0.9 * fabs(pd2) / sqrt(sqrt(pointOri.x * pointOri.x
-                            + pointOri.y * pointOri.y + pointOri.z * pointOri.z));
-
-                    coeff.x = s * pa;
-                    coeff.y = s * pb;
-                    coeff.z = s * pc;
-                    coeff.intensity = s * pd2;
-
-                    if (s > 0.1) {
-                        laserCloudOriSurfVec[i] = pointOri;
-                        coeffSelSurfVec[i] = coeff;
-                        laserCloudOriSurfFlag[i] = true;
-                    }
+                if (s > 0.1) {
+                    laserCloudOriSurfVec[i] = pointOri;
+                    coeffSelSurfVec[i] = coeff;
+                    laserCloudOriSurfFlag[i] = true;
                 }
             }
         }
@@ -1684,7 +1735,8 @@ public:
         if (laserCloudCornerLastDSNum > edgeFeatureMinValidNum && laserCloudSurfLastDSNum > surfFeatureMinValidNum)
         {
             kdtreeCornerFromMap->setInputCloud(laserCloudCornerFromMapDS);
-            kdtreeSurfFromMap->setInputCloud(laserCloudSurfFromMapDS);
+            if (dynamicKeyframeFilterEnable)
+                kdtreeSurfFromMap->setInputCloud(laserCloudSurfFromMapDS);
 
             for (int iterCount = 0; iterCount < 15; iterCount++)
             {

@@ -6,7 +6,6 @@
     imuTopic: "/imu"                       # IMU data in
     odomTopic: "odometry/imu"                   # IMU pre-preintegration odometry out, same frequency as IMU
     gpsTopic: "odometry/gps"                    # GPS odometry topic from navsat out, see module_navsat.
-    globalMapTopic: "lio_sam/mapping/map_global"
 
     # Frames
     lidarFrame: "hesai_lidar"
@@ -23,9 +22,9 @@
     # 激光雷达参数
     sensor: HESAI                                # 雷达类型，可选velodyne、ouster、LSLIDAR、livox、HESAI
     N_SCAN: 16                                   # 雷达线数
-    Horizon_SCAN: 1000                           # 单圈水平方向点数
+    Horizon_SCAN: 360                           # 单圈水平方向点数
     downsampleRate: 1                            # 输入点云按ring的下采样倍率，1表示不降采样
-    lidarMinRange: 0.3                           # 参与建图的最小量测距离，单位米
+    lidarMinRange: 0.5                           # 参与建图的最小量测距离，单位米
     lidarMaxRange: 60.0                          # 参与建图的最大量测距离，单位米
 
     # IMU参数
@@ -53,10 +52,13 @@
     savePCDResolution: 0.1                       # 自动导出地图时的额外下采样分辨率，0表示不额外下采样
 
     # 地面分割与地面导出
+    globalMapTopic: "lio_sam/mapping/map_global"
+    nonGroundCloudTopic: "lio_sam/cloud_nonground"
+    segmentation_only_mode: false                # 是否只分割地面
     saveGroundPCD: true                          # 是否保存全局地面点云，保存路径与全局地图一致
     groundLeafSize: 0.02                         # 原始点云下采样体素尺寸，越大发布越稀疏
-    groundScanStartIndex: 0                      # 参与地面提取的起始 ring 编号，真实 Hesai 若 ring 顺序相反可改大
-    groundScanEndIndex: 5                        # 参与地面提取的结束 ring 编号，设为-1时表示使用全部 ring
+    groundScanStartIndex: 0                      # 参与地面补点和最终地面输出的起始 ring 编号
+    groundScanEndIndex: 5                        # 参与地面补点和最终地面输出的结束 ring 编号，设为-1时表示使用全部 ring
     distanceForPatchBetweenRings: 2.5            # 相邻ring距离小于该值时在已确认地面之间插值补点，单位米
     groundAngleThreshold: 10.0                   # 相邻ring竖直夹角阈值，小于该值的点对可作为地面种子，单位度
 

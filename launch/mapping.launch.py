@@ -77,18 +77,6 @@ def generate_launch_description():
             output="screen",
             sigterm_timeout="30",
         ),
-        # Node(
-        #     package="lio_sam_hesai",
-        #     executable="lio_sam_hesai_qosRelay",
-        #     name="lio_sam_hesai_qosRelay",
-        #     parameters=[{
-        #         "map_in": "/lio_sam/mapping/map_global",
-        #         "ground_in": "/lio_sam/deskew/ground_cloud_global",
-        #         "map_out": "/mapcloud_lio",
-        #         "ground_out": "/mapground_lio",
-        #     }],
-        #     output="screen",
-        # ),
         Node(
             package="rviz2",
             executable="rviz2",

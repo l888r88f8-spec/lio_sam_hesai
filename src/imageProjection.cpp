@@ -1109,7 +1109,7 @@ public:
                rangeMat.at<float>(row, column) != FLT_MAX;
     }
 
-    // 返回允许参与地面提取的 ring 行号范围 [start, end]。
+    // 返回用于地面补点和最终地面输出的 ring 行号范围 [start, end]。
     std::pair<int, int> getGroundScanRange() const
     {
         int groundScanStart = groundScanStartIndex;
@@ -1124,6 +1124,12 @@ public:
             std::swap(groundScanStart, groundScanEnd);
 
         return {groundScanStart, groundScanEnd};
+    }
+
+    // 返回参与地面/非地面判定的 ring 行号范围，默认使用全部线束。
+    std::pair<int, int> getGroundClassificationRange() const
+    {
+        return {0, N_SCAN - 1};
     }
 
     // 判断两个相邻候选点是否在局部几何上连续，可视为同一片地面。
@@ -1238,54 +1244,160 @@ public:
         }
     }
 
+    // 计算地面平面在传感器中心正下方的投影点，用于补齐机器人脚底下的地面空洞。
+    bool getGroundCenterPointOnPlane(const pcl::ModelCoefficients::Ptr &coefficients,
+                                     PointType *centerPoint) const
+    {
+        if (!coefficients || coefficients->values.size() < 4 || centerPoint == nullptr)
+            return false;
+
+        const float a = coefficients->values[0];
+        const float b = coefficients->values[1];
+        const float c = coefficients->values[2];
+        const float d = coefficients->values[3];
+        (void)a;
+        (void)b;
+        if (std::fabs(c) < kMinPlaneNorm)
+            return false;
+
+        centerPoint->x = 0.0f;
+        centerPoint->y = 0.0f;
+        centerPoint->z = -d / c;
+        centerPoint->intensity = 0.0f;
+        return std::isfinite(centerPoint->z);
+    }
+
+    // 将机器人中心到 groundScanStartIndex 对应地面线之间补齐，减小脚底下的近距离空洞。
+    void appendGroundPatchToSensorCenter(const pcl::ModelCoefficients::Ptr &coefficients,
+                                         pcl::PointCloud<PointType>::Ptr groundOutput)
+    {
+        PointType centerGroundPoint;
+        if (!getGroundCenterPointOnPlane(coefficients, &centerGroundPoint))
+            return;
+
+        const auto [groundScanStart, groundScanEnd] = getGroundScanRange();
+        if (groundScanStart > groundScanEnd)
+            return;
+
+        const float interpolationSpacing =
+            std::max(0.02f, groundLeafSize > 0.0f ? groundLeafSize * 0.5f : 0.05f);
+        bool centerPointAdded = false;
+
+        for (int j = 0; j < Horizon_SCAN; ++j)
+        {
+            if (groundMat.at<signed char>(groundScanStart, j) != 1 ||
+                !hasValidGroundCell(groundScanStart, j))
+            {
+                continue;
+            }
+
+            const PointType &edgePoint =
+                fullCloud->points[j + groundScanStart * Horizon_SCAN];
+            const float dX = edgePoint.x - centerGroundPoint.x;
+            const float dY = edgePoint.y - centerGroundPoint.y;
+            const float dZ = edgePoint.z - centerGroundPoint.z;
+            const float ds = std::sqrt(dX * dX + dY * dY + dZ * dZ);
+            if (ds <= interpolationSpacing)
+                continue;
+
+            if (!centerPointAdded)
+            {
+                groundOutput->push_back(centerGroundPoint);
+                centerPointAdded = true;
+            }
+
+            const int segmentCount =
+                std::max(2, static_cast<int>(std::ceil(ds / interpolationSpacing)));
+            for (int step = 1; step < segmentCount; ++step)
+            {
+                const float t = static_cast<float>(step) /
+                                static_cast<float>(segmentCount);
+
+                PointType patchPoint;
+                patchPoint.x = centerGroundPoint.x + dX * t;
+                patchPoint.y = centerGroundPoint.y + dY * t;
+                patchPoint.z = centerGroundPoint.z + dZ * t;
+                patchPoint.intensity = 0.0f;
+                groundOutput->push_back(patchPoint);
+            }
+        }
+    }
+
     // 根据拟合平面按列向上连续提取地面，避免把悬空同平面点误判为地面。
     void extractGroundPointsFromPlane(const pcl::ModelCoefficients::Ptr &coefficients,
                                       pcl::PointCloud<PointType>::Ptr groundOutput)
     {
         groundOutput->clear();
         const auto [groundScanStart, groundScanEnd] = getGroundScanRange();
+        const auto [classificationStart, classificationEnd] =
+            getGroundClassificationRange();
 
         for (int j = 0; j < Horizon_SCAN; ++j)
         {
-            bool groundStarted = false;
-            int previousGroundRow = -1;
-
+            int minConfirmedRow = N_SCAN;
+            int maxConfirmedRow = -1;
             for (int i = groundScanStart; i <= groundScanEnd; ++i)
             {
                 if (!hasValidGroundCell(i, j))
-                {
-                    if (groundStarted)
-                        break;
                     continue;
-                }
 
                 const int index = j + i * Horizon_SCAN;
                 const PointType &point = fullCloud->points[index];
                 const bool nearPlane =
                     pointToPlaneDistance(point, *coefficients) <= groundPlaneDistance;
-
-                if (!groundStarted)
-                {
-                    if (groundMat.at<signed char>(i, j) != 1 || !nearPlane)
-                        continue;
-
-                    groundStarted = true;
-                    previousGroundRow = i;
-                    groundMat.at<signed char>(i, j) = 1;
-                    groundOutput->push_back(point);
+                if (groundMat.at<signed char>(i, j) != 1 || !nearPlane)
                     continue;
-                }
 
+                groundMat.at<signed char>(i, j) = 1;
+                groundOutput->push_back(point);
+                minConfirmedRow = std::min(minConfirmedRow, i);
+                maxConfirmedRow = std::max(maxConfirmedRow, i);
+            }
+
+            if (maxConfirmedRow < 0)
+                continue;
+
+            int previousGroundRow = maxConfirmedRow;
+            for (int i = maxConfirmedRow + 1; i <= classificationEnd; ++i)
+            {
+                if (!hasValidGroundCell(i, j))
+                    break;
+
+                const int index = j + i * Horizon_SCAN;
+                const PointType &point = fullCloud->points[index];
+                const bool nearPlane =
+                    pointToPlaneDistance(point, *coefficients) <= groundPlaneDistance;
                 if (!nearPlane || !isGroundConnected(previousGroundRow, j, i, j))
                     break;
 
                 groundMat.at<signed char>(i, j) = 1;
-                groundOutput->push_back(point);
+                if (i >= groundScanStart && i <= groundScanEnd)
+                    groundOutput->push_back(point);
+                previousGroundRow = i;
+            }
+
+            previousGroundRow = minConfirmedRow;
+            for (int i = minConfirmedRow - 1; i >= classificationStart; --i)
+            {
+                if (!hasValidGroundCell(i, j))
+                    break;
+
+                const int index = j + i * Horizon_SCAN;
+                const PointType &point = fullCloud->points[index];
+                const bool nearPlane =
+                    pointToPlaneDistance(point, *coefficients) <= groundPlaneDistance;
+                if (!nearPlane || !isGroundConnected(i, j, previousGroundRow, j))
+                    break;
+
+                groundMat.at<signed char>(i, j) = 1;
+                if (i >= groundScanStart && i <= groundScanEnd)
+                    groundOutput->push_back(point);
                 previousGroundRow = i;
             }
         }
 
         appendConfirmedGroundPatches(coefficients, groundOutput);
+        appendGroundPatchToSensorCenter(coefficients, groundOutput);
     }
 
     // 通过种子构造与平面拟合，从当前扫描中提取局部地面。
@@ -1310,6 +1422,7 @@ public:
         {
             collectMeasuredGroundSeeds(groundOutput);
             appendConfirmedGroundPatches(coefficients, groundOutput);
+            appendGroundPatchToSensorCenter(coefficients, groundOutput);
         }
         return !groundOutput->empty();
     }

@@ -33,7 +33,7 @@
       lidar_position_noise_std: 0.01
       lidar_scan: 16
       lidar_lower_angle: 15.0
-      lidar_horizon_scan: 360 # 采样率
+      lidar_horizon_scan: 360                                   # 采样率
       lidar_vertical_resolution: 2.0
 
     imu:
@@ -76,7 +76,7 @@
     lidarFrame: "hesai_lidar"                                   # 输出点云使用的雷达坐标系
 
     segmentation_only_mode: true                                # 地面分割模式
-    nonGroundCloudTopic: "lio_sam/localization/cloud_nonground" # 去地后的非地面点云输出话题
+    nonGroundCloudTopic: "lio_sam/cloud_nonground" # 去地后的非地面点云输出话题
 
     sensor: HESAI                                               # 雷达类型与点云组织参数
     N_SCAN: 16                                                  # 雷达线数
@@ -84,8 +84,8 @@
     lidarMinRange: 0.5                                          # 参与分割的最小有效距离，过近点会被过滤
     lidarMaxRange: 60.0                                         # 参与分割的最大有效距离，过远点会被过滤
 
-    groundScanStartIndex: 0                                     # 参与地面提取的起始 ring 编号
-    groundScanEndIndex: 15                                      # 参与地面提取的结束 ring 编号，设为-1时表示使用全部 ring
+    groundScanStartIndex: 0                                     # 参与地面补点和最终地面输出的起始 ring 编号
+    groundScanEndIndex: 5                                       # 参与地面补点和最终地面输出的结束 ring 编号，设为-1时表示使用全部 ring
     groundAngleThreshold: 15.0                                  # 相邻上下线束点对的竖直夹角阈值，越小越严格
     groundPlaneDistance: 0.12                                   # 点到拟合地面平面的距离阈值，越小越严格
     groundPlaneMaxAngle: 30.0                                   # 地面法向与竖直方向允许的最大夹角，越小越严格

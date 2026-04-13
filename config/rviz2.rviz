@@ -7,7 +7,7 @@ Panels:
         - /Global Options1
         - /Status1
       Splitter Ratio: 0.6470588445663452
-    Tree Height: 677
+    Tree Height: 616
   - Class: rviz_common/Selection
     Name: Selection
   - Class: rviz_common/Tool Properties
@@ -19,6 +19,11 @@ Panels:
       - /Current View1
     Name: Views
     Splitter Ratio: 0.5
+  - Class: rviz_common/Time
+    Experimental: false
+    Name: Time
+    SyncMode: 0
+    SyncSource: cloud_nonground
 Visualization Manager:
   Class: ""
   Displays:
@@ -52,7 +57,7 @@ Visualization Manager:
       Color: 255; 255; 255
       Color Transformer: FlatColor
       Decay Time: 0
-      Enabled: true
+      Enabled: false
       Invert Rainbow: false
       Max Color: 255; 255; 255
       Max Intensity: 255
@@ -73,12 +78,12 @@ Visualization Manager:
         Value: /lio_sam/mapping/cloud_registered
       Use Fixed Frame: true
       Use rainbow: true
-      Value: true
+      Value: false
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
-        Max Value: 13.369706153869629
-        Min Value: -0.6317944526672363
+        Max Value: 13.37506103515625
+        Min Value: -0.6300203800201416
         Value: true
       Axis: Z
       Channel Name: intensity
@@ -86,7 +91,7 @@ Visualization Manager:
       Color: 255; 255; 255
       Color Transformer: AxisColor
       Decay Time: 0
-      Enabled: true
+      Enabled: false
       Invert Rainbow: false
       Max Color: 255; 255; 255
       Max Intensity: 1
@@ -107,7 +112,7 @@ Visualization Manager:
         Value: /lio_sam/mapping/map_global
       Use Fixed Frame: true
       Use rainbow: true
-      Value: true
+      Value: false
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
@@ -268,7 +273,7 @@ Visualization Manager:
         Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /lio_sam/localization/cloud_nonground
+        Value: /lio_sam/cloud_nonground
       Use Fixed Frame: true
       Use rainbow: true
       Value: true
@@ -350,6 +355,8 @@ Visualization Manager:
               fr_steer_right_link:
                 fr_right_link:
                   {}
+              imu_link:
+                {}
               re_left_link:
                 {}
               re_right_link:
@@ -357,8 +364,7 @@ Visualization Manager:
               sensor_rack_link:
                 {}
               sensor_rack_second_layer_link:
-                imu_link:
-                  {}
+                {}
               sensor_rack_top_layer_link:
                 hesai_lidar:
                   {}
@@ -409,7 +415,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 33.46319580078125
+      Distance: 35.94414520263672
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -435,13 +441,15 @@ Window Geometry:
   Height: 900
   Hide Left Dock: false
   Hide Right Dock: false
-  QMainWindow State: 000000ff00000000fd0000000100000000000001560000032efc0200000004fb000000100044006900730070006c006100790073010000003b0000032e000000c700fffffffb0000001200530065006c0065006300740069006f006e000000021c000000e70000005c00fffffffb0000001e0054006f006f006c002000500072006f0070006500720074006900650073000000028b0000011f0000005c00fffffffb0000000a00560069006500770073000000033d000001eb000000a000ffffff0000059c0000032e00000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  QMainWindow State: 000000ff00000000fd000000020000000000000156000002f1fc0200000004fb000000100044006900730070006c006100790073010000003b000002f1000000c700fffffffb0000001200530065006c0065006300740069006f006e00000002b6000000b30000005c00fffffffb0000001e0054006f006f006c002000500072006f00700065007200740069006500730000000296000000d30000005c00fffffffb0000000a00560069006500770073000000023900000130000000a000ffffff00000003000006f800000037fc0100000001fb0000000800540069006d00650100000000000006f80000025300ffffff0000059c000002f100000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
   Selection:
+    collapsed: false
+  Time:
     collapsed: false
   Tool Properties:
     collapsed: false
   Views:
     collapsed: false
   Width: 1784
-  X: 518
-  Y: 121
+  X: 454
+  Y: 57
