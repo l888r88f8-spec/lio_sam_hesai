@@ -42,6 +42,7 @@ public:
     std::shared_ptr<tf2_ros::TransformBroadcaster> tfBroadcaster;
     std::shared_ptr<tf2_ros::TransformListener> tfListener;
     tf2::Stamped<tf2::Transform> lidar2Baselink;
+    bool lidarToBaselinkCached = false;
 
     double lidarOdomTime = -1;
     deque<nav_msgs::msg::Odometry> imuOdomQueue;
@@ -81,6 +82,30 @@ public:
         tf2::Transform t;
         tf2::fromMsg(odom.pose.pose, t);
         return tf2::transformToEigen(tf2::toMsg(t));
+    }
+
+    bool cacheLidarToBaselinkTransform()
+    {
+        if (lidarFrame == baselinkFrame)
+            return true;
+
+        if (lidarToBaselinkCached)
+            return true;
+
+        try
+        {
+            tf2::fromMsg(
+                tfBuffer->lookupTransform(lidarFrame, baselinkFrame, rclcpp::Time(0)),
+                lidar2Baselink);
+            lidarToBaselinkCached = true;
+        }
+        catch (const tf2::TransformException &ex)
+        {
+            RCLCPP_ERROR(get_logger(), "%s", ex.what());
+            return false;
+        }
+
+        return true;
     }
 
     void lidarOdometryHandler(const nav_msgs::msg::Odometry::SharedPtr odomMsg)
@@ -127,15 +152,8 @@ public:
         // publish tf
         if(lidarFrame != baselinkFrame)
         {
-            try
-            {
-                tf2::fromMsg(tfBuffer->lookupTransform(
-                    lidarFrame, baselinkFrame, rclcpp::Time(0)), lidar2Baselink);
-            }
-            catch (tf2::TransformException ex)
-            {
-                RCLCPP_ERROR(get_logger(), "%s", ex.what());
-            }
+            if (!cacheLidarToBaselinkTransform())
+                return;
             tf2::Stamped<tf2::Transform> tb(
                 tCur * lidar2Baselink, tf2_ros::fromMsg(odomMsg->header.stamp), odometryFrame);
             tCur = tb;

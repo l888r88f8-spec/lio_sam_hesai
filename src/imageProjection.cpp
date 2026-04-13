@@ -214,10 +214,13 @@ public:
             pointCloudTopic, qos_lidar,
             std::bind(&ImageProjection::cloudHandler, this, std::placeholders::_1),
             lidarOpt);
-        subGlobalMap = create_subscription<sensor_msgs::msg::PointCloud2>(
-            globalMapTopic, qos_lidar,
-            std::bind(&ImageProjection::globalMapHandler, this, std::placeholders::_1),
-            lidarOpt);
+        if (useGlobalMapGround)
+        {
+            subGlobalMap = create_subscription<sensor_msgs::msg::PointCloud2>(
+                globalMapTopic, qos_lidar,
+                std::bind(&ImageProjection::globalMapHandler, this, std::placeholders::_1),
+                lidarOpt);
+        }
 
         pubExtractedCloud = create_publisher<sensor_msgs::msg::PointCloud2>(
             "lio_sam/deskew/cloud_deskewed", 1);
@@ -259,6 +262,8 @@ public:
         dsfPatchedGround.setLeafSize(0.1f, 0.1f, 0.1f);
 
         fullCloud->points.resize(N_SCAN*Horizon_SCAN);
+        rangeMat = cv::Mat(N_SCAN, Horizon_SCAN, CV_32F, cv::Scalar::all(FLT_MAX));
+        groundMat = cv::Mat(N_SCAN, Horizon_SCAN, CV_8S, cv::Scalar::all(0));
 
         cloudInfo.start_ring_index.assign(N_SCAN, 0);
         cloudInfo.end_ring_index.assign(N_SCAN, 0);
@@ -282,22 +287,14 @@ public:
         groundCloudGlobalSeed->clear();
         patchedGround->clear();
         patchedGroundEdge->clear();
-        // reset range matrix for range image projection
-        rangeMat = cv::Mat(N_SCAN, Horizon_SCAN, CV_32F, cv::Scalar::all(FLT_MAX));
-        groundMat = cv::Mat(N_SCAN, Horizon_SCAN, CV_8S, cv::Scalar::all(0));
+        rangeMat.setTo(cv::Scalar::all(FLT_MAX));
+        groundMat.setTo(cv::Scalar::all(0));
 
         imuPointerCur = 0;
         firstPointFlag = true;
         odomDeskewFlag = false;
 
-        for (int i = 0; i < queueLength; ++i)
-        {
-            imuTime[i] = 0;
-            imuRotX[i] = 0;
-            imuRotY[i] = 0;
-            imuRotZ[i] = 0;
-        }
-        columnIdnCountVec.assign(N_SCAN, 0);
+        std::fill(columnIdnCountVec.begin(), columnIdnCountVec.end(), 0);
     }
 
     // 节点退出时不再执行额外的地面点云保存逻辑。
@@ -341,6 +338,9 @@ public:
     // 缓存最新的全局地图，用于地面提取时的补充或回退。
     void globalMapHandler(const sensor_msgs::msg::PointCloud2::SharedPtr mapMsg)
     {
+        if (!useGlobalMapGround)
+            return;
+
         pcl::PointCloud<PointType>::Ptr temp(new pcl::PointCloud<PointType>());
         pcl::fromROSMsg(*mapMsg, *temp);
         std::lock_guard<std::mutex> lock(globalMapMutex);
@@ -1613,24 +1613,28 @@ public:
     {
         cloudInfo.header = cloudHeader;
         cloudInfo.cloud_deskewed  = publishCloud(pubExtractedCloud, extractedCloud, cloudHeader.stamp, lidarFrame);
-        publishCloud(pubNonGroundCloud, nonGroundCloud, cloudHeader.stamp, lidarFrame);
+        if (pubNonGroundCloud->get_subscription_count() != 0)
+            publishCloud(pubNonGroundCloud, nonGroundCloud, cloudHeader.stamp, lidarFrame);
         pcl::toROSMsg(*groundCloudScanOnlyDS, cloudInfo.cloud_ground);
         cloudInfo.cloud_ground.header.stamp = cloudHeader.stamp;
         cloudInfo.cloud_ground.header.frame_id = lidarFrame;
 
-        pcl::PointCloud<PointType>::Ptr groundMap(new pcl::PointCloud<PointType>());
-        if (cloudInfo.odom_available)
+        if (pubGroundCloudGlobal->get_subscription_count() != 0)
         {
-            Eigen::Affine3f trans = pcl::getTransformation(
-                cloudInfo.initial_guess_x, cloudInfo.initial_guess_y, cloudInfo.initial_guess_z,
-                cloudInfo.initial_guess_roll, cloudInfo.initial_guess_pitch, cloudInfo.initial_guess_yaw);
-            pcl::transformPointCloud(*groundCloudDS, *groundMap, trans);
+            pcl::PointCloud<PointType>::Ptr groundMap(new pcl::PointCloud<PointType>());
+            if (cloudInfo.odom_available)
+            {
+                Eigen::Affine3f trans = pcl::getTransformation(
+                    cloudInfo.initial_guess_x, cloudInfo.initial_guess_y, cloudInfo.initial_guess_z,
+                    cloudInfo.initial_guess_roll, cloudInfo.initial_guess_pitch, cloudInfo.initial_guess_yaw);
+                pcl::transformPointCloud(*groundCloudDS, *groundMap, trans);
+            }
+            else
+            {
+                *groundMap = *groundCloudDS;
+            }
+            publishCloud(pubGroundCloudGlobal, groundMap, cloudHeader.stamp, mapFrame);
         }
-        else
-        {
-            *groundMap = *groundCloudDS;
-        }
-        publishCloud(pubGroundCloudGlobal, groundMap, cloudHeader.stamp, mapFrame);
 
         pubLaserCloudInfo->publish(cloudInfo);
         ++firstFrameProcessed;

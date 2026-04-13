@@ -54,6 +54,9 @@ namespace {
 constexpr std::size_t kSurfMapNeighborCount = 5;
 constexpr float kSurfMapNeighborMaxDistance = 1.0f;
 constexpr float kSurfIVoxResolution = 0.5f;
+constexpr std::size_t kCornerMapNeighborCount = 5;
+constexpr float kCornerMapNeighborMaxDistance = 1.0f;
+constexpr float kCornerIVoxResolution = 0.5f;
 
 }  // namespace
 
@@ -170,7 +173,6 @@ class mapOptimization : public ParamServer
 {
 
 public:
-
     // gtsam
     NonlinearFactorGraph gtSAMgraph;
     Values initialEstimate;
@@ -234,6 +236,7 @@ public:
 
     pcl::KdTreeFLANN<PointType>::Ptr kdtreeCornerFromMap;
     pcl::KdTreeFLANN<PointType>::Ptr kdtreeSurfFromMap;
+    std::shared_ptr<IVoxMap> ivoxCornerFromMap;
     std::shared_ptr<IVoxMap> ivoxSurfFromMap;
 
     pcl::KdTreeFLANN<PointType>::Ptr kdtreeSurroundingKeyPoses;
@@ -266,6 +269,8 @@ public:
     vector<gtsam::Pose3> loopPoseQueue;
     vector<gtsam::noiseModel::Diagonal::shared_ptr> loopNoiseQueue;
     deque<std_msgs::msg::Float64MultiArray> loopInfoVec;
+    std::vector<int> cachedLocalMapKeyIndices;
+    bool localMapCacheValid = false;
 
     nav_msgs::msg::Path globalPath;
 
@@ -458,18 +463,63 @@ public:
         return std::make_shared<IVoxMap>(options);
     }
 
+    std::shared_ptr<IVoxMap> CreateCornerIVoxMap() const
+    {
+        IVoxMap::Options options;
+        options.resolution_ = std::max(kCornerIVoxResolution, mappingCornerLeafSize);
+        options.nearby_type_ = IVoxMap::NearbyType::NEARBY18;
+        options.capacity_ = 1000000;
+        options.num_nearest_points_ = kCornerMapNeighborCount;
+        return std::make_shared<IVoxMap>(options);
+    }
+
+    void BuildIVoxMap(const pcl::PointCloud<PointType>::Ptr &sourceCloud,
+                      std::shared_ptr<IVoxMap> *targetMap) const
+    {
+        if (targetMap == nullptr || !(*targetMap))
+            return;
+
+        IVoxMap::PointVector mapPoints;
+        mapPoints.reserve(sourceCloud->size());
+        for (const auto &point : sourceCloud->points)
+            mapPoints.emplace_back(point);
+
+        (*targetMap)->AddPoints(mapPoints);
+    }
+
+    void BuildCornerIVoxMap()
+    {
+        ivoxCornerFromMap = CreateCornerIVoxMap();
+        if (laserCloudCornerFromMapDS->empty())
+            return;
+
+        BuildIVoxMap(laserCloudCornerFromMapDS, &ivoxCornerFromMap);
+    }
+
     void BuildSurfIVoxMap()
     {
         ivoxSurfFromMap = CreateSurfIVoxMap();
         if (laserCloudSurfFromMapDS->empty())
             return;
 
-        IVoxMap::PointVector surfMapPoints;
-        surfMapPoints.reserve(laserCloudSurfFromMapDS->size());
-        for (const auto &point : laserCloudSurfFromMapDS->points)
-            surfMapPoints.emplace_back(point);
+        BuildIVoxMap(laserCloudSurfFromMapDS, &ivoxSurfFromMap);
+    }
 
-        ivoxSurfFromMap->AddPoints(surfMapPoints);
+    bool GetCornerNearestNeighborsFromIVox(
+        const PointType &queryPoint, IVoxMap::PointVector *nearestPoints) const
+    {
+        if (nearestPoints == nullptr || !ivoxCornerFromMap)
+            return false;
+
+        nearestPoints->clear();
+        if (!ivoxCornerFromMap->GetClosestPoint(
+                queryPoint, *nearestPoints, kCornerMapNeighborCount,
+                kCornerMapNeighborMaxDistance))
+        {
+            return false;
+        }
+
+        return nearestPoints->size() >= kCornerMapNeighborCount;
     }
 
     bool GetSurfNearestNeighborsFromIVox(
@@ -487,6 +537,129 @@ public:
         }
 
         return nearestPoints->size() >= kSurfMapNeighborCount;
+    }
+
+    // 使局部子图缓存失效，下一帧重新提取附近关键帧和局部地图。
+    void InvalidateLocalMapCache()
+    {
+        localMapCacheValid = false;
+        cachedLocalMapKeyIndices.clear();
+    }
+
+    // 收集当前扫描到地图优化所需的关键帧索引集合。
+    void CollectLocalMapKeyIndices(std::vector<int> *keyIndices)
+    {
+        if (keyIndices == nullptr)
+            return;
+
+        keyIndices->clear();
+        if (cloudKeyPoses3D->empty())
+            return;
+
+        pcl::PointCloud<PointType>::Ptr surroundingKeyPoses(new pcl::PointCloud<PointType>());
+        pcl::PointCloud<PointType>::Ptr surroundingKeyPosesDS(new pcl::PointCloud<PointType>());
+        std::vector<int> pointSearchInd;
+        std::vector<float> pointSearchSqDis;
+
+        kdtreeSurroundingKeyPoses->setInputCloud(cloudKeyPoses3D);
+        kdtreeSurroundingKeyPoses->radiusSearch(
+            cloudKeyPoses3D->back(), static_cast<double>(surroundingKeyframeSearchRadius),
+            pointSearchInd, pointSearchSqDis);
+
+        surroundingKeyPoses->reserve(pointSearchInd.size());
+        for (int keyIndex : pointSearchInd)
+            surroundingKeyPoses->push_back(cloudKeyPoses3D->points[keyIndex]);
+
+        downSizeFilterSurroundingKeyPoses.setInputCloud(surroundingKeyPoses);
+        downSizeFilterSurroundingKeyPoses.filter(*surroundingKeyPosesDS);
+
+        keyIndices->reserve(
+            surroundingKeyPosesDS->size() + std::min<std::size_t>(cloudKeyPoses3D->size(), 64));
+        for (auto &point : surroundingKeyPosesDS->points)
+        {
+            kdtreeSurroundingKeyPoses->nearestKSearch(
+                point, 1, pointSearchInd, pointSearchSqDis);
+            if (!pointSearchInd.empty())
+                keyIndices->push_back(pointSearchInd.front());
+        }
+
+        const int numPoses = cloudKeyPoses3D->size();
+        for (int i = numPoses - 1; i >= 0; --i)
+        {
+            if (timeLaserInfoCur - cloudKeyPoses6D->points[i].time < 10.0)
+                keyIndices->push_back(i);
+            else
+                break;
+        }
+
+        std::sort(keyIndices->begin(), keyIndices->end());
+        keyIndices->erase(
+            std::unique(keyIndices->begin(), keyIndices->end()),
+            keyIndices->end());
+    }
+
+    // 判断当前附近关键帧集合是否与缓存一致。
+    bool CanReuseLocalMap(const std::vector<int> &keyIndices) const
+    {
+        return localMapCacheValid && keyIndices == cachedLocalMapKeyIndices;
+    }
+
+    // 记录本次构建局部子图时使用的关键帧索引集合。
+    void UpdateLocalMapCache(const std::vector<int> &keyIndices)
+    {
+        cachedLocalMapKeyIndices = keyIndices;
+        localMapCacheValid = true;
+    }
+
+    // 根据关键帧索引集合拼接局部地图并重建下采样云与 iVox。
+    void ExtractCloudByKeyIndices(const std::vector<int> &keyIndices)
+    {
+        laserCloudCornerFromMap->clear();
+        laserCloudSurfFromMap->clear();
+
+        for (int thisKeyInd : keyIndices)
+        {
+            if (thisKeyInd < 0 || thisKeyInd >= static_cast<int>(cloudKeyPoses3D->size()))
+                continue;
+
+            if (pointDistance(cloudKeyPoses3D->points[thisKeyInd], cloudKeyPoses3D->back()) >
+                surroundingKeyframeSearchRadius)
+            {
+                continue;
+            }
+
+            auto mapIt = laserCloudMapContainer.find(thisKeyInd);
+            if (mapIt != laserCloudMapContainer.end())
+            {
+                *laserCloudCornerFromMap += mapIt->second.first;
+                *laserCloudSurfFromMap += mapIt->second.second;
+                continue;
+            }
+
+            pcl::PointCloud<PointType> laserCloudCornerTemp =
+                *transformPointCloud(cornerCloudKeyFrames[thisKeyInd],
+                                     &cloudKeyPoses6D->points[thisKeyInd]);
+            pcl::PointCloud<PointType> laserCloudSurfTemp =
+                *transformPointCloud(surfCloudKeyFrames[thisKeyInd],
+                                     &cloudKeyPoses6D->points[thisKeyInd]);
+            *laserCloudCornerFromMap += laserCloudCornerTemp;
+            *laserCloudSurfFromMap += laserCloudSurfTemp;
+            laserCloudMapContainer[thisKeyInd] =
+                make_pair(laserCloudCornerTemp, laserCloudSurfTemp);
+        }
+
+        downSizeFilterCorner.setInputCloud(laserCloudCornerFromMap);
+        downSizeFilterCorner.filter(*laserCloudCornerFromMapDS);
+        laserCloudCornerFromMapDSNum = laserCloudCornerFromMapDS->size();
+        BuildCornerIVoxMap();
+
+        downSizeFilterSurf.setInputCloud(laserCloudSurfFromMap);
+        downSizeFilterSurf.filter(*laserCloudSurfFromMapDS);
+        laserCloudSurfFromMapDSNum = laserCloudSurfFromMapDS->size();
+        BuildSurfIVoxMap();
+
+        if (laserCloudMapContainer.size() > 1000)
+            laserCloudMapContainer.clear();
     }
 
     void allocateMemory()
@@ -525,7 +698,9 @@ public:
 
         kdtreeCornerFromMap.reset(new pcl::KdTreeFLANN<PointType>());
         kdtreeSurfFromMap.reset(new pcl::KdTreeFLANN<PointType>());
+        ivoxCornerFromMap = CreateCornerIVoxMap();
         ivoxSurfFromMap = CreateSurfIVoxMap();
+        InvalidateLocalMapCache();
 
         for (int i = 0; i < 6; ++i){
             transformTobeMapped[i] = 0;
@@ -554,11 +729,8 @@ public:
             timeLastProcessing = timeLaserInfoCur;
 
             updateInitialGuess();
-
             extractSurroundingKeyFrames();
-
             downsampleCurrentScan();
-
             scan2MapOptimization();
 
             saveKeyFramesAndFactor();
@@ -1309,39 +1481,13 @@ public:
 
     void extractNearby()
     {
-        pcl::PointCloud<PointType>::Ptr surroundingKeyPoses(new pcl::PointCloud<PointType>());
-        pcl::PointCloud<PointType>::Ptr surroundingKeyPosesDS(new pcl::PointCloud<PointType>());
-        std::vector<int> pointSearchInd;
-        std::vector<float> pointSearchSqDis;
+        std::vector<int> localMapKeyIndices;
+        CollectLocalMapKeyIndices(&localMapKeyIndices);
+        if (CanReuseLocalMap(localMapKeyIndices))
+            return;
 
-        // extract all the nearby key poses and downsample them
-        kdtreeSurroundingKeyPoses->setInputCloud(cloudKeyPoses3D); // create kd-tree
-        kdtreeSurroundingKeyPoses->radiusSearch(cloudKeyPoses3D->back(), (double)surroundingKeyframeSearchRadius, pointSearchInd, pointSearchSqDis);
-        for (int i = 0; i < (int)pointSearchInd.size(); ++i)
-        {
-            int id = pointSearchInd[i];
-            surroundingKeyPoses->push_back(cloudKeyPoses3D->points[id]);
-        }
-
-        downSizeFilterSurroundingKeyPoses.setInputCloud(surroundingKeyPoses);
-        downSizeFilterSurroundingKeyPoses.filter(*surroundingKeyPosesDS);
-        for(auto& pt : surroundingKeyPosesDS->points)
-        {
-            kdtreeSurroundingKeyPoses->nearestKSearch(pt, 1, pointSearchInd, pointSearchSqDis);
-            pt.intensity = cloudKeyPoses3D->points[pointSearchInd[0]].intensity;
-        }
-
-        // also extract some latest key frames in case the robot rotates in one position
-        int numPoses = cloudKeyPoses3D->size();
-        for (int i = numPoses-1; i >= 0; --i)
-        {
-            if (timeLaserInfoCur - cloudKeyPoses6D->points[i].time < 10.0)
-                surroundingKeyPosesDS->push_back(cloudKeyPoses3D->points[i]);
-            else
-                break;
-        }
-
-        extractCloud(surroundingKeyPosesDS);
+        ExtractCloudByKeyIndices(localMapKeyIndices);
+        UpdateLocalMapCache(localMapKeyIndices);
     }
 
     void extractCloud(pcl::PointCloud<PointType>::Ptr cloudToExtract)
@@ -1375,6 +1521,7 @@ public:
         downSizeFilterCorner.setInputCloud(laserCloudCornerFromMap);
         downSizeFilterCorner.filter(*laserCloudCornerFromMapDS);
         laserCloudCornerFromMapDSNum = laserCloudCornerFromMapDS->size();
+        BuildCornerIVoxMap();
         // Downsample the surrounding surf key frames (or map)
         downSizeFilterSurf.setInputCloud(laserCloudSurfFromMap);
         downSizeFilterSurf.filter(*laserCloudSurfFromMapDS);
@@ -1428,85 +1575,106 @@ public:
         for (int i = 0; i < laserCloudCornerLastDSNum; i++)
         {
             PointType pointOri, pointSel, coeff;
-            std::vector<int> pointSearchInd;
-            std::vector<float> pointSearchSqDis;
+            IVoxMap::PointVector nearestPoints;
 
             pointOri = laserCloudCornerLastDS->points[i];
             pointAssociateToMap(&pointOri, &pointSel);
-            kdtreeCornerFromMap->nearestKSearch(pointSel, 5, pointSearchInd, pointSearchSqDis);
+            if (!GetCornerNearestNeighborsFromIVox(pointSel, &nearestPoints))
+                continue;
 
             cv::Mat matA1(3, 3, CV_32F, cv::Scalar::all(0));
             cv::Mat matD1(1, 3, CV_32F, cv::Scalar::all(0));
             cv::Mat matV1(3, 3, CV_32F, cv::Scalar::all(0));
-                    
-            if (pointSearchSqDis[4] < 1.0) {
-                float cx = 0, cy = 0, cz = 0;
-                for (int j = 0; j < 5; j++) {
-                    cx += laserCloudCornerFromMapDS->points[pointSearchInd[j]].x;
-                    cy += laserCloudCornerFromMapDS->points[pointSearchInd[j]].y;
-                    cz += laserCloudCornerFromMapDS->points[pointSearchInd[j]].z;
-                }
-                cx /= 5; cy /= 5;  cz /= 5;
 
-                float a11 = 0, a12 = 0, a13 = 0, a22 = 0, a23 = 0, a33 = 0;
-                for (int j = 0; j < 5; j++) {
-                    float ax = laserCloudCornerFromMapDS->points[pointSearchInd[j]].x - cx;
-                    float ay = laserCloudCornerFromMapDS->points[pointSearchInd[j]].y - cy;
-                    float az = laserCloudCornerFromMapDS->points[pointSearchInd[j]].z - cz;
+            float cx = 0.0f;
+            float cy = 0.0f;
+            float cz = 0.0f;
+            for (std::size_t j = 0; j < kCornerMapNeighborCount; ++j) {
+                cx += nearestPoints[j].x;
+                cy += nearestPoints[j].y;
+                cz += nearestPoints[j].z;
+            }
+            cx /= static_cast<float>(kCornerMapNeighborCount);
+            cy /= static_cast<float>(kCornerMapNeighborCount);
+            cz /= static_cast<float>(kCornerMapNeighborCount);
 
-                    a11 += ax * ax; a12 += ax * ay; a13 += ax * az;
-                    a22 += ay * ay; a23 += ay * az;
-                    a33 += az * az;
-                }
-                a11 /= 5; a12 /= 5; a13 /= 5; a22 /= 5; a23 /= 5; a33 /= 5;
+            float a11 = 0.0f;
+            float a12 = 0.0f;
+            float a13 = 0.0f;
+            float a22 = 0.0f;
+            float a23 = 0.0f;
+            float a33 = 0.0f;
+            for (std::size_t j = 0; j < kCornerMapNeighborCount; ++j) {
+                float ax = nearestPoints[j].x - cx;
+                float ay = nearestPoints[j].y - cy;
+                float az = nearestPoints[j].z - cz;
 
-                matA1.at<float>(0, 0) = a11; matA1.at<float>(0, 1) = a12; matA1.at<float>(0, 2) = a13;
-                matA1.at<float>(1, 0) = a12; matA1.at<float>(1, 1) = a22; matA1.at<float>(1, 2) = a23;
-                matA1.at<float>(2, 0) = a13; matA1.at<float>(2, 1) = a23; matA1.at<float>(2, 2) = a33;
+                a11 += ax * ax;
+                a12 += ax * ay;
+                a13 += ax * az;
+                a22 += ay * ay;
+                a23 += ay * az;
+                a33 += az * az;
+            }
+            a11 /= static_cast<float>(kCornerMapNeighborCount);
+            a12 /= static_cast<float>(kCornerMapNeighborCount);
+            a13 /= static_cast<float>(kCornerMapNeighborCount);
+            a22 /= static_cast<float>(kCornerMapNeighborCount);
+            a23 /= static_cast<float>(kCornerMapNeighborCount);
+            a33 /= static_cast<float>(kCornerMapNeighborCount);
 
-                cv::eigen(matA1, matD1, matV1);
+            matA1.at<float>(0, 0) = a11;
+            matA1.at<float>(0, 1) = a12;
+            matA1.at<float>(0, 2) = a13;
+            matA1.at<float>(1, 0) = a12;
+            matA1.at<float>(1, 1) = a22;
+            matA1.at<float>(1, 2) = a23;
+            matA1.at<float>(2, 0) = a13;
+            matA1.at<float>(2, 1) = a23;
+            matA1.at<float>(2, 2) = a33;
 
-                if (matD1.at<float>(0, 0) > 3 * matD1.at<float>(0, 1)) {
+            cv::eigen(matA1, matD1, matV1);
 
-                    float x0 = pointSel.x;
-                    float y0 = pointSel.y;
-                    float z0 = pointSel.z;
-                    float x1 = cx + 0.1 * matV1.at<float>(0, 0);
-                    float y1 = cy + 0.1 * matV1.at<float>(0, 1);
-                    float z1 = cz + 0.1 * matV1.at<float>(0, 2);
-                    float x2 = cx - 0.1 * matV1.at<float>(0, 0);
-                    float y2 = cy - 0.1 * matV1.at<float>(0, 1);
-                    float z2 = cz - 0.1 * matV1.at<float>(0, 2);
+            if (matD1.at<float>(0, 0) > 3 * matD1.at<float>(0, 1)) {
 
-                    float a012 = sqrt(((x0 - x1)*(y0 - y2) - (x0 - x2)*(y0 - y1)) * ((x0 - x1)*(y0 - y2) - (x0 - x2)*(y0 - y1)) 
-                                    + ((x0 - x1)*(z0 - z2) - (x0 - x2)*(z0 - z1)) * ((x0 - x1)*(z0 - z2) - (x0 - x2)*(z0 - z1)) 
-                                    + ((y0 - y1)*(z0 - z2) - (y0 - y2)*(z0 - z1)) * ((y0 - y1)*(z0 - z2) - (y0 - y2)*(z0 - z1)));
+                float x0 = pointSel.x;
+                float y0 = pointSel.y;
+                float z0 = pointSel.z;
+                float x1 = cx + 0.1f * matV1.at<float>(0, 0);
+                float y1 = cy + 0.1f * matV1.at<float>(0, 1);
+                float z1 = cz + 0.1f * matV1.at<float>(0, 2);
+                float x2 = cx - 0.1f * matV1.at<float>(0, 0);
+                float y2 = cy - 0.1f * matV1.at<float>(0, 1);
+                float z2 = cz - 0.1f * matV1.at<float>(0, 2);
 
-                    float l12 = sqrt((x1 - x2)*(x1 - x2) + (y1 - y2)*(y1 - y2) + (z1 - z2)*(z1 - z2));
+                float a012 = sqrt(((x0 - x1)*(y0 - y2) - (x0 - x2)*(y0 - y1)) * ((x0 - x1)*(y0 - y2) - (x0 - x2)*(y0 - y1))
+                                + ((x0 - x1)*(z0 - z2) - (x0 - x2)*(z0 - z1)) * ((x0 - x1)*(z0 - z2) - (x0 - x2)*(z0 - z1))
+                                + ((y0 - y1)*(z0 - z2) - (y0 - y2)*(z0 - z1)) * ((y0 - y1)*(z0 - z2) - (y0 - y2)*(z0 - z1)));
 
-                    float la = ((y1 - y2)*((x0 - x1)*(y0 - y2) - (x0 - x2)*(y0 - y1)) 
-                              + (z1 - z2)*((x0 - x1)*(z0 - z2) - (x0 - x2)*(z0 - z1))) / a012 / l12;
+                float l12 = sqrt((x1 - x2)*(x1 - x2) + (y1 - y2)*(y1 - y2) + (z1 - z2)*(z1 - z2));
 
-                    float lb = -((x1 - x2)*((x0 - x1)*(y0 - y2) - (x0 - x2)*(y0 - y1)) 
-                               - (z1 - z2)*((y0 - y1)*(z0 - z2) - (y0 - y2)*(z0 - z1))) / a012 / l12;
+                float la = ((y1 - y2)*((x0 - x1)*(y0 - y2) - (x0 - x2)*(y0 - y1))
+                          + (z1 - z2)*((x0 - x1)*(z0 - z2) - (x0 - x2)*(z0 - z1))) / a012 / l12;
 
-                    float lc = -((x1 - x2)*((x0 - x1)*(z0 - z2) - (x0 - x2)*(z0 - z1)) 
-                               + (y1 - y2)*((y0 - y1)*(z0 - z2) - (y0 - y2)*(z0 - z1))) / a012 / l12;
+                float lb = -((x1 - x2)*((x0 - x1)*(y0 - y2) - (x0 - x2)*(y0 - y1))
+                           - (z1 - z2)*((y0 - y1)*(z0 - z2) - (y0 - y2)*(z0 - z1))) / a012 / l12;
 
-                    float ld2 = a012 / l12;
+                float lc = -((x1 - x2)*((x0 - x1)*(z0 - z2) - (x0 - x2)*(z0 - z1))
+                           + (y1 - y2)*((y0 - y1)*(z0 - z2) - (y0 - y2)*(z0 - z1))) / a012 / l12;
 
-                    float s = 1 - 0.9 * fabs(ld2);
+                float ld2 = a012 / l12;
 
-                    coeff.x = s * la;
-                    coeff.y = s * lb;
-                    coeff.z = s * lc;
-                    coeff.intensity = s * ld2;
+                float s = 1 - 0.9f * fabs(ld2);
 
-                    if (s > 0.1) {
-                        laserCloudOriCornerVec[i] = pointOri;
-                        coeffSelCornerVec[i] = coeff;
-                        laserCloudOriCornerFlag[i] = true;
-                    }
+                coeff.x = s * la;
+                coeff.y = s * lb;
+                coeff.z = s * lc;
+                coeff.intensity = s * ld2;
+
+                if (s > 0.1f) {
+                    laserCloudOriCornerVec[i] = pointOri;
+                    coeffSelCornerVec[i] = coeff;
+                    laserCloudOriCornerFlag[i] = true;
                 }
             }
         }
@@ -1734,7 +1902,6 @@ public:
 
         if (laserCloudCornerLastDSNum > edgeFeatureMinValidNum && laserCloudSurfLastDSNum > surfFeatureMinValidNum)
         {
-            kdtreeCornerFromMap->setInputCloud(laserCloudCornerFromMapDS);
             if (dynamicKeyframeFilterEnable)
                 kdtreeSurfFromMap->setInputCloud(laserCloudSurfFromMapDS);
 
@@ -2191,6 +2358,7 @@ public:
         {
             // clear map cache
             laserCloudMapContainer.clear();
+            InvalidateLocalMapCache();
             // clear path
             globalPath.poses.clear();
             // update key poses

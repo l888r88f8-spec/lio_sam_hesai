@@ -26,6 +26,8 @@ public:
     pcl::PointCloud<PointType>::Ptr extractedCloud;
     pcl::PointCloud<PointType>::Ptr cornerCloud;
     pcl::PointCloud<PointType>::Ptr surfaceCloud;
+    pcl::PointCloud<PointType>::Ptr surfaceCloudScanBuffer;
+    pcl::PointCloud<PointType>::Ptr surfaceCloudScanDSBuffer;
 
     pcl::VoxelGrid<PointType> downSizeFilter;
 
@@ -63,6 +65,8 @@ public:
         extractedCloud.reset(new pcl::PointCloud<PointType>());
         cornerCloud.reset(new pcl::PointCloud<PointType>());
         surfaceCloud.reset(new pcl::PointCloud<PointType>());
+        surfaceCloudScanBuffer.reset(new pcl::PointCloud<PointType>());
+        surfaceCloudScanDSBuffer.reset(new pcl::PointCloud<PointType>());
 
         cloudCurvature = new float[N_SCAN*Horizon_SCAN];
         cloudNeighborPicked = new int[N_SCAN*Horizon_SCAN];
@@ -148,12 +152,12 @@ public:
         cornerCloud->clear();
         surfaceCloud->clear();
 
-        pcl::PointCloud<PointType>::Ptr surfaceCloudScan(new pcl::PointCloud<PointType>());
-        pcl::PointCloud<PointType>::Ptr surfaceCloudScanDS(new pcl::PointCloud<PointType>());
+        surfaceCloudScanBuffer->clear();
+        surfaceCloudScanDSBuffer->clear();
 
         for (int i = 0; i < N_SCAN; i++)
         {
-            surfaceCloudScan->clear();
+            surfaceCloudScanBuffer->clear();
 
             for (int j = 0; j < 6; j++)
             {
@@ -227,16 +231,16 @@ public:
                 for (int k = sp; k <= ep; k++)
                 {
                     if (cloudLabel[k] <= 0){
-                        surfaceCloudScan->push_back(extractedCloud->points[k]);
+                        surfaceCloudScanBuffer->push_back(extractedCloud->points[k]);
                     }
                 }
             }
 
-            surfaceCloudScanDS->clear();
-            downSizeFilter.setInputCloud(surfaceCloudScan);
-            downSizeFilter.filter(*surfaceCloudScanDS);
+            surfaceCloudScanDSBuffer->clear();
+            downSizeFilter.setInputCloud(surfaceCloudScanBuffer);
+            downSizeFilter.filter(*surfaceCloudScanDSBuffer);
 
-            *surfaceCloud += *surfaceCloudScanDS;
+            *surfaceCloud += *surfaceCloudScanDSBuffer;
         }
     }
 
