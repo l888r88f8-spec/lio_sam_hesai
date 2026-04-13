@@ -51,7 +51,6 @@ def generate_launch_description():
         Node(
             package="lio_sam_hesai",
             executable="lio_sam_hesai_imuPreintegration",
-            name="lio_sam_hesai_imuPreintegration",
             parameters=[parameter_file],
             output="screen",
         ),
