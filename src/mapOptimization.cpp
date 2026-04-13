@@ -234,8 +234,6 @@ public:
     pcl::PointCloud<PointType>::Ptr laserCloudCornerFromMapDS;
     pcl::PointCloud<PointType>::Ptr laserCloudSurfFromMapDS;
 
-    pcl::KdTreeFLANN<PointType>::Ptr kdtreeCornerFromMap;
-    pcl::KdTreeFLANN<PointType>::Ptr kdtreeSurfFromMap;
     std::shared_ptr<IVoxMap> ivoxCornerFromMap;
     std::shared_ptr<IVoxMap> ivoxSurfFromMap;
 
@@ -696,8 +694,6 @@ public:
         laserCloudCornerFromMapDS.reset(new pcl::PointCloud<PointType>());
         laserCloudSurfFromMapDS.reset(new pcl::PointCloud<PointType>());
 
-        kdtreeCornerFromMap.reset(new pcl::KdTreeFLANN<PointType>());
-        kdtreeSurfFromMap.reset(new pcl::KdTreeFLANN<PointType>());
         ivoxCornerFromMap = CreateCornerIVoxMap();
         ivoxSurfFromMap = CreateSurfIVoxMap();
         InvalidateLocalMapCache();
@@ -1902,9 +1898,6 @@ public:
 
         if (laserCloudCornerLastDSNum > edgeFeatureMinValidNum && laserCloudSurfLastDSNum > surfFeatureMinValidNum)
         {
-            if (dynamicKeyframeFilterEnable)
-                kdtreeSurfFromMap->setInputCloud(laserCloudSurfFromMapDS);
-
             for (int iterCount = 0; iterCount < 15; iterCount++)
             {
                 laserCloudOri->clear();
@@ -2127,9 +2120,7 @@ public:
         updatePointAssociateToMap();
 
         const float knnMaxSq = dynamicSurfKnnMaxDist * dynamicSurfKnnMaxDist;
-
-        std::vector<int> pointSearchInd(5);
-        std::vector<float> pointSearchSqDis(5);
+        IVoxMap::PointVector nearestPoints;
 
         out->reserve(laserCloudSurfLastDS->size());
 
@@ -2149,10 +2140,23 @@ public:
             PointType pointSel;
             pointAssociateToMap(&pointOri, &pointSel);
 
-            int found = kdtreeSurfFromMap->nearestKSearch(pointSel, 5, pointSearchInd, pointSearchSqDis);
+            nearestPoints.clear();
+            const bool found = ivoxSurfFromMap &&
+                               ivoxSurfFromMap->GetClosestPoint(
+                                   pointSel, nearestPoints, kSurfMapNeighborCount,
+                                   dynamicSurfKnnMaxDist);
+            float maxNeighborSqDist = 0.0f;
+            for (const auto &neighborPoint : nearestPoints) {
+                const float dx = pointSel.x - neighborPoint.x;
+                const float dy = pointSel.y - neighborPoint.y;
+                const float dz = pointSel.z - neighborPoint.z;
+                maxNeighborSqDist = std::max(
+                    maxNeighborSqDist, dx * dx + dy * dy + dz * dz);
+            }
 
             // 新区域/局部地图稀疏：先放行，避免阻断地图扩展
-            if (found < 5 || pointSearchSqDis[4] > knnMaxSq) {
+            if (!found || nearestPoints.size() < kSurfMapNeighborCount ||
+                maxNeighborSqDist > knnMaxSq) {
                 seen_no_match++;
                 noMatchCloud->push_back(pointOri);   // 先缓存
                 continue;
@@ -2168,7 +2172,7 @@ public:
             matX0.setZero();
 
             for (int j = 0; j < 5; j++) {
-                const auto &pj = laserCloudSurfFromMapDS->points[pointSearchInd[j]];
+                const auto &pj = nearestPoints[j];
                 matA0(j, 0) = pj.x;
                 matA0(j, 1) = pj.y;
                 matA0(j, 2) = pj.z;
@@ -2191,7 +2195,7 @@ public:
             // 平面有效性检查：沿用 LIO-SAM 常用 0.2m 的一致性门槛
             bool planeValid = true;
             for (int j = 0; j < 5; j++) {
-                const auto &pj = laserCloudSurfFromMapDS->points[pointSearchInd[j]];
+                const auto &pj = nearestPoints[j];
                 float dist = std::fabs(pa*pj.x + pb*pj.y + pc*pj.z + pd);
                 if (dist > 0.2f) { planeValid = false; break; }
             }
