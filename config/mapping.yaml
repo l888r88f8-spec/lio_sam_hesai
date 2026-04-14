@@ -22,7 +22,7 @@
     # 激光雷达参数
     sensor: HESAI                                # 雷达类型，可选velodyne、ouster、LSLIDAR、livox、HESAI
     N_SCAN: 16                                   # 雷达线数
-    Horizon_SCAN: 360                           # 单圈水平方向点数
+    Horizon_SCAN: 1000                           # 单圈水平方向点数
     downsampleRate: 1                            # 输入点云按ring的下采样倍率，1表示不降采样
     lidarMinRange: 0.5                           # 参与建图的最小量测距离，单位米
     lidarMaxRange: 60.0                          # 参与建图的最大量测距离，单位米
