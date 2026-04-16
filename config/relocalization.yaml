@@ -29,8 +29,8 @@
       lidar_point_time_scale: 1.0
       lidar_use_min_distance: 0.5
       lidar_use_max_distance: 60.0
-      lidar_rotation_noise_std: 0.001
-      lidar_position_noise_std: 0.01
+      lidar_rotation_noise_std: 0.01
+      lidar_position_noise_std: 0.02
       lidar_scan: 16
       lidar_lower_angle: 15.0
       lidar_horizon_scan: 1000                                 # 采样率

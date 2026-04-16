@@ -1,5 +1,6 @@
 #include "slam/system.h"
 
+#include <algorithm>
 #include <glog/logging.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <tf2_eigen/tf2_eigen.hpp>
@@ -14,6 +15,49 @@
 #include "slam/config_parameters.h"
 #include "slam/localization.h"
 #include "slam/preprocessing.h"
+
+namespace {
+
+constexpr double kMapToOdomTranslationAlpha = 0.18;
+constexpr double kMapToOdomZAlpha = 0.08;
+constexpr double kMapToOdomYawAlpha = 0.12;
+constexpr double kMapToOdomMaxTranslationCorrectionSpeed = 0.35;  // m/s
+constexpr double kMapToOdomMaxZCorrectionSpeed = 0.05;            // m/s
+constexpr double kMapToOdomMaxYawCorrectionSpeed = 0.30;          // rad/s
+constexpr double kMapToOdomRejectTranslationJump = 2.0;           // m
+constexpr double kMapToOdomRejectYawJump = 45.0 * kDegree2Radian; // rad
+
+double NormalizeAngle(double angle) {
+  while (angle > M_PI) {
+    angle -= 2.0 * M_PI;
+  }
+  while (angle < -M_PI) {
+    angle += 2.0 * M_PI;
+  }
+  return angle;
+}
+
+double ClampAbs(double value, double limit) {
+  if (value > limit) {
+    return limit;
+  }
+  if (value < -limit) {
+    return -limit;
+  }
+  return value;
+}
+
+Mat4d MakePlanarTransform(double x, double y, double z, double yaw) {
+  Mat4d pose = Mat4d::Identity();
+  pose.block<3, 3>(0, 0) =
+      Eigen::AngleAxisd(yaw, Vec3d::UnitZ()).toRotationMatrix();
+  pose(0, 3) = x;
+  pose(1, 3) = y;
+  pose(2, 3) = z;
+  return pose;
+}
+
+}  // namespace
 
 System::System(const rclcpp::NodeOptions& options)
     : Node("lio_sam_hesai_relocalization", options) {
@@ -531,12 +575,19 @@ bool System::ProcessLocalizationResultCache() {
   const rclcpp::Time stamp(result.timestamp_ * 1000);
   PublishTF(map_pose, result.timestamp_);
 
-  Mat4d T_imu_to_base = Mat4d::Identity();
-  if (UpdateImuToBaseTransform()) {
-    T_imu_to_base = T_base_from_imu_.inverse();
-  }
+  Mat4d odom_base_pose = Mat4d::Identity();
+  const bool has_external_odom = LookupExternalOdomBasePose(odom_base_pose);
 
-  const Mat4d map_base_pose = map_pose * T_imu_to_base;
+  Mat4d map_base_pose = map_pose;
+  if (has_external_odom && has_map_to_odom_) {
+    map_base_pose = last_map_to_odom_ * odom_base_pose;
+  } else {
+    Mat4d T_imu_to_base = Mat4d::Identity();
+    if (UpdateImuToBaseTransform()) {
+      T_imu_to_base = T_base_from_imu_.inverse();
+    }
+    map_base_pose = map_pose * T_imu_to_base;
+  }
 
   const Eigen::Quaterniond q(map_base_pose.block<3, 3>(0, 0));
   const Vec3d& t = map_base_pose.block<3, 1>(0, 3);
@@ -552,8 +603,7 @@ bool System::ProcessLocalizationResultCache() {
   pose_stamped.header.stamp = stamp;
   localization_path_.poses.emplace_back(std::move(pose_stamped));
 
-  Mat4d odom_base_pose = Mat4d::Identity();
-  if (!LookupExternalOdomBasePose(odom_base_pose)) {
+  if (!has_external_odom) {
     return true;
   }
 
@@ -592,7 +642,8 @@ void System::PublishTF(const Mat4d& map_pose, TimeStampUs timestamp) {
     return;
   }
 
-  Mat4d map_to_odom = map_pose * odom_pose.inverse();
+  const Mat4d raw_map_to_odom = map_pose * odom_pose.inverse();
+  Mat4d map_to_odom = StabilizeMapToOdom(raw_map_to_odom, timestamp);
   const auto& map_frame = ConfigParameters::Instance().map_frame_;
   const auto& odom_frame = ConfigParameters::Instance().odom_frame_;
 
@@ -600,4 +651,76 @@ void System::PublishTF(const Mat4d& map_pose, TimeStampUs timestamp) {
   tf_broadcaster_->sendTransform(eigen2Transform(
       map_to_odom.block<3, 3>(0, 0), map_to_odom.block<3, 1>(0, 3), map_frame,
       odom_frame, stamp));
+}
+
+Mat4d System::StabilizeMapToOdom(const Mat4d& raw_map_to_odom,
+                                 TimeStampUs timestamp) {
+  const Vec3d raw_translation = raw_map_to_odom.block<3, 1>(0, 3);
+  const Vec3d raw_rpy = RotationMatrixToRPY(raw_map_to_odom.block<3, 3>(0, 0));
+  const double raw_yaw = raw_rpy.z();
+
+  const Mat4d planar_raw =
+      MakePlanarTransform(raw_translation.x(), raw_translation.y(),
+                          raw_translation.z(), raw_yaw);
+
+  if (!has_map_to_odom_) {
+    last_map_to_odom_ = planar_raw;
+    has_map_to_odom_ = true;
+    last_map_to_odom_timestamp_ = timestamp;
+    return last_map_to_odom_;
+  }
+
+  const Vec3d prev_translation = last_map_to_odom_.block<3, 1>(0, 3);
+  const Vec3d prev_rpy =
+      RotationMatrixToRPY(last_map_to_odom_.block<3, 3>(0, 0));
+  const double prev_yaw = prev_rpy.z();
+
+  const Eigen::Vector2d raw_xy_delta =
+      raw_translation.head<2>() - prev_translation.head<2>();
+  const double raw_yaw_delta = NormalizeAngle(raw_yaw - prev_yaw);
+
+  if (raw_xy_delta.norm() > kMapToOdomRejectTranslationJump ||
+      std::abs(raw_yaw_delta) > kMapToOdomRejectYawJump) {
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "Reject unstable map->odom update: delta_xy=%.3f m delta_yaw=%.2f deg",
+        raw_xy_delta.norm(), raw_yaw_delta * kRadian2Degree);
+    return last_map_to_odom_;
+  }
+
+  const double dt = std::clamp(
+      static_cast<double>(timestamp - last_map_to_odom_timestamp_) * 1.0e-6,
+      0.02, 0.20);
+
+  Eigen::Vector2d target_xy =
+      prev_translation.head<2>() +
+      raw_xy_delta * kMapToOdomTranslationAlpha;
+  const double target_z =
+      prev_translation.z() +
+      (raw_translation.z() - prev_translation.z()) * kMapToOdomZAlpha;
+  const double target_yaw =
+      NormalizeAngle(prev_yaw + raw_yaw_delta * kMapToOdomYawAlpha);
+
+  Eigen::Vector2d filtered_xy_delta = target_xy - prev_translation.head<2>();
+  const double max_xy_step = kMapToOdomMaxTranslationCorrectionSpeed * dt;
+  const double filtered_xy_norm = filtered_xy_delta.norm();
+  if (filtered_xy_norm > max_xy_step && filtered_xy_norm > 1.0e-6) {
+    filtered_xy_delta *= max_xy_step / filtered_xy_norm;
+  }
+
+  const double filtered_z_delta = ClampAbs(
+      target_z - prev_translation.z(), kMapToOdomMaxZCorrectionSpeed * dt);
+  const double filtered_yaw_delta = ClampAbs(
+      NormalizeAngle(target_yaw - prev_yaw),
+      kMapToOdomMaxYawCorrectionSpeed * dt);
+
+  const Eigen::Vector2d filtered_xy =
+      prev_translation.head<2>() + filtered_xy_delta;
+  const double filtered_z = prev_translation.z() + filtered_z_delta;
+  const double filtered_yaw = NormalizeAngle(prev_yaw + filtered_yaw_delta);
+
+  last_map_to_odom_ = MakePlanarTransform(filtered_xy.x(), filtered_xy.y(),
+                                          filtered_z, filtered_yaw);
+  last_map_to_odom_timestamp_ = timestamp;
+  return last_map_to_odom_;
 }

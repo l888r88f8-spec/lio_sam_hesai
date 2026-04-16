@@ -46,6 +46,7 @@ class System : public rclcpp::Node {
 
   void PublishLocalizationPath();
   void PublishTF(const Mat4d& map_pose, TimeStampUs timestamp);
+  Mat4d StabilizeMapToOdom(const Mat4d& raw_map_to_odom, TimeStampUs timestamp);
 
   void LidarMsgCallBack(
       const sensor_msgs::msg::PointCloud2::ConstSharedPtr& cloud_ros_ptr);
@@ -121,6 +122,9 @@ class System : public rclcpp::Node {
 
   Mat4d T_base_from_imu_ = Mat4d::Identity();
   bool has_base_from_imu_ = false;
+  Mat4d last_map_to_odom_ = Mat4d::Identity();
+  bool has_map_to_odom_ = false;
+  TimeStampUs last_map_to_odom_timestamp_ = 0u;
 };
 
 #endif  // FUNNY_LIDAR_SLAM_SYSTEM_H
