@@ -29,30 +29,30 @@ def generate_launch_description():
     )
 
     nodes = [
-        Node(
-            package="tf2_ros",
-            executable="static_transform_publisher",
-            arguments=[
-                "0.02", "0.0", "0.32", "0.0", "0.0", "0.0",
-                "base_link",
-                "hesai_lidar",
-            ],
-            parameters=[{"use_sim_time": use_sim_time}],
-            output="screen",
-            emulate_tty=True,
-        ),
-        Node(
-            package="tf2_ros",
-            executable="static_transform_publisher",
-            arguments=[
-                "0.02", "0.0", "0.02", "0.0", "0.0", "0.0",
-                "base_link",
-                "imu_link",
-            ],
-            parameters=[{"use_sim_time": use_sim_time}],
-            output="screen",
-            emulate_tty=True,
-        ),
+        # Node(
+        #     package="tf2_ros",
+        #     executable="static_transform_publisher",
+        #     arguments=[
+        #         "0.02", "0.0", "0.32", "0.0", "0.0", "0.0",
+        #         "base_link",
+        #         "hesai_lidar",
+        #     ],
+        #     parameters=[{"use_sim_time": use_sim_time}],
+        #     output="screen",
+        #     emulate_tty=True,
+        # ),
+        # Node(
+        #     package="tf2_ros",
+        #     executable="static_transform_publisher",
+        #     arguments=[
+        #         "0.02", "0.0", "0.02", "0.0", "0.0", "0.0",
+        #         "base_link",
+        #         "imu_link",
+        #     ],
+        #     parameters=[{"use_sim_time": use_sim_time}],
+        #     output="screen",
+        #     emulate_tty=True,
+        # ),
         Node(
             package="lio_sam_hesai",
             executable="lio_sam_hesai_relocalization",

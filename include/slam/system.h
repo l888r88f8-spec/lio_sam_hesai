@@ -35,6 +35,7 @@ class System : public rclcpp::Node {
   ~System();
 
   void Run();
+  bool LookupExternalOdomImuPose(Mat4d& odom_pose);
 
  private:
   static void InitLidarModel();
@@ -44,8 +45,7 @@ class System : public rclcpp::Node {
   void InitConfigParameters();
 
   void PublishLocalizationPath();
-  void PublishTF(const Mat4d& map_pose, const Mat4d& odom_pose,
-                 TimeStampUs timestamp);
+  void PublishTF(const Mat4d& map_pose, TimeStampUs timestamp);
 
   void LidarMsgCallBack(
       const sensor_msgs::msg::PointCloud2::ConstSharedPtr& cloud_ros_ptr);
@@ -58,6 +58,7 @@ class System : public rclcpp::Node {
   static bool InitIMU(const IMUData& imu_data, Vec3d& init_mean_acc);
 
   bool UpdateImuToBaseTransform();
+  bool LookupExternalOdomBasePose(Mat4d& odom_base_pose);
 
  private:
   // ros2 subscribers

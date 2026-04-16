@@ -3,6 +3,7 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
+from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -11,6 +12,7 @@ def generate_launch_description():
     share_dir = get_package_share_directory("lio_sam_hesai")
     parameter_file = LaunchConfiguration("params_file")
     use_sim_time = LaunchConfiguration("use_sim_time")
+    publish_static_sensor_tf = LaunchConfiguration("publish_static_sensor_tf")
     rviz_config_file = os.path.join(share_dir, "config", "rviz2.rviz")
 
     params_declare = DeclareLaunchArgument(
@@ -22,6 +24,14 @@ def generate_launch_description():
         "use_sim_time",
         default_value="true",
         description="Use simulation clock if true.",
+    )
+    publish_static_sensor_tf_declare = DeclareLaunchArgument(
+        "publish_static_sensor_tf",
+        default_value="true",
+        description=(
+            "Publish base_link -> hesai_lidar and base_link -> imu_link here. "
+            "Set false when robot_state_publisher already publishes these frames."
+        ),
     )
     colorized_output = SetEnvironmentVariable(
         "RCUTILS_COLORIZED_OUTPUT",
@@ -41,6 +51,7 @@ def generate_launch_description():
             parameters=[{"use_sim_time": use_sim_time}],
             output="screen",
             emulate_tty=True,
+            condition=IfCondition(publish_static_sensor_tf),
         ),
         # base_link -> imu_link
         Node(
@@ -54,6 +65,7 @@ def generate_launch_description():
             parameters=[{"use_sim_time": use_sim_time}],
             output="screen",
             emulate_tty=True,
+            condition=IfCondition(publish_static_sensor_tf),
         ),
         Node(
             package="lio_sam_hesai",
@@ -75,5 +87,11 @@ def generate_launch_description():
     ]
 
     return LaunchDescription(
-        [params_declare, use_sim_time_declare, colorized_output] + nodes
+        [
+            params_declare,
+            use_sim_time_declare,
+            publish_static_sensor_tf_declare,
+            colorized_output,
+        ]
+        + nodes
     )

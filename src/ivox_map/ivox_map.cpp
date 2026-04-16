@@ -71,12 +71,7 @@ IVoxMap::AddPoints(const PointVector &world_points, const std::vector<PointVecto
     points_to_add.reserve(cur_pts);
     point_no_need_downsample.reserve(cur_pts);
 
-    std::vector<size_t> index(cur_pts);
     for (size_t i = 0; i < cur_pts; ++i) {
-        index[i] = i;
-    }
-
-    std::for_each(std::execution::unseq, index.begin(), index.end(), [&](const size_t &i) {
         const PCLPointXYZI &point_world = world_points[i];
         if (!nearest_points[i].empty()) {
             const PointVector &points_near = nearest_points[i];
@@ -110,14 +105,14 @@ IVoxMap::AddPoints(const PointVector &world_points, const std::vector<PointVecto
         } else {
             points_to_add.emplace_back(point_world);
         }
-    });
+    }
 
     AddPoints(points_to_add);
     AddPoints(point_no_need_downsample);
 }
 
 void IVoxMap::AddPoints(const PointVector &points_to_add) {
-    std::for_each(std::execution::unseq, points_to_add.begin(), points_to_add.end(), [this](const auto &pt) {
+    for (const auto &pt : points_to_add) {
         auto key = Pos2Grid(pt.getVector3fMap());
 
         auto iter = grids_map_.find(key);
@@ -136,7 +131,7 @@ void IVoxMap::AddPoints(const PointVector &points_to_add) {
             grids_cache_.splice(grids_cache_.begin(), grids_cache_, iter->second);
             grids_map_[key] = grids_cache_.begin();
         }
-    });
+    }
 }
 
 Vec3i IVoxMap::Pos2Grid(const IVoxMap::PtType &pt) const {

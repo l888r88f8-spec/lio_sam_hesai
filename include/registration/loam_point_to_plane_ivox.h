@@ -80,12 +80,7 @@ public:
             points_to_add.reserve(number_planar_point_);
             point_no_need_downsample.reserve(number_planar_point_);
 
-            std::vector<size_t> index(number_planar_point_);
             for (size_t i = 0; i < number_planar_point_; ++i) {
-                index[i] = i;
-            }
-
-            std::for_each(std::execution::unseq, index.begin(), index.end(), [&](const size_t &i) {
                 const PCLPointXYZI &point_world = pcl::transformPoint(planar_cloud.points[i],
                                                                       Eigen::Transform<Type, 3, Eigen::Affine>(T_));
 
@@ -123,7 +118,7 @@ public:
                 } else {
                     points_to_add.emplace_back(point_world);
                 }
-            });
+            }
 
             ivox_map_ptr_->AddPoints(points_to_add);
             ivox_map_ptr_->AddPoints(point_no_need_downsample);

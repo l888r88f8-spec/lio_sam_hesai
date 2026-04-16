@@ -180,6 +180,13 @@ bool Localization::Init() {
 
     delta_pose_.setIdentity();
     last_pose_ = init_pose;
+
+    Mat4d external_odom_pose = Mat4d::Identity();
+    if (system_ptr_->LookupExternalOdomImuPose(external_odom_pose)) {
+      last_external_odom_pose_ = external_odom_pose;
+    } else {
+      last_external_odom_pose_.reset();
+    }
   } else {
     LOG(WARNING) << "Initial registration failed. "
                  << "Please try to continue initialization and give a better "
@@ -195,7 +202,7 @@ bool Localization::Init() {
   LocalizationResult init_result;
   init_result.timestamp_ = curr_time_us_;
   init_result.map_pose = init_pose;
-  init_result.odom_pose = init_pose;
+  init_result.odom_pose = last_odom_state_.Pose();
   CacheResultToSystem(init_result);
   UpdateCurrentLidarCloud(*TransformPointCloud(
       VoxelGridCloud(curr_cloud_cluster_ptr_->ordered_cloud_, 0.5), init_pose));
@@ -253,6 +260,12 @@ void Localization::Run() {
       continue;
     }
 
+    if (curr_cloud_cluster_ptr_->imu_data_.size() < 2) {
+      LOG(WARNING) << "Skip localization frame due to insufficient IMU data: "
+                   << curr_cloud_cluster_ptr_->imu_data_.size();
+      continue;
+    }
+
     Timer timer_load_map;
     auto local_map = LoadLocalMap(last_pose_);
     if (need_update_local_map_) {
@@ -268,6 +281,10 @@ void Localization::Run() {
       predict_odom_state = IntegrateImuMeasuresOdom(last_odom_state_);
     }
 
+    Mat4d external_odom_pose = Mat4d::Identity();
+    const bool has_external_odom =
+        system_ptr_->LookupExternalOdomImuPose(external_odom_pose);
+
     NavStateData predict_nav_state;
 
     if (ConfigParameters::Instance().fusion_method_ ==
@@ -277,15 +294,28 @@ void Localization::Run() {
         InitPreintegration();
       }
       predict_nav_state = IntegrateImuMeasures(last_nav_state_);
+      if (has_external_odom && last_external_odom_pose_.has_value()) {
+        predict_nav_state.SetPose(
+            last_pose_ * last_external_odom_pose_.value().inverse() *
+            external_odom_pose);
+      }
     } else if (ConfigParameters::Instance().fusion_method_ ==
                kFusionLooseCoupling) {
-      // use imu integrated rotation
-      predict_nav_state.SetPose(last_nav_state_.Pose() * delta_pose_);
-      const Eigen::Quaterniond first_q =
-          curr_cloud_cluster_ptr_->imu_data_.front().orientation_;
-      const Eigen::Quaterniond end_q =
-          curr_cloud_cluster_ptr_->imu_data_.back().orientation_;
-      predict_nav_state.R_ = last_nav_state_.R_ * (first_q.inverse() * end_q);
+      if (has_external_odom && last_external_odom_pose_.has_value()) {
+        predict_nav_state.SetPose(
+            last_pose_ * last_external_odom_pose_.value().inverse() *
+            external_odom_pose);
+        predict_nav_state.V_ = last_nav_state_.V_;
+      } else {
+        // use imu integrated rotation
+        predict_nav_state.SetPose(last_nav_state_.Pose() * delta_pose_);
+        const Eigen::Quaterniond first_q =
+            curr_cloud_cluster_ptr_->imu_data_.front().orientation_;
+        const Eigen::Quaterniond end_q =
+            curr_cloud_cluster_ptr_->imu_data_.back().orientation_;
+        predict_nav_state.R_ =
+            last_nav_state_.R_ * (first_q.inverse() * end_q);
+      }
     } else if (ConfigParameters::Instance().fusion_method_ ==
                kFusionTightCouplingKF) {
       LOG(FATAL) << "Kalman filter support will be coming soon!";
@@ -331,7 +361,7 @@ void Localization::Run() {
     LocalizationResult result;
     result.timestamp_ = curr_time_us_;
     result.map_pose = curr_pose;
-    result.odom_pose = curr_pose;
+    result.odom_pose = predict_odom_state.Pose();
     CacheResultToSystem(result);
     UpdateCurrentLidarCloud(*TransformPointCloud(
         VoxelGridCloud(curr_cloud_cluster_ptr_->ordered_cloud_, 0.5),
@@ -341,6 +371,9 @@ void Localization::Run() {
     last_odom_state_ = predict_odom_state;
     last_odom_state_.bg_ = curr_nav_state.bg_;
     last_odom_state_.ba_ = curr_nav_state.ba_;
+    if (has_external_odom) {
+      last_external_odom_pose_ = external_odom_pose;
+    }
 
     // reset pre-integration and reset bias
     if (ConfigParameters::Instance().fusion_method_ ==

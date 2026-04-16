@@ -112,6 +112,7 @@ private:
     std::vector<double> local_map_edge_;
 
     std::optional<Mat4d> init_pose_optional_;
+    std::optional<Mat4d> last_external_odom_pose_;
     std::mutex mutex_init_pose_optional_;
 };
 

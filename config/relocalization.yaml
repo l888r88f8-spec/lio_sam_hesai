@@ -60,14 +60,21 @@
     frontend:
       fusion_opti_iters: 10
       fusion_method: TightCouplingOptimization
-      registration_and_searcher_mode: PointToPlane_IVOX
+      registration_and_searcher_mode: IncrementalNDT
       feature:
           planar_voxel_filter_size: 0.5
       registration:
           optimization_iter_num: 10
           point_to_planar_thres: 0.1
-          position_converge_thres: 0.01
-          rotation_converge_thres: 0.01
+          position_converge_thres: 0.005
+          rotation_converge_thres: 0.005
+          source_cloud_filter_size: 0.5
+          ndt_voxel_size: 1.0
+          ndt_outlier_threshold: 8.0
+          ndt_min_points_in_voxel: 6
+          ndt_max_points_in_voxel: 40
+          ndt_min_effective_pts: 30
+          ndt_capacity: 200000
 
     # =========================
     # 去地点云参数
@@ -84,10 +91,11 @@
     lidarMinRange: 0.5                                          # 参与分割的最小有效距离，过近点会被过滤
     lidarMaxRange: 60.0                                         # 参与分割的最大有效距离，过远点会被过滤
 
+    groundLeafSize: 0.1                                        # 原始点云下采样体素尺寸，越大发布越稀疏
     groundScanStartIndex: 0                                     # 参与地面补点和最终地面输出的起始 ring 编号
-    groundScanEndIndex: 5                                       # 参与地面补点和最终地面输出的结束 ring 编号，设为-1时表示使用全部 ring
+    groundScanEndIndex: 15                                      # 参与地面补点和最终地面输出的结束 ring 编号，设为-1时表示使用全部 ring
     groundAngleThreshold: 15.0                                  # 相邻上下线束点对的竖直夹角阈值，越小越严格
-    groundPlaneDistance: 0.12                                   # 点到拟合地面平面的距离阈值，越小越严格
+    groundPlaneDistance: 0.15                                   # 点到拟合地面平面的距离阈值，越小越严格
     groundPlaneMaxAngle: 30.0                                   # 地面法向与竖直方向允许的最大夹角，越小越严格
     groundPlaneMinPoints: 80                                    # 地面平面拟合所需的最少种子点数
     distanceForPatchBetweenRings: 0.0                           # 相邻线束地面补点的最大距离，减小后会减少地面补全

@@ -228,6 +228,12 @@ void FrontEnd::Run() {
       continue;
     }
 
+    if (curr_cloud_cluster_ptr_->imu_data_.size() < 2) {
+      LOG(WARNING) << "Skip frontend frame due to insufficient IMU data: "
+                   << curr_cloud_cluster_ptr_->imu_data_.size();
+      continue;
+    }
+
     NavStateData predict_nav_state;
 
     if (ConfigParameters::Instance().fusion_method_ ==
