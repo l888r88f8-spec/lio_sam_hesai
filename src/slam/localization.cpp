@@ -150,7 +150,9 @@ bool Localization::Init() {
 
   const auto local_map = LoadLocalMap(init_pose);
 
-  if (local_map->empty()) {
+  if (!local_map || local_map->empty()) {
+    LOG(WARNING) << "Initial local map is empty, please check localization map "
+                    "path and initialization pose.";
     return false;
   }
 
@@ -269,6 +271,10 @@ void Localization::Run() {
     Timer timer_load_map;
     auto local_map = LoadLocalMap(last_pose_);
     if (need_update_local_map_) {
+      if (!local_map || local_map->empty()) {
+        LOG(WARNING) << "Skip localization frame because local map is empty.";
+        continue;
+      }
       DLOG(INFO) << "Load local map use time(ms): " << timer_load_map.End();
       Timer timer_add_cloud;
       matcher_->AddCloudToLocalMap({*local_map});
@@ -470,6 +476,12 @@ PCLPointCloudXYZI::Ptr Localization::LoadLocalMap(const Mat4d& pose) {
 
     return map_cloud;
   } else {
+    if (!global_map_cloud_ptr_ || global_map_cloud_ptr_->empty()) {
+      LOG_EVERY_N(WARNING, 50)
+          << "Global map is unavailable, localization cannot load local map.";
+      return nullptr;
+    }
+
     PCLPointCloudXYZI::Ptr map_cloud(new PCLPointCloudXYZI);
 
     static bool first = true;

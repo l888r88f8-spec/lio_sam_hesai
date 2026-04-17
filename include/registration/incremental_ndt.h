@@ -184,6 +184,10 @@ public:
         auto cloud_world_full = *cloud_list.begin();
         auto cloud_world = VoxelGridCloud(cloud_world_full, source_cloud_filter_size_);
 
+        if (!cloud_world || cloud_world->empty()) {
+            return;
+        }
+
         if (is_localization_mode_) {
             kdtree_flann_.setInputCloud(cloud_world);
         }
@@ -212,11 +216,13 @@ public:
             active_voxels.emplace(key);
         }
 
-        std::for_each(std::execution::par_unseq, active_voxels.begin(), active_voxels.end(),
-                      [this](const auto& key) {
-                          UpdateVoxel(grids_[key]->second);
-                      }
-        );
+        for (const auto& key : active_voxels) {
+            auto grid_iter = grids_.find(key);
+            if (grid_iter == grids_.end()) {
+                continue;
+            }
+            UpdateVoxel(grid_iter->second->second);
+        }
 
         if (is_localization_mode_) {
             flag_first_scan_ = true;
@@ -228,8 +234,16 @@ public:
     bool Match(const PointcloudClusterPtr& source_cloud_cluster, Mat4d& T) override {
         CHECK(!grids_.empty());
 
+        if (!source_cloud_cluster || source_cloud_cluster->ordered_cloud_.empty()) {
+            return false;
+        }
+
         source_cloud = VoxelGridCloud(source_cloud_cluster->ordered_cloud_.makeShared(),
                                       source_cloud_filter_size_);
+
+        if (!source_cloud || source_cloud->empty()) {
+            return false;
+        }
 
         Mat4d pose = T;
 
@@ -307,7 +321,17 @@ public:
                 return false;
             }
 
-            const Vec6d dx = H.inverse() * err;
+            Eigen::LDLT<Mat6d> solver(H);
+            if (solver.info() != Eigen::Success) {
+                T = pose;
+                return false;
+            }
+
+            const Vec6d dx = solver.solve(err);
+            if (solver.info() != Eigen::Success || !dx.allFinite()) {
+                T = pose;
+                return false;
+            }
             pose.block<3, 3>(0, 0) *= SO3Exp(dx.head(3));
             pose.block<3, 1>(0, 3) += dx.tail(3);
 
@@ -346,6 +370,10 @@ public:
             return FloatNaN;
         }
 
+        if (!source_cloud || source_cloud->empty()) {
+            return std::numeric_limits<float>::max();
+        }
+
         float fitness_score = 0.0f;
 
         const CloudType::Ptr transformed_cloud_ptr(new CloudType);
@@ -357,7 +385,9 @@ public:
         int nr = 0;
 
         for (unsigned int i = 0; i < transformed_cloud_ptr->size(); ++i) {
-            kdtree_flann_.nearestKSearch(transformed_cloud_ptr->points[i], 1, nn_indices, nn_dists);
+            if (kdtree_flann_.nearestKSearch(transformed_cloud_ptr->points[i], 1, nn_indices, nn_dists) <= 0) {
+                continue;
+            }
 
             if (nn_dists.front() <= max_range) {
                 fitness_score += nn_dists.front();
