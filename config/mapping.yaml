@@ -1,11 +1,12 @@
 /**:
   ros__parameters:
     # ros2 service call /lio_sam/save_map lio_sam_hesai/srv/SaveMap "{resolution: 0.01, destination: /map/hesai_sim}"
-    # Topics
+    # Sub Topics
     pointCloudTopic: "/lidar_points"            # "/ls/lslidar_point_cloud"# Point cloud data in
-    imuTopic: "/imu"                       # IMU data in
-    odomTopic: "odometry/imu"                   # IMU pre-preintegration odometry out, same frequency as IMU
-    gpsTopic: "odometry/gps"                    # GPS odometry topic from navsat out, see module_navsat.
+    imuTopic: "/imu"                            # IMU data in
+    # Pub Topics
+    odomTopic: "odometry/imu"                   # IMU pre-preintegration odometry out
+    gpsTopic: "odometry/gps"                    # GPS odometry topic from navsat out
 
     # Frames
     lidarFrame: "hesai_lidar"
