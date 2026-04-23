@@ -184,7 +184,8 @@ bool Localization::Init() {
     last_pose_ = init_pose;
 
     Mat4d external_odom_pose = Mat4d::Identity();
-    if (system_ptr_->LookupExternalOdomImuPose(external_odom_pose)) {
+    const rclcpp::Time curr_stamp(curr_time_us_ * 1000ULL);
+    if (system_ptr_->LookupExternalOdomImuPose(curr_stamp, external_odom_pose)) {
       last_external_odom_pose_ = external_odom_pose;
     } else {
       last_external_odom_pose_.reset();
@@ -288,8 +289,15 @@ void Localization::Run() {
     }
 
     Mat4d external_odom_pose = Mat4d::Identity();
-    const bool has_external_odom =
-        system_ptr_->LookupExternalOdomImuPose(external_odom_pose);
+    const rclcpp::Time curr_stamp(curr_time_us_ * 1000ULL);
+
+    bool has_external_odom =
+        system_ptr_->LookupExternalOdomImuPose(curr_stamp, external_odom_pose);
+
+    if (!has_external_odom && last_external_odom_pose_.has_value()) {
+      external_odom_pose = last_external_odom_pose_.value();
+      has_external_odom = true;
+    }
 
     NavStateData predict_nav_state;
 

@@ -498,7 +498,31 @@ bool System::UpdateImuToBaseTransform() {
   return has_base_from_imu_;
 }
 
-bool System::LookupExternalOdomBasePose(Mat4d& odom_base_pose) {
+bool System::LookupExternalOdomBasePose(const rclcpp::Time& stamp, Mat4d& odom_base_pose) {
+  const auto& odom_frame = ConfigParameters::Instance().odom_frame_;
+  const auto& base_frame = ConfigParameters::Instance().base_link_frame_;
+  try {
+    auto tf_msg = tf_buffer_->lookupTransform(
+        odom_frame, base_frame, stamp, rclcpp::Duration::from_seconds(0.03));
+    odom_base_pose = tf2::transformToEigen(tf_msg).matrix();
+    return true;
+  } catch (const tf2::TransformException& ex) {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                         "TF lookup failed (%s -> %s): %s",
+                         odom_frame.c_str(), base_frame.c_str(), ex.what());
+    return false;
+  }
+}
+
+bool System::LookupExternalOdomImuPose(const rclcpp::Time& stamp, Mat4d& odom_pose) {
+  if (!UpdateImuToBaseTransform()) return false;
+  Mat4d odom_base_pose = Mat4d::Identity();
+  if (!LookupExternalOdomBasePose(stamp, odom_base_pose)) return false;
+  odom_pose = odom_base_pose * T_base_from_imu_;
+  return true;
+}
+
+/* bool System::LookupExternalOdomBasePose(Mat4d& odom_base_pose) {
   const auto& odom_frame = ConfigParameters::Instance().odom_frame_;
   const auto& base_frame = ConfigParameters::Instance().base_link_frame_;
 
@@ -528,7 +552,7 @@ bool System::LookupExternalOdomImuPose(Mat4d& odom_pose) {
 
   odom_pose = odom_base_pose * T_base_from_imu_;
   return true;
-}
+} */
 
 void System::Run() {
   // publish localization path and odometry
@@ -567,16 +591,16 @@ bool System::ProcessLocalizationResultCache() {
       return false;
     }
 
-    result = localization_results_deque_.front();
-    localization_results_deque_.pop_front();
+    result = localization_results_deque_.back();
+    localization_results_deque_.clear();
   }
 
   const Mat4d map_pose = result.map_pose;
-  const rclcpp::Time stamp(result.timestamp_ * 1000);
+  const rclcpp::Time stamp(result.timestamp_ * 1000ULL);
   PublishTF(map_pose, result.timestamp_);
 
   Mat4d odom_base_pose = Mat4d::Identity();
-  const bool has_external_odom = LookupExternalOdomBasePose(odom_base_pose);
+  const bool has_external_odom = LookupExternalOdomBasePose(stamp, odom_base_pose);
 
   Mat4d map_base_pose = map_pose;
   if (has_external_odom && has_map_to_odom_) {
@@ -637,20 +661,31 @@ void System::PublishLocalizationPath() {
 }
 
 void System::PublishTF(const Mat4d& map_pose, TimeStampUs timestamp) {
-  Mat4d odom_pose = Mat4d::Identity();
-  if (!LookupExternalOdomImuPose(odom_pose)) {
-    return;
-  }
-
-  const Mat4d raw_map_to_odom = map_pose * odom_pose.inverse();
-  Mat4d map_to_odom = StabilizeMapToOdom(raw_map_to_odom, timestamp);
+  const rclcpp::Time stamp(timestamp * 1000ULL);
   const auto& map_frame = ConfigParameters::Instance().map_frame_;
   const auto& odom_frame = ConfigParameters::Instance().odom_frame_;
 
-  const double stamp = static_cast<double>(timestamp) * 1e3;
+  Mat4d map_to_odom = last_map_to_odom_;
+  Mat4d odom_pose = Mat4d::Identity();
+
+  if (LookupExternalOdomImuPose(stamp, odom_pose)) {
+    const Mat4d raw_map_to_odom = map_pose * odom_pose.inverse();
+    map_to_odom = StabilizeMapToOdom(raw_map_to_odom, timestamp);
+  } else {
+    if (!has_map_to_odom_) {
+      return;
+    }
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "Missing time-aligned odom TF, reuse last valid map->odom.");
+  }
+
   tf_broadcaster_->sendTransform(eigen2Transform(
-      map_to_odom.block<3, 3>(0, 0), map_to_odom.block<3, 1>(0, 3), map_frame,
-      odom_frame, stamp));
+      map_to_odom.block<3, 3>(0, 0),
+      map_to_odom.block<3, 1>(0, 3),
+      map_frame,
+      odom_frame,
+      static_cast<double>(stamp.nanoseconds())));
 }
 
 Mat4d System::StabilizeMapToOdom(const Mat4d& raw_map_to_odom,
