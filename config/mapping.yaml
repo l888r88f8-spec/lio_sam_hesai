@@ -58,8 +58,8 @@
     segmentation_only_mode: false                # 是否只分割地面
     saveGroundPCD: true                          # 是否保存全局地面点云，保存路径与全局地图一致
     groundLeafSize: 0.02                         # 原始点云下采样体素尺寸，越大发布越稀疏
-    groundScanStartIndex: 0                      # 参与地面补点和最终地面输出的起始 ring 编号
-    groundScanEndIndex: 5                        # 参与地面补点和最终地面输出的结束 ring 编号，设为-1时表示使用全部 ring
+    groundScanStartIndex: 10                      # 参与地面补点和最终地面输出的起始 ring 编号
+    groundScanEndIndex: 15                        # 参与地面补点和最终地面输出的结束 ring 编号，设为-1时表示使用全部 ring
     distanceForPatchBetweenRings: 2.5            # 相邻ring距离小于该值时在已确认地面之间插值补点，单位米
     groundAngleThreshold: 10.0                   # 相邻ring竖直夹角阈值，小于该值的点对可作为地面种子，单位度
 

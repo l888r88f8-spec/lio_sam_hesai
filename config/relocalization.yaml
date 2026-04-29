@@ -58,23 +58,22 @@
         ]
 
     frontend:
-      fusion_opti_iters: 3
-      fusion_method: LooseCoupling
-      registration_and_searcher_mode: PointToPlane_IVOX
+      fusion_opti_iters: 30
+      fusion_method: TightCouplingOptimization # LooseCoupling, TightCouplingKF, TightCouplingOptimization
+
+      registration_and_searcher_mode: PointToPlane_IVOX # IcpOptimized, PointToPlane_IVOX
       feature:
-        planar_voxel_filter_size: 0.8
+        planar_voxel_filter_size: 0.25 # 默认0.5
       registration:
-        optimization_iter_num: 4
-        point_to_planar_thres: 0.15
-        position_converge_thres: 0.01
-        rotation_converge_thres: 0.01
-        source_cloud_filter_size: 0.8
-        ndt_voxel_size: 1.5
-        ndt_outlier_threshold: 8.0
-        ndt_min_points_in_voxel: 6
-        ndt_max_points_in_voxel: 40
-        ndt_min_effective_pts: 20
-        ndt_capacity: 120000
+        local_map_size: 0
+        point_search_thres: 1.0
+        optimization_iter_num: 30
+        local_map_cloud_filter_size: 0.4
+        source_cloud_filter_size: 0.4
+        position_converge_thres: 0.005
+        rotation_converge_thres: 0.005
+        keyframe_delta_distance: 0.0
+        keyframe_delta_rotation: 0.0
 
     # =========================
     # 去地点云参数
