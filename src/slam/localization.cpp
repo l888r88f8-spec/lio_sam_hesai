@@ -182,18 +182,11 @@ bool Localization::Init() {
 
     delta_pose_.setIdentity();
     last_pose_ = init_pose;
-
-    Mat4d external_odom_pose = Mat4d::Identity();
-    const rclcpp::Time curr_stamp(curr_time_us_ * 1000ULL);
-    if (system_ptr_->LookupExternalOdomImuPose(curr_stamp, external_odom_pose)) {
-      last_external_odom_pose_ = external_odom_pose;
-    } else {
-      last_external_odom_pose_.reset();
-    }
   } else {
     LOG(WARNING) << "Initial registration failed. "
                  << "Please try to continue initialization and give a better "
                     "initial pose.";
+    return false;
   }
 
   last_odom_state_.SetPose(Mat4d::Identity());
@@ -287,17 +280,7 @@ void Localization::Run() {
     if (odom_pre_integration_ptr_) {
       predict_odom_state = IntegrateImuMeasuresOdom(last_odom_state_);
     }
-
-    Mat4d external_odom_pose = Mat4d::Identity();
-    const rclcpp::Time curr_stamp(curr_time_us_ * 1000ULL);
-
-    bool has_external_odom =
-        system_ptr_->LookupExternalOdomImuPose(curr_stamp, external_odom_pose);
-
-    if (!has_external_odom && last_external_odom_pose_.has_value()) {
-      external_odom_pose = last_external_odom_pose_.value();
-      has_external_odom = true;
-    }
+    predict_odom_state.timestamp_ = curr_time_us_;
 
     NavStateData predict_nav_state;
 
@@ -308,28 +291,14 @@ void Localization::Run() {
         InitPreintegration();
       }
       predict_nav_state = IntegrateImuMeasures(last_nav_state_);
-      if (has_external_odom && last_external_odom_pose_.has_value()) {
-        predict_nav_state.SetPose(
-            last_pose_ * last_external_odom_pose_.value().inverse() *
-            external_odom_pose);
-      }
+      predict_nav_state.timestamp_ = curr_time_us_;
     } else if (ConfigParameters::Instance().fusion_method_ ==
                kFusionLooseCoupling) {
-      if (has_external_odom && last_external_odom_pose_.has_value()) {
-        predict_nav_state.SetPose(
-            last_pose_ * last_external_odom_pose_.value().inverse() *
-            external_odom_pose);
-        predict_nav_state.V_ = last_nav_state_.V_;
-      } else {
-        // use imu integrated rotation
-        predict_nav_state.SetPose(last_nav_state_.Pose() * delta_pose_);
-        const Eigen::Quaterniond first_q =
-            curr_cloud_cluster_ptr_->imu_data_.front().orientation_;
-        const Eigen::Quaterniond end_q =
-            curr_cloud_cluster_ptr_->imu_data_.back().orientation_;
-        predict_nav_state.R_ =
-            last_nav_state_.R_ * (first_q.inverse() * end_q);
-      }
+      const Mat4d odom_delta =
+          last_odom_state_.Pose().inverse() * predict_odom_state.Pose();
+      predict_nav_state.SetPose(last_pose_ * odom_delta);
+      predict_nav_state.V_ = predict_odom_state.V_;
+      predict_nav_state.timestamp_ = curr_time_us_;
     } else if (ConfigParameters::Instance().fusion_method_ ==
                kFusionTightCouplingKF) {
       LOG(FATAL) << "Kalman filter support will be coming soon!";
@@ -385,9 +354,6 @@ void Localization::Run() {
     last_odom_state_ = predict_odom_state;
     last_odom_state_.bg_ = curr_nav_state.bg_;
     last_odom_state_.ba_ = curr_nav_state.ba_;
-    if (has_external_odom) {
-      last_external_odom_pose_ = external_odom_pose;
-    }
 
     // reset pre-integration and reset bias
     if (ConfigParameters::Instance().fusion_method_ ==

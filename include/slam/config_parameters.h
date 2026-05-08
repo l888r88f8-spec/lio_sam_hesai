@@ -112,13 +112,11 @@ public:
 
     // frame ids
     std::string map_frame_{"map"};
-    std::string odom_frame_{"odom"};
     std::string base_link_frame_{"base_link"};
     std::string imu_frame_{"imu_link"};
     std::string lidar_frame_{"lidar"};
 
     // output topics
-    std::string odom_topic_{"odometry/imu"};
     std::string mapping_odom_topic_{"lio_sam/mapping/odometry"};
 
     // localization map path

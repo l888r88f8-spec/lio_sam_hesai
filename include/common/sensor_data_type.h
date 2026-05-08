@@ -60,6 +60,8 @@ struct NavStateData : DataBase {
 struct LocalizationResult : DataBase {
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
+    // Poses are expressed at the IMU frame. System converts them to base_link
+    // before publishing odometry and TF.
     Mat4d map_pose = Mat4d::Identity();
     Mat4d odom_pose = Mat4d::Identity();
 };

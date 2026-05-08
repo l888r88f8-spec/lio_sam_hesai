@@ -35,7 +35,6 @@ class System : public rclcpp::Node {
   ~System();
 
   void Run();
-  bool LookupExternalOdomImuPose(const rclcpp::Time& stamp, Mat4d& odom_pose);
 
  private:
   static void InitLidarModel();
@@ -45,8 +44,7 @@ class System : public rclcpp::Node {
   void InitConfigParameters();
 
   void PublishLocalizationPath();
-  void PublishTF(const Mat4d& map_pose, TimeStampUs timestamp);
-  Mat4d StabilizeMapToOdom(const Mat4d& raw_map_to_odom, TimeStampUs timestamp);
+  void PublishTF(const Mat4d& map_base_pose, TimeStampUs timestamp);
 
   void LidarMsgCallBack(
       const sensor_msgs::msg::PointCloud2::ConstSharedPtr& cloud_ros_ptr);
@@ -59,7 +57,6 @@ class System : public rclcpp::Node {
   static bool InitIMU(const IMUData& imu_data, Vec3d& init_mean_acc);
 
   bool UpdateImuToBaseTransform();
-  bool LookupExternalOdomBasePose(const rclcpp::Time& stamp, Mat4d& odom_base_pose);
 
  private:
   // ros2 subscribers
@@ -78,7 +75,6 @@ class System : public rclcpp::Node {
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr
       localization_current_lidar_cloud_pub_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr localization_odom_pub_;
-  rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr localization_imu_odom_pub_;
 
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
@@ -122,9 +118,6 @@ class System : public rclcpp::Node {
 
   Mat4d T_base_from_imu_ = Mat4d::Identity();
   bool has_base_from_imu_ = false;
-  Mat4d last_map_to_odom_ = Mat4d::Identity();
-  bool has_map_to_odom_ = false;
-  TimeStampUs last_map_to_odom_timestamp_ = 0u;
 };
 
 #endif  // FUNNY_LIDAR_SLAM_SYSTEM_H

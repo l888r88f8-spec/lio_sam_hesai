@@ -1,6 +1,5 @@
 #include "slam/system.h"
 
-#include <algorithm>
 #include <glog/logging.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <tf2_eigen/tf2_eigen.hpp>
@@ -15,49 +14,6 @@
 #include "slam/config_parameters.h"
 #include "slam/localization.h"
 #include "slam/preprocessing.h"
-
-namespace {
-
-constexpr double kMapToOdomTranslationAlpha = 0.18;
-constexpr double kMapToOdomZAlpha = 0.08;
-constexpr double kMapToOdomYawAlpha = 0.12;
-constexpr double kMapToOdomMaxTranslationCorrectionSpeed = 0.35;  // m/s
-constexpr double kMapToOdomMaxZCorrectionSpeed = 0.05;            // m/s
-constexpr double kMapToOdomMaxYawCorrectionSpeed = 0.30;          // rad/s
-constexpr double kMapToOdomRejectTranslationJump = 2.0;           // m
-constexpr double kMapToOdomRejectYawJump = 45.0 * kDegree2Radian; // rad
-
-double NormalizeAngle(double angle) {
-  while (angle > M_PI) {
-    angle -= 2.0 * M_PI;
-  }
-  while (angle < -M_PI) {
-    angle += 2.0 * M_PI;
-  }
-  return angle;
-}
-
-double ClampAbs(double value, double limit) {
-  if (value > limit) {
-    return limit;
-  }
-  if (value < -limit) {
-    return -limit;
-  }
-  return value;
-}
-
-Mat4d MakePlanarTransform(double x, double y, double z, double yaw) {
-  Mat4d pose = Mat4d::Identity();
-  pose.block<3, 3>(0, 0) =
-      Eigen::AngleAxisd(yaw, Vec3d::UnitZ()).toRotationMatrix();
-  pose(0, 3) = x;
-  pose(1, 3) = y;
-  pose(2, 3) = z;
-  return pose;
-}
-
-}  // namespace
 
 System::System(const rclcpp::NodeOptions& options)
     : Node("lio_sam_hesai_relocalization", options) {
@@ -129,15 +85,12 @@ void System::InitConfigParameters() {
 
   // frame ids
   util::param(this, "frames.map", config.map_frame_, config.map_frame_);
-  util::param(this, "frames.odom", config.odom_frame_, config.odom_frame_);
   util::param(this, "frames.base_link", config.base_link_frame_,
               config.base_link_frame_);
   util::param(this, "frames.imu", config.imu_frame_, config.imu_frame_);
   util::param(this, "frames.lidar", config.lidar_frame_, config.lidar_frame_);
 
   // output topics
-  util::param(this, "output.odom_topic", config.odom_topic_,
-              config.odom_topic_);
   util::param(this, "output.mapping_odom_topic", config.mapping_odom_topic_,
               config.mapping_odom_topic_);
 
@@ -297,8 +250,6 @@ void System::InitPublisher() {
 
   localization_odom_pub_ = create_publisher<nav_msgs::msg::Odometry>(
       ConfigParameters::Instance().mapping_odom_topic_, 5);
-  localization_imu_odom_pub_ = create_publisher<nav_msgs::msg::Odometry>(
-      ConfigParameters::Instance().odom_topic_, 50);
 }
 
 void System::InitSubscriber() {
@@ -498,62 +449,6 @@ bool System::UpdateImuToBaseTransform() {
   return has_base_from_imu_;
 }
 
-bool System::LookupExternalOdomBasePose(const rclcpp::Time& stamp, Mat4d& odom_base_pose) {
-  const auto& odom_frame = ConfigParameters::Instance().odom_frame_;
-  const auto& base_frame = ConfigParameters::Instance().base_link_frame_;
-  try {
-    auto tf_msg = tf_buffer_->lookupTransform(
-        odom_frame, base_frame, stamp, rclcpp::Duration::from_seconds(0.03));
-    odom_base_pose = tf2::transformToEigen(tf_msg).matrix();
-    return true;
-  } catch (const tf2::TransformException& ex) {
-    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
-                         "TF lookup failed (%s -> %s): %s",
-                         odom_frame.c_str(), base_frame.c_str(), ex.what());
-    return false;
-  }
-}
-
-bool System::LookupExternalOdomImuPose(const rclcpp::Time& stamp, Mat4d& odom_pose) {
-  if (!UpdateImuToBaseTransform()) return false;
-  Mat4d odom_base_pose = Mat4d::Identity();
-  if (!LookupExternalOdomBasePose(stamp, odom_base_pose)) return false;
-  odom_pose = odom_base_pose * T_base_from_imu_;
-  return true;
-}
-
-/* bool System::LookupExternalOdomBasePose(Mat4d& odom_base_pose) {
-  const auto& odom_frame = ConfigParameters::Instance().odom_frame_;
-  const auto& base_frame = ConfigParameters::Instance().base_link_frame_;
-
-  try {
-    auto tf_msg =
-        tf_buffer_->lookupTransform(odom_frame, base_frame, rclcpp::Time(0));
-    odom_base_pose = tf2::transformToEigen(tf_msg).matrix();
-    return true;
-  } catch (const tf2::TransformException& ex) {
-    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
-                         "TF lookup failed (%s -> %s): %s", odom_frame.c_str(),
-                         base_frame.c_str(), ex.what());
-  }
-
-  return false;
-}
-
-bool System::LookupExternalOdomImuPose(Mat4d& odom_pose) {
-  if (!UpdateImuToBaseTransform()) {
-    return false;
-  }
-
-  Mat4d odom_base_pose = Mat4d::Identity();
-  if (!LookupExternalOdomBasePose(odom_base_pose)) {
-    return false;
-  }
-
-  odom_pose = odom_base_pose * T_base_from_imu_;
-  return true;
-} */
-
 void System::Run() {
   // publish localization path and odometry
   if (ProcessLocalizationResultCache()) {
@@ -595,23 +490,15 @@ bool System::ProcessLocalizationResultCache() {
     localization_results_deque_.clear();
   }
 
-  const Mat4d map_pose = result.map_pose;
   const rclcpp::Time stamp(result.timestamp_ * 1000ULL);
-  PublishTF(map_pose, result.timestamp_);
 
-  Mat4d odom_base_pose = Mat4d::Identity();
-  const bool has_external_odom = LookupExternalOdomBasePose(stamp, odom_base_pose);
-
-  Mat4d map_base_pose = map_pose;
-  if (has_external_odom && has_map_to_odom_) {
-    map_base_pose = last_map_to_odom_ * odom_base_pose;
-  } else {
-    Mat4d T_imu_to_base = Mat4d::Identity();
-    if (UpdateImuToBaseTransform()) {
-      T_imu_to_base = T_base_from_imu_.inverse();
-    }
-    map_base_pose = map_pose * T_imu_to_base;
+  Mat4d T_imu_to_base = Mat4d::Identity();
+  if (UpdateImuToBaseTransform()) {
+    T_imu_to_base = T_base_from_imu_.inverse();
   }
+
+  const Mat4d map_base_pose = result.map_pose * T_imu_to_base;
+  PublishTF(map_base_pose, result.timestamp_);
 
   const Eigen::Quaterniond q(map_base_pose.block<3, 3>(0, 0));
   const Vec3d& t = map_base_pose.block<3, 1>(0, 3);
@@ -627,27 +514,18 @@ bool System::ProcessLocalizationResultCache() {
   pose_stamped.header.stamp = stamp;
   localization_path_.poses.emplace_back(std::move(pose_stamped));
 
-  if (!has_external_odom) {
-    return true;
-  }
-
   nav_msgs::msg::Odometry mapping_odom;
   mapping_odom.header.stamp = stamp;
-  mapping_odom.header.frame_id = ConfigParameters::Instance().odom_frame_;
-  mapping_odom.child_frame_id = "odom_mapping";
-  mapping_odom.pose.pose.position.x = odom_base_pose(0, 3);
-  mapping_odom.pose.pose.position.y = odom_base_pose(1, 3);
-  mapping_odom.pose.pose.position.z = odom_base_pose(2, 3);
-  Eigen::Quaterniond q_odom(odom_base_pose.block<3, 3>(0, 0));
-  mapping_odom.pose.pose.orientation.x = q_odom.x();
-  mapping_odom.pose.pose.orientation.y = q_odom.y();
-  mapping_odom.pose.pose.orientation.z = q_odom.z();
-  mapping_odom.pose.pose.orientation.w = q_odom.w();
+  mapping_odom.header.frame_id = ConfigParameters::Instance().map_frame_;
+  mapping_odom.child_frame_id = ConfigParameters::Instance().base_link_frame_;
+  mapping_odom.pose.pose.position.x = map_base_pose(0, 3);
+  mapping_odom.pose.pose.position.y = map_base_pose(1, 3);
+  mapping_odom.pose.pose.position.z = map_base_pose(2, 3);
+  mapping_odom.pose.pose.orientation.x = q.x();
+  mapping_odom.pose.pose.orientation.y = q.y();
+  mapping_odom.pose.pose.orientation.z = q.z();
+  mapping_odom.pose.pose.orientation.w = q.w();
   localization_odom_pub_->publish(mapping_odom);
-
-  nav_msgs::msg::Odometry imu_odom = mapping_odom;
-  imu_odom.child_frame_id = "odom_imu";
-  localization_imu_odom_pub_->publish(imu_odom);
 
   return true;
 }
@@ -660,102 +538,15 @@ void System::PublishLocalizationPath() {
   }
 }
 
-void System::PublishTF(const Mat4d& map_pose, TimeStampUs timestamp) {
+void System::PublishTF(const Mat4d& map_base_pose, TimeStampUs timestamp) {
   const rclcpp::Time stamp(timestamp * 1000ULL);
   const auto& map_frame = ConfigParameters::Instance().map_frame_;
-  const auto& odom_frame = ConfigParameters::Instance().odom_frame_;
-
-  Mat4d map_to_odom = last_map_to_odom_;
-  Mat4d odom_pose = Mat4d::Identity();
-
-  if (LookupExternalOdomImuPose(stamp, odom_pose)) {
-    const Mat4d raw_map_to_odom = map_pose * odom_pose.inverse();
-    map_to_odom = StabilizeMapToOdom(raw_map_to_odom, timestamp);
-  } else {
-    if (!has_map_to_odom_) {
-      return;
-    }
-    RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 2000,
-        "Missing time-aligned odom TF, reuse last valid map->odom.");
-  }
+  const auto& base_frame = ConfigParameters::Instance().base_link_frame_;
 
   tf_broadcaster_->sendTransform(eigen2Transform(
-      map_to_odom.block<3, 3>(0, 0),
-      map_to_odom.block<3, 1>(0, 3),
+      map_base_pose.block<3, 3>(0, 0),
+      map_base_pose.block<3, 1>(0, 3),
       map_frame,
-      odom_frame,
+      base_frame,
       static_cast<double>(stamp.nanoseconds())));
-}
-
-Mat4d System::StabilizeMapToOdom(const Mat4d& raw_map_to_odom,
-                                 TimeStampUs timestamp) {
-  const Vec3d raw_translation = raw_map_to_odom.block<3, 1>(0, 3);
-  const Vec3d raw_rpy = RotationMatrixToRPY(raw_map_to_odom.block<3, 3>(0, 0));
-  const double raw_yaw = raw_rpy.z();
-
-  const Mat4d planar_raw =
-      MakePlanarTransform(raw_translation.x(), raw_translation.y(),
-                          raw_translation.z(), raw_yaw);
-
-  if (!has_map_to_odom_) {
-    last_map_to_odom_ = planar_raw;
-    has_map_to_odom_ = true;
-    last_map_to_odom_timestamp_ = timestamp;
-    return last_map_to_odom_;
-  }
-
-  const Vec3d prev_translation = last_map_to_odom_.block<3, 1>(0, 3);
-  const Vec3d prev_rpy =
-      RotationMatrixToRPY(last_map_to_odom_.block<3, 3>(0, 0));
-  const double prev_yaw = prev_rpy.z();
-
-  const Eigen::Vector2d raw_xy_delta =
-      raw_translation.head<2>() - prev_translation.head<2>();
-  const double raw_yaw_delta = NormalizeAngle(raw_yaw - prev_yaw);
-
-  if (raw_xy_delta.norm() > kMapToOdomRejectTranslationJump ||
-      std::abs(raw_yaw_delta) > kMapToOdomRejectYawJump) {
-    RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 2000,
-        "Reject unstable map->odom update: delta_xy=%.3f m delta_yaw=%.2f deg",
-        raw_xy_delta.norm(), raw_yaw_delta * kRadian2Degree);
-    return last_map_to_odom_;
-  }
-
-  const double dt = std::clamp(
-      static_cast<double>(timestamp - last_map_to_odom_timestamp_) * 1.0e-6,
-      0.02, 0.20);
-
-  Eigen::Vector2d target_xy =
-      prev_translation.head<2>() +
-      raw_xy_delta * kMapToOdomTranslationAlpha;
-  const double target_z =
-      prev_translation.z() +
-      (raw_translation.z() - prev_translation.z()) * kMapToOdomZAlpha;
-  const double target_yaw =
-      NormalizeAngle(prev_yaw + raw_yaw_delta * kMapToOdomYawAlpha);
-
-  Eigen::Vector2d filtered_xy_delta = target_xy - prev_translation.head<2>();
-  const double max_xy_step = kMapToOdomMaxTranslationCorrectionSpeed * dt;
-  const double filtered_xy_norm = filtered_xy_delta.norm();
-  if (filtered_xy_norm > max_xy_step && filtered_xy_norm > 1.0e-6) {
-    filtered_xy_delta *= max_xy_step / filtered_xy_norm;
-  }
-
-  const double filtered_z_delta = ClampAbs(
-      target_z - prev_translation.z(), kMapToOdomMaxZCorrectionSpeed * dt);
-  const double filtered_yaw_delta = ClampAbs(
-      NormalizeAngle(target_yaw - prev_yaw),
-      kMapToOdomMaxYawCorrectionSpeed * dt);
-
-  const Eigen::Vector2d filtered_xy =
-      prev_translation.head<2>() + filtered_xy_delta;
-  const double filtered_z = prev_translation.z() + filtered_z_delta;
-  const double filtered_yaw = NormalizeAngle(prev_yaw + filtered_yaw_delta);
-
-  last_map_to_odom_ = MakePlanarTransform(filtered_xy.x(), filtered_xy.y(),
-                                          filtered_z, filtered_yaw);
-  last_map_to_odom_timestamp_ = timestamp;
-  return last_map_to_odom_;
 }

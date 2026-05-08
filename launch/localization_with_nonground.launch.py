@@ -13,6 +13,7 @@ def generate_launch_description():
     parameter_file = LaunchConfiguration("params_file")
     use_sim_time = LaunchConfiguration("use_sim_time")
     use_rviz = LaunchConfiguration("use_rviz")
+    publish_static_tf = LaunchConfiguration("publish_static_tf")
     rviz_config_file = os.path.join(share_dir, "config", "rviz2.rviz")
 
     params_declare = DeclareLaunchArgument(
@@ -30,36 +31,43 @@ def generate_launch_description():
         default_value="false",
         description="Launch RViz if true.",
     )
+    publish_static_tf_declare = DeclareLaunchArgument(
+        "publish_static_tf",
+        default_value="false",
+        description="Publish base_link->lidar and base_link->imu static transforms.",
+    )
     colorized_output = SetEnvironmentVariable(
         "RCUTILS_COLORIZED_OUTPUT",
         "1",
     )
 
     nodes = [
-        # Node(
-        #     package="tf2_ros",
-        #     executable="static_transform_publisher",
-        #     arguments=[
-        #         "0.02", "0.0", "0.32", "0.0", "0.0", "0.0",
-        #         "base_link",
-        #         "hesai_lidar",
-        #     ],
-        #     parameters=[{"use_sim_time": use_sim_time}],
-        #     output="screen",
-        #     emulate_tty=True,
-        # ),
-        # Node(
-        #     package="tf2_ros",
-        #     executable="static_transform_publisher",
-        #     arguments=[
-        #         "0.02", "0.0", "0.02", "0.0", "0.0", "0.0",
-        #         "base_link",
-        #         "imu_link",
-        #     ],
-        #     parameters=[{"use_sim_time": use_sim_time}],
-        #     output="screen",
-        #     emulate_tty=True,
-        # ),
+        Node(
+            package="tf2_ros",
+            executable="static_transform_publisher",
+            arguments=[
+                "0.02", "0.0", "0.32", "0.0", "0.0", "0.0",
+                "base_link",
+                "hesai_lidar",
+            ],
+            parameters=[{"use_sim_time": use_sim_time}],
+            output="screen",
+            emulate_tty=True,
+            condition=IfCondition(publish_static_tf),
+        ),
+        Node(
+            package="tf2_ros",
+            executable="static_transform_publisher",
+            arguments=[
+                "0.02", "0.0", "0.02", "0.0", "0.0", "0.0",
+                "base_link",
+                "imu_link",
+            ],
+            parameters=[{"use_sim_time": use_sim_time}],
+            output="screen",
+            emulate_tty=True,
+            condition=IfCondition(publish_static_tf),
+        ),
         Node(
             package="lio_sam_hesai",
             executable="lio_sam_hesai_relocalization",
@@ -99,6 +107,7 @@ def generate_launch_description():
             params_declare,
             use_sim_time_declare,
             use_rviz_declare,
+            publish_static_tf_declare,
             colorized_output,
         ]
         + nodes

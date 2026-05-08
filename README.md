@@ -92,6 +92,12 @@ ros2 service call /lio_sam/save_map lio_sam_hesai/srv/SaveMap "{resolution: 0.2,
 ros2 launch lio_sam_hesai localization.launch.py
 ```
 
+重定位节点会根据雷达匹配和IMU预积分直接发布`map -> base_link`，不再发布`odom`相关TF，也不再需要外部小车里程计。默认launch会发布`base_link -> hesai_lidar`和`base_link -> imu_link`静态TF；如果你的机器人URDF或其他节点已经发布这两条静态TF，请使用：
+
+```bash
+ros2 launch lio_sam_hesai localization.launch.py publish_static_tf:=false
+```
+
 ### 2. 在RViz中设置初始位置
 
 <img width="1453" height="650" alt="image_2" src="image_2.png" />
@@ -100,6 +106,8 @@ ros2 launch lio_sam_hesai localization.launch.py
 ```bash
 ros2 launch lio_sam_hesai localization_with_nonground.launch.py
 ```
+
+同样支持`publish_static_tf:=false`以关闭launch内置的传感器静态TF发布。
 
 <img width="1453" height="650" alt="image_3" src="image_3.png" />
 

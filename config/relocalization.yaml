@@ -11,14 +11,12 @@
 
     frames:
       map: "map"
-      odom: "odom"
       base_link: "base_link"
       imu: "imu_link"
       lidar: "hesai_lidar"
 
     output:
-      odom_topic: "odometry/imu"
-      mapping_odom_topic: "lio_sam/localization/odometry"
+      mapping_odom_topic: "lio_sam/localization/odometry" # 雷达匹配 + IMU 融合后的全局定位输出
 
     localization:
       map_path: "/home/robot/map/hesai_sim/GlobalMap.pcd"
@@ -65,15 +63,10 @@
       feature:
         planar_voxel_filter_size: 0.25 # 默认0.5
       registration:
-        local_map_size: 0
-        point_search_thres: 1.0
-        optimization_iter_num: 30
-        local_map_cloud_filter_size: 0.4
-        source_cloud_filter_size: 0.4
-        position_converge_thres: 0.005
-        rotation_converge_thres: 0.005
-        keyframe_delta_distance: 0.0
-        keyframe_delta_rotation: 0.0
+        optimization_iter_num: 10
+        point_to_planar_thres: 0.1
+        position_converge_thres: 0.01
+        rotation_converge_thres: 0.01
 
     # =========================
     # 去地点云参数
