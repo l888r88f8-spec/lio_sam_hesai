@@ -6,8 +6,9 @@ Panels:
       Expanded:
         - /Global Options1
         - /Status1
+        - /TF1/Frames1
       Splitter Ratio: 0.6470588445663452
-    Tree Height: 470
+    Tree Height: 473
   - Class: rviz_common/Selection
     Name: Selection
   - Class: rviz_common/Tool Properties
@@ -23,7 +24,7 @@ Panels:
     Experimental: false
     Name: Time
     SyncMode: 0
-    SyncSource: Localization Global Map
+    SyncSource: mapping_cloud_registered
 Visualization Manager:
   Class: ""
   Displays:
@@ -82,8 +83,8 @@ Visualization Manager:
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
-        Max Value: 13.36900806427002
-        Min Value: -0.629749596118927
+        Max Value: 6.5838727951049805
+        Min Value: -1.2799465656280518
         Value: true
       Axis: Z
       Channel Name: intensity
@@ -312,29 +313,15 @@ Visualization Manager:
         All Enabled: false
         base_link:
           Value: true
-        fr_left_link:
-          Value: false
-        fr_right_link:
-          Value: false
-        fr_steer_left_link:
-          Value: false
-        fr_steer_right_link:
-          Value: false
         hesai_lidar:
           Value: false
         imu_link:
           Value: false
+        lidar_link:
+          Value: false
         map:
           Value: true
-        re_left_link:
-          Value: false
-        re_right_link:
-          Value: false
-        sensor_rack_link:
-          Value: false
-        sensor_rack_second_layer_link:
-          Value: false
-        sensor_rack_top_layer_link:
+        odom:
           Value: false
       Marker Scale: 10
       Name: TF
@@ -343,32 +330,22 @@ Visualization Manager:
       Show Names: true
       Tree:
         map:
-          base_link:
-            fr_steer_left_link:
-              fr_left_link:
-                {}
-            fr_steer_right_link:
-              fr_right_link:
-                {}
-            re_left_link:
-              {}
-            re_right_link:
-              {}
-            sensor_rack_link:
-              {}
-            sensor_rack_second_layer_link:
-              imu_link:
-                {}
-            sensor_rack_top_layer_link:
+          odom:
+            base_link:
               hesai_lidar:
                 {}
+              imu_link:
+                {}
+            lidar_link:
+              {}
       Update Interval: 0
       Value: true
     - Class: rviz_default_plugins/MarkerArray
       Enabled: true
       Name: MarkerArray
       Namespaces:
-        {}
+        loop_edges: true
+        loop_nodes: true
       Topic:
         Depth: 5
         Durability Policy: Volatile
@@ -407,16 +384,16 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 35.94414520263672
+      Distance: 17.38784408569336
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: 0.5434844493865967
-        Y: 0.2511555850505829
-        Z: 0.03963397070765495
+        X: 8.863205909729004
+        Y: 0.5412645936012268
+        Z: 0.04002012312412262
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
@@ -425,7 +402,7 @@ Visualization Manager:
       Pitch: 1.5697963237762451
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 1.5803961753845215
+      Yaw: 1.5603963136672974
     Saved: ~
 Window Geometry:
   Displays:
@@ -433,7 +410,7 @@ Window Geometry:
   Height: 766
   Hide Left Dock: false
   Hide Right Dock: false
-  QMainWindow State: 000000ff00000000fd00000002000000000000015600000262fc0200000004fb000000100044006900730070006c006100790073010000003e00000262000000ca00fffffffb0000001200530065006c0065006300740069006f006e00000002b6000000b30000005c00fffffffb0000001e0054006f006f006c002000500072006f00700065007200740069006500730000000296000000d30000005c00fffffffb0000000a00560069006500770073000000023900000130000000a600ffffff00000003000006400000003afc0100000001fb0000000800540069006d00650100000000000006400000027100ffffff000004e40000026200000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  QMainWindow State: 000000ff00000000fd00000002000000000000015600000264fc0200000004fb000000100044006900730070006c006100790073010000003d00000264000000c900fffffffb0000001200530065006c0065006300740069006f006e00000002b6000000b30000005c00fffffffb0000001e0054006f006f006c002000500072006f00700065007200740069006500730000000296000000d30000005c00fffffffb0000000a00560069006500770073000000023900000130000000a400ffffff00000003000006400000003afc0100000001fb0000000800540069006d0065010000000000000640000002fb00ffffff000004e40000026400000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
   Selection:
     collapsed: false
   Time:

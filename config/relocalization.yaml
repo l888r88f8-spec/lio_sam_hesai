@@ -16,13 +16,13 @@
       lidar: "hesai_lidar"
 
     output:
-      mapping_odom_topic: "lio_sam/localization/odometry" # 雷达匹配 + IMU 融合后的全局定位输出
+      mapping_odom_topic: "lio_sam/localization/odometry"    # 雷达匹配 + IMU 融合后的全局定位输出
 
     localization:
-      map_path: "/home/robot/map/hesai_sim/GlobalMap.pcd"
+      map_path: "/home/robot/map/hesai_indoor/GlobalMap.pcd"
 
     lidar:
-      lidar_sensor_type: Hesai
+      lidar_sensor_type: Hesai # LeiShen_16 RoboSense_16 Velodyne_16/32/64 Ouster_128_os1 Livox_Mid_360 Livox_Avia Hesai None
       lidar_point_jump_span: 1
       lidar_point_time_scale: 1.0
       lidar_use_min_distance: 0.5
@@ -77,7 +77,7 @@
     segmentation_only_mode: true                                # 地面分割模式
     nonGroundCloudTopic: "lio_sam/cloud_nonground" # 去地后的非地面点云输出话题
 
-    sensor: HESAI                                               # 雷达类型与点云组织参数
+    sensor: HESAI                                               # velodyne ouster livox HESAI LSLIDAR
     N_SCAN: 16                                                  # 雷达线数
     Horizon_SCAN: 1000                                          # 单圈水平方向点数，采样率
     lidarMinRange: 0.5                                          # 参与分割的最小有效距离，过近点会被过滤

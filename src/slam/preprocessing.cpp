@@ -122,6 +122,21 @@ void PreProcessing::Run() {
       continue;
     }
 
+    if (last_cloud_timestamp != std::numeric_limits<TimeStampUs>::max() &&
+        curr_cloud_timestamp <= last_cloud_timestamp) {
+      std::unique_lock<std::mutex> lock(system_ptr_->mutex_raw_cloud_deque_);
+      system_ptr_->raw_cloud_deque_.pop_front();
+      temp_cloud_ptr_ = nullptr;
+      LOG(WARNING) << std::setprecision(15)
+                   << "Drop lidar cloud with non-increasing timestamp: current="
+                   << static_cast<double>(curr_cloud_timestamp) *
+                          kMicroseconds2Seconds
+                   << " last="
+                   << static_cast<double>(last_cloud_timestamp) *
+                          kMicroseconds2Seconds;
+      continue;
+    }
+
     // Make sure the lidar data is later the oldest imu data
     const auto oldest_imu_data =
         system_ptr_->imu_data_searcher_ptr_->OldestData();
@@ -176,7 +191,16 @@ void PreProcessing::Run() {
       curr_data = IMUInterpolator(data_l, data_r, curr_cloud_timestamp);
       cloud_cluster_ptr->imu_data_.emplace_back(std::move(curr_data));
     } else {
-      CHECK_GT(curr_cloud_timestamp, last_cloud_timestamp);
+      if (curr_cloud_timestamp <= last_cloud_timestamp) {
+        LOG(WARNING) << std::setprecision(15)
+                     << "Skip lidar cloud with non-increasing timestamp: current="
+                     << static_cast<double>(curr_cloud_timestamp) *
+                            kMicroseconds2Seconds
+                     << " last="
+                     << static_cast<double>(last_cloud_timestamp) *
+                            kMicroseconds2Seconds;
+        continue;
+      }
       cloud_cluster_ptr->imu_data_ =
           system_ptr_->imu_data_searcher_ptr_->GetDataSegment(
               last_cloud_timestamp, curr_cloud_timestamp);
