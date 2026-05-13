@@ -33,7 +33,7 @@ def generate_launch_description():
     )
     publish_static_tf_declare = DeclareLaunchArgument(
         "publish_static_tf",
-        default_value="true",
+        default_value="false",
         description="Publish base_link->lidar and base_link->imu static transforms.",
     )
     colorized_output = SetEnvironmentVariable(

@@ -82,9 +82,9 @@ ros2 bag play your_data
 ros2 service call /lio_sam/save_map lio_sam_hesai/srv/SaveMap "{resolution: 0.2, destination: /tmp/LOAM}"
 ```
 注意：服务名`/lio_sam/save_map`沿用了原始命名空间；但服务类型来自当前这个包。
-<img width="1387" height="992" alt="image" src="image.png" />
-<img width="1453" height="964" alt="image_1" src="image_1.png" />
-<img width="1453" height="964" alt="image_4" src="image_4.png" />
+<img width="1387" height="992" alt="image" src="image/image.png" />
+<img width="1453" height="964" alt="image_1" src="image/image_1.png" />
+<img width="1453" height="964" alt="image_4" src="image/image_4.png" />
 
 ## 二、重定位
 ### 1. 运行
@@ -100,7 +100,7 @@ ros2 launch lio_sam_hesai localization.launch.py publish_static_tf:=false
 
 ### 2. 在RViz中设置初始位置
 
-<img width="1453" height="650" alt="image_2" src="image_2.png" />
+<img width="1453" height="650" alt="image_2" src="image/image_2.png" />
 
 ## 三、重定位加非地面点输出
 ```bash
@@ -109,7 +109,7 @@ ros2 launch lio_sam_hesai localization_with_nonground.launch.py
 
 同样支持`publish_static_tf:=false`以关闭launch内置的传感器静态TF发布。
 
-<img width="1453" height="650" alt="image_3" src="image_3.png" />
+<img width="1453" height="650" alt="image_3" src="image/image_3.png" />
 
 ## 注意
 - 请确保Livox点类型包含每个点的时间信息（扫描内相对时间）以及ring/channel索引。如果字段定义不同，请修改`imageProjection.cpp`。
