@@ -21,6 +21,7 @@ struct PointcloudCluster {
     std::vector<int> point_col_index_vec_;
 
     std::vector<IMUData> imu_data_;
+    bool reset_imu_integration_{false};
 
     uint64_t timestamp_ = 0; //us
 
@@ -37,6 +38,8 @@ struct PointcloudCluster {
         row_end_index_vec_ = pointcloud_cluster.row_end_index_vec_;
         row_start_index_vec_ = pointcloud_cluster.row_start_index_vec_;
 
+        imu_data_ = pointcloud_cluster.imu_data_;
+        reset_imu_integration_ = pointcloud_cluster.reset_imu_integration_;
         timestamp_ = pointcloud_cluster.timestamp_;
     }
 
@@ -55,6 +58,8 @@ struct PointcloudCluster {
         row_end_index_vec_ = pointcloud_cluster.row_end_index_vec_;
         row_start_index_vec_ = pointcloud_cluster.row_start_index_vec_;
 
+        imu_data_ = pointcloud_cluster.imu_data_;
+        reset_imu_integration_ = pointcloud_cluster.reset_imu_integration_;
         timestamp_ = pointcloud_cluster.timestamp_;
 
         return *this;
@@ -71,6 +76,8 @@ struct PointcloudCluster {
         corner_cloud_ = std::move(pointcloud_cluster.corner_cloud_);
         planar_cloud_ = std::move(pointcloud_cluster.planar_cloud_);
 
+        imu_data_ = std::move(pointcloud_cluster.imu_data_);
+        reset_imu_integration_ = pointcloud_cluster.reset_imu_integration_;
         timestamp_ = pointcloud_cluster.timestamp_;
     }
 
@@ -80,6 +87,8 @@ struct PointcloudCluster {
         ordered_cloud_.clear();
         planar_cloud_.clear();
         corner_cloud_.clear();
+        imu_data_.clear();
+        reset_imu_integration_ = false;
     }
 };
 

@@ -36,6 +36,11 @@ class System : public rclcpp::Node {
 
   void Run();
 
+  static constexpr std::size_t kMaxRawCloudQueueSize = 3;
+  static constexpr std::size_t kMaxCloudClusterQueueSize = 2;
+  static constexpr std::size_t kMaxLocalizationResultQueueSize = 5;
+  static constexpr std::size_t kMaxLocalizationPathSize = 2000;
+
  private:
   static void InitLidarModel();
 
@@ -53,10 +58,11 @@ class System : public rclcpp::Node {
   void ImuMsgCallBack(const sensor_msgs::msg::Imu::ConstSharedPtr& imu_ptr);
 
   bool ProcessLocalizationResultCache();
+  void ApplyLocalizationZOffset(PCLPointCloudXYZI& cloud) const;
 
   static bool InitIMU(const IMUData& imu_data, Vec3d& init_mean_acc);
 
-  bool UpdateImuToBaseTransform();
+  bool UpdateLidarToBaseTransform();
 
  private:
   // ros2 subscribers
@@ -116,8 +122,10 @@ class System : public rclcpp::Node {
   // localization ros path
   nav_msgs::msg::Path localization_path_;
 
-  Mat4d T_base_from_imu_ = Mat4d::Identity();
-  bool has_base_from_imu_ = false;
+  Mat4d T_lidar_to_base_ = Mat4d::Identity();
+  bool has_lidar_to_base_ = false;
+  double last_localization_z_offset_ = 0.0;
+  bool has_localization_z_offset_ = false;
 };
 
 #endif  // FUNNY_LIDAR_SLAM_SYSTEM_H

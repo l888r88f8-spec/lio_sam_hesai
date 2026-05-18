@@ -97,6 +97,16 @@ void System::InitConfigParameters() {
   // localization map path
   util::param(this, "localization.map_path", config.localization_map_path_,
               config.localization_map_path_);
+  util::param(this, "localization.enable_ground_height_constraint",
+              config.localization_enable_ground_height_constraint_, false);
+  util::param(this, "localization.base_link_ground_height",
+              config.localization_base_link_ground_height_, 0.275);
+  util::param(this, "localization.ground_search_radius",
+              config.localization_ground_search_radius_, 5.0);
+  util::param(this, "localization.ground_z_percentile",
+              config.localization_ground_z_percentile_, 0.20);
+  util::param(this, "localization.ground_min_points",
+              config.localization_ground_min_points_, 100);
 
   // lidar config parameters
   util::param(this, "lidar.lidar_sensor_type", config.lidar_sensor_type_,
@@ -291,6 +301,9 @@ void System::LidarMsgCallBack(
     return;
   }
   std::lock_guard<std::mutex> lk(mutex_raw_cloud_deque_);
+  while (raw_cloud_deque_.size() >= kMaxRawCloudQueueSize) {
+    raw_cloud_deque_.pop_front();
+  }
   raw_cloud_deque_.push_back(cloud_ros_ptr);
   cv_preprocessing_.notify_one();
 }
@@ -299,11 +312,23 @@ void System::LocalizationInitPoseMsgCallBack(
     const geometry_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr& msg) {
   Eigen::Quaterniond q = RosQuaternionToEigen(msg->pose.pose.orientation);
   Vec3d t = RosPoint3dToEigen(msg->pose.pose.position);
-  Mat4d pose = Mat4d::Identity();
-  pose.block<3, 3>(0, 0) = q.toRotationMatrix();
-  pose.block<3, 1>(0, 3) = t;
+  Mat4d map_base_pose = Mat4d::Identity();
+  map_base_pose.block<3, 3>(0, 0) = q.toRotationMatrix();
+  map_base_pose.block<3, 1>(0, 3) = t;
 
-  localization_ptr_->SetInitPose(pose);
+  const auto& base_frame = ConfigParameters::Instance().base_link_frame_;
+  const auto& lidar_frame = ConfigParameters::Instance().lidar_frame_;
+
+  try {
+    auto tf_msg =
+        tf_buffer_->lookupTransform(base_frame, lidar_frame, rclcpp::Time(0));
+    const Mat4d T_base_to_lidar = tf2::transformToEigen(tf_msg).matrix();
+    localization_ptr_->SetInitPose(map_base_pose * T_base_to_lidar);
+  } catch (const tf2::TransformException& ex) {
+    RCLCPP_WARN(get_logger(),
+                "Ignore initial pose because TF lookup failed (%s -> %s): %s",
+                base_frame.c_str(), lidar_frame.c_str(), ex.what());
+  }
 }
 
 void System::ImuMsgCallBack(
@@ -426,27 +451,27 @@ bool System::InitIMU(const IMUData& imu_data, Vec3d& init_mean_acc) {
   return false;
 }
 
-bool System::UpdateImuToBaseTransform() {
-  if (has_base_from_imu_) {
+bool System::UpdateLidarToBaseTransform() {
+  if (has_lidar_to_base_) {
     return true;
   }
 
   const auto& base_frame = ConfigParameters::Instance().base_link_frame_;
-  const auto& imu_frame = ConfigParameters::Instance().imu_frame_;
+  const auto& lidar_frame = ConfigParameters::Instance().lidar_frame_;
 
   try {
     auto tf_msg = tf_buffer_->lookupTransform(
-        base_frame, imu_frame, rclcpp::Time(0));
+        lidar_frame, base_frame, rclcpp::Time(0));
     Eigen::Isometry3d tf_eigen = tf2::transformToEigen(tf_msg);
-    T_base_from_imu_ = tf_eigen.matrix();
-    has_base_from_imu_ = true;
+    T_lidar_to_base_ = tf_eigen.matrix();
+    has_lidar_to_base_ = true;
   } catch (const tf2::TransformException& ex) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
-                         "TF lookup failed (%s -> %s): %s", base_frame.c_str(),
-                         imu_frame.c_str(), ex.what());
+                         "TF lookup failed (%s -> %s): %s", lidar_frame.c_str(),
+                         base_frame.c_str(), ex.what());
   }
 
-  return has_base_from_imu_;
+  return has_lidar_to_base_;
 }
 
 void System::Run() {
@@ -454,8 +479,8 @@ void System::Run() {
   if (ProcessLocalizationResultCache()) {
     PublishLocalizationPath();
 
-    const auto current_lidar_cloud =
-        localization_ptr_->GetCurrentLidarCloudMap();
+    auto current_lidar_cloud = localization_ptr_->GetCurrentLidarCloudMap();
+    ApplyLocalizationZOffset(current_lidar_cloud);
     PublishRosCloud(localization_current_lidar_cloud_pub_,
                     current_lidar_cloud.makeShared(),
                     ConfigParameters::Instance().map_frame_);
@@ -492,12 +517,35 @@ bool System::ProcessLocalizationResultCache() {
 
   const rclcpp::Time stamp(result.timestamp_ * 1000ULL);
 
-  Mat4d T_imu_to_base = Mat4d::Identity();
-  if (UpdateImuToBaseTransform()) {
-    T_imu_to_base = T_base_from_imu_.inverse();
+  if (!UpdateLidarToBaseTransform()) {
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "Skip localization result because %s -> %s TF is unavailable.",
+        ConfigParameters::Instance().lidar_frame_.c_str(),
+        ConfigParameters::Instance().base_link_frame_.c_str());
+    return false;
   }
 
-  const Mat4d map_base_pose = result.map_pose * T_imu_to_base;
+  Mat4d map_base_pose = result.map_pose * T_lidar_to_base_;
+  if (ConfigParameters::Instance().localization_enable_ground_height_constraint_ &&
+      result.has_map_ground_z) {
+    const double desired_base_z =
+        result.map_ground_z +
+        ConfigParameters::Instance().localization_base_link_ground_height_;
+    last_localization_z_offset_ = desired_base_z - map_base_pose(2, 3);
+    has_localization_z_offset_ = true;
+    map_base_pose(2, 3) = desired_base_z;
+
+    const double base_ground_height = map_base_pose(2, 3) - result.map_ground_z;
+    RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "Current base_link ground height: %.3f m (base_link_z=%.3f, "
+        "map_ground_z=%.3f)",
+        base_ground_height, map_base_pose(2, 3), result.map_ground_z);
+  } else {
+    last_localization_z_offset_ = 0.0;
+    has_localization_z_offset_ = false;
+  }
   PublishTF(map_base_pose, result.timestamp_);
 
   const Eigen::Quaterniond q(map_base_pose.block<3, 3>(0, 0));
@@ -513,6 +561,9 @@ bool System::ProcessLocalizationResultCache() {
   pose_stamped.header.frame_id = ConfigParameters::Instance().map_frame_;
   pose_stamped.header.stamp = stamp;
   localization_path_.poses.emplace_back(std::move(pose_stamped));
+  if (localization_path_.poses.size() > kMaxLocalizationPathSize) {
+    localization_path_.poses.erase(localization_path_.poses.begin());
+  }
 
   nav_msgs::msg::Odometry mapping_odom;
   mapping_odom.header.stamp = stamp;
@@ -528,6 +579,17 @@ bool System::ProcessLocalizationResultCache() {
   localization_odom_pub_->publish(mapping_odom);
 
   return true;
+}
+
+void System::ApplyLocalizationZOffset(PCLPointCloudXYZI& cloud) const {
+  if (!has_localization_z_offset_ ||
+      !ConfigParameters::Instance().localization_enable_ground_height_constraint_) {
+    return;
+  }
+
+  for (auto& point : cloud.points) {
+    point.z += static_cast<float>(last_localization_z_offset_);
+  }
 }
 
 void System::PublishLocalizationPath() {

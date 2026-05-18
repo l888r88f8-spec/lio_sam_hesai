@@ -3,6 +3,10 @@
 #include <pcl/common/point_tests.h>  // for pcl::isFinite
 #include <pcl_conversions/pcl_conversions.h>
 
+#include <algorithm>
+#include <cstring>
+#include <limits>
+
 #include "common/constant_variable.h"
 #include "common/pointcloud_utility.h"
 #include "common/timer.h"
@@ -32,6 +36,191 @@ PreProcessing::PreProcessing(System* system_ptr) : system_ptr_(system_ptr) {
   }
 
   InitVoxelGridFilter();
+}
+
+bool PreProcessing::HasCloudField(const sensor_msgs::msg::PointCloud2& cloud,
+                                  const std::string& field_name) {
+  return FindCloudField(cloud, field_name) != nullptr;
+}
+
+const sensor_msgs::msg::PointField* PreProcessing::FindCloudField(
+    const sensor_msgs::msg::PointCloud2& cloud,
+    const std::string& field_name) {
+  const auto iter = std::find_if(
+      cloud.fields.begin(), cloud.fields.end(),
+      [&](const sensor_msgs::msg::PointField& field) {
+        return field.name == field_name;
+      });
+  if (iter == cloud.fields.end()) {
+    return nullptr;
+  }
+  return &(*iter);
+}
+
+double PreProcessing::ReadCloudFieldAsDouble(
+    const std::uint8_t* point_data,
+    const sensor_msgs::msg::PointField& field) {
+  const auto* data = point_data + field.offset;
+  switch (field.datatype) {
+    case sensor_msgs::msg::PointField::INT8: {
+      std::int8_t value{};
+      std::memcpy(&value, data, sizeof(value));
+      return static_cast<double>(value);
+    }
+    case sensor_msgs::msg::PointField::UINT8: {
+      std::uint8_t value{};
+      std::memcpy(&value, data, sizeof(value));
+      return static_cast<double>(value);
+    }
+    case sensor_msgs::msg::PointField::INT16: {
+      std::int16_t value{};
+      std::memcpy(&value, data, sizeof(value));
+      return static_cast<double>(value);
+    }
+    case sensor_msgs::msg::PointField::UINT16: {
+      std::uint16_t value{};
+      std::memcpy(&value, data, sizeof(value));
+      return static_cast<double>(value);
+    }
+    case sensor_msgs::msg::PointField::INT32: {
+      std::int32_t value{};
+      std::memcpy(&value, data, sizeof(value));
+      return static_cast<double>(value);
+    }
+    case sensor_msgs::msg::PointField::UINT32: {
+      std::uint32_t value{};
+      std::memcpy(&value, data, sizeof(value));
+      return static_cast<double>(value);
+    }
+    case sensor_msgs::msg::PointField::FLOAT32: {
+      float value{};
+      std::memcpy(&value, data, sizeof(value));
+      return static_cast<double>(value);
+    }
+    case sensor_msgs::msg::PointField::FLOAT64: {
+      double value{};
+      std::memcpy(&value, data, sizeof(value));
+      return value;
+    }
+    default:
+      return std::numeric_limits<double>::quiet_NaN();
+  }
+}
+
+PCLPointCloudXYZIRT::Ptr PreProcessing::ConvertXYZIMessageToCloud(
+    const sensor_msgs::msg::PointCloud2::ConstSharedPtr& cloud_ros_ptr) {
+  pcl::PointCloud<pcl::PointXYZI> cloud_xyzi;
+  pcl::fromROSMsg(*cloud_ros_ptr, cloud_xyzi);
+
+  PCLPointCloudXYZIRT::Ptr cloud_in_ptr(new PCLPointCloudXYZIRT);
+  cloud_in_ptr->reserve(cloud_xyzi.size());
+
+  for (const auto& src : cloud_xyzi) {
+    if (!pcl::isFinite(src)) {
+      continue;
+    }
+
+    relocalization::PointXYZIRT dst{};
+    dst.x = src.x;
+    dst.y = src.y;
+    dst.z = src.z;
+    dst.intensity = src.intensity;
+    dst.time = 0.0f;
+
+    const float xy = std::sqrt(src.x * src.x + src.y * src.y);
+    const int row =
+        static_cast<int>(std::round((FastAtan2(src.z, xy) +
+                                     LidarModel::Instance()->lower_angle_) /
+                                    LidarModel::Instance()->v_res_));
+    if (row < 0 || row >= LidarModel::Instance()->vertical_scan_num_) {
+      continue;
+    }
+
+    dst.ring = static_cast<uint8_t>(row);
+    cloud_in_ptr->emplace_back(dst);
+  }
+
+  cloud_in_ptr->header = pcl_conversions::toPCL(cloud_ros_ptr->header);
+  cloud_in_ptr->is_dense = true;
+
+  if (!cloud_in_ptr->points.empty()) {
+    ComputePointOffsetTime(cloud_in_ptr, 10.0);
+  }
+
+  return cloud_in_ptr;
+}
+
+PCLPointCloudXYZIRT::Ptr PreProcessing::ConvertHesaiMessageToCloud(
+    const sensor_msgs::msg::PointCloud2::ConstSharedPtr& cloud_ros_ptr) {
+  const auto* x_field = FindCloudField(*cloud_ros_ptr, "x");
+  const auto* y_field = FindCloudField(*cloud_ros_ptr, "y");
+  const auto* z_field = FindCloudField(*cloud_ros_ptr, "z");
+  const auto* intensity_field = FindCloudField(*cloud_ros_ptr, "intensity");
+  const auto* ring_field = FindCloudField(*cloud_ros_ptr, "ring");
+  const auto* time_field = FindCloudField(*cloud_ros_ptr, "timestamp");
+  if (time_field == nullptr) {
+    time_field = FindCloudField(*cloud_ros_ptr, "time");
+  }
+
+  if (x_field == nullptr || y_field == nullptr || z_field == nullptr ||
+      intensity_field == nullptr || ring_field == nullptr ||
+      time_field == nullptr) {
+    return ConvertXYZIMessageToCloud(cloud_ros_ptr);
+  }
+
+  PCLPointCloudXYZIRT::Ptr cloud_in_ptr(new PCLPointCloudXYZIRT);
+  const auto cloud_size =
+      static_cast<std::size_t>(cloud_ros_ptr->width) * cloud_ros_ptr->height;
+  cloud_in_ptr->reserve(cloud_size);
+
+  double time_base = std::numeric_limits<double>::quiet_NaN();
+  for (std::size_t i = 0; i < cloud_size; ++i) {
+    const auto* point_data =
+        &cloud_ros_ptr->data[i * cloud_ros_ptr->point_step];
+
+    const double x = ReadCloudFieldAsDouble(point_data, *x_field);
+    const double y = ReadCloudFieldAsDouble(point_data, *y_field);
+    const double z = ReadCloudFieldAsDouble(point_data, *z_field);
+    const double intensity =
+        ReadCloudFieldAsDouble(point_data, *intensity_field);
+    const double ring = ReadCloudFieldAsDouble(point_data, *ring_field);
+    const double point_time = ReadCloudFieldAsDouble(point_data, *time_field);
+    if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z) ||
+        !std::isfinite(intensity) || !std::isfinite(ring) ||
+        !std::isfinite(point_time)) {
+      continue;
+    }
+
+    if (!std::isfinite(time_base)) {
+      time_base = point_time;
+    }
+
+    relocalization::PointXYZIRT point{};
+    point.x = static_cast<float>(x);
+    point.y = static_cast<float>(y);
+    point.z = static_cast<float>(z);
+    point.intensity = static_cast<float>(intensity);
+    point.ring = static_cast<std::uint8_t>(ring);
+    point.time = static_cast<float>(
+        (point_time - time_base) *
+        ConfigParameters::Instance().lidar_point_time_scale_);
+
+    if (!pcl::isFinite(point)) {
+      continue;
+    }
+    cloud_in_ptr->emplace_back(point);
+  }
+
+  cloud_in_ptr->header = pcl_conversions::toPCL(cloud_ros_ptr->header);
+  cloud_in_ptr->is_dense = true;
+
+  if (!cloud_in_ptr->points.empty() &&
+      cloud_in_ptr->points.back().time <= 0.0f) {
+    LOG(WARNING) << "Lidar cloud last point offset time <= 0.0";
+    ComputePointOffsetTime(cloud_in_ptr, 10.0);
+  }
+
+  return cloud_in_ptr;
 }
 
 void PreProcessing::InitVoxelGridFilter() {
@@ -171,6 +360,17 @@ void PreProcessing::Run() {
     const auto imu_data_segment =
         system_ptr_->imu_data_searcher_ptr_->GetDataSegment(
             cloud_start_timestamp, cloud_end_timestamp);
+    if (imu_data_segment.size() < 2) {
+      LOG(WARNING) << std::setprecision(15)
+                   << "Skip lidar cloud because IMU segment is incomplete: start="
+                   << static_cast<double>(cloud_start_timestamp) *
+                          kMicroseconds2Seconds
+                   << " end="
+                   << static_cast<double>(cloud_end_timestamp) *
+                          kMicroseconds2Seconds
+                   << " imu_size=" << imu_data_segment.size();
+      continue;
+    }
 
     auto imu_data_searcher =
         std::make_shared<DataSearcherIMU>(imu_data_segment);
@@ -186,8 +386,14 @@ void PreProcessing::Run() {
 
     if (last_cloud_timestamp == std::numeric_limits<TimeStampUs>::max()) {
       IMUData data_l, data_r, curr_data;
-      system_ptr_->imu_data_searcher_ptr_->SearchNearestTwoData(
-          curr_cloud_timestamp, data_l, data_r);
+      if (!system_ptr_->imu_data_searcher_ptr_->SearchNearestTwoData(
+              curr_cloud_timestamp, data_l, data_r)) {
+        LOG(WARNING) << std::setprecision(15)
+                     << "Skip first lidar cloud because nearest IMU data is missing: time="
+                     << static_cast<double>(curr_cloud_timestamp) *
+                            kMicroseconds2Seconds;
+        continue;
+      }
       curr_data = IMUInterpolator(data_l, data_r, curr_cloud_timestamp);
       cloud_cluster_ptr->imu_data_.emplace_back(std::move(curr_data));
     } else {
@@ -204,6 +410,19 @@ void PreProcessing::Run() {
       cloud_cluster_ptr->imu_data_ =
           system_ptr_->imu_data_searcher_ptr_->GetDataSegment(
               last_cloud_timestamp, curr_cloud_timestamp);
+      if (cloud_cluster_ptr->imu_data_.size() < 2) {
+        LOG(WARNING) << std::setprecision(15)
+                     << "Reset IMU preintegration because inter-frame IMU segment is incomplete: last="
+                     << static_cast<double>(last_cloud_timestamp) *
+                            kMicroseconds2Seconds
+                     << " current="
+                     << static_cast<double>(curr_cloud_timestamp) *
+                            kMicroseconds2Seconds
+                     << " imu_size=" << cloud_cluster_ptr->imu_data_.size()
+                     << " cloud_imu_size=" << imu_data_segment.size();
+        cloud_cluster_ptr->imu_data_ = imu_data_segment;
+        cloud_cluster_ptr->reset_imu_integration_ = true;
+      }
     }
 
     DLOG(INFO) << "cloud cluster imu data size: "
@@ -288,6 +507,10 @@ void PreProcessing::Run() {
     {
       // Cache data and remind the frontend thread to process it
       std::lock_guard<std::mutex> lg(system_ptr_->mutex_cloud_cluster_deque_);
+      while (system_ptr_->cloud_cluster_deque_.size() >=
+             System::kMaxCloudClusterQueueSize) {
+        system_ptr_->cloud_cluster_deque_.pop_front();
+      }
       system_ptr_->cloud_cluster_deque_.emplace_back(
           std::move(cloud_cluster_ptr));
 
@@ -457,48 +680,7 @@ pcl::PointCloud<relocalization::PointXYZIRT>::Ptr PreProcessing::ConvertMessageT
     return cloud_in_ptr;
   } else if (LidarModel::Instance()->lidar_sensor_type_ ==
              LidarModel::LidarSensorType::HESAI) {
-    pcl::PointCloud<relocalization::HesaiPointXYZIRT> cloud_hesai;
-    pcl::fromROSMsg(*cloud_ros_ptr, cloud_hesai);
-
-    if (!cloud_hesai.is_dense) {
-      RemoveNaNFromPointCloud(cloud_hesai, cloud_hesai);
-    }
-
-    const size_t cloud_size = cloud_hesai.size();
-    pcl::PointCloud<relocalization::PointXYZIRT>::Ptr cloud_in_ptr(
-        new pcl::PointCloud<relocalization::PointXYZIRT>);
-    cloud_in_ptr->resize(cloud_size);
-
-    std::vector<size_t> indices(cloud_size);
-    std::iota(indices.begin(), indices.end(), 0);
-
-    const double time_base = cloud_hesai.empty() ? 0.0 : cloud_hesai[0].time;
-    std::for_each(std::execution::par, indices.begin(), indices.end(),
-                  [&](const size_t& index) {
-                    relocalization::PointXYZIRT point_xyzirt{};
-                    point_xyzirt.x = cloud_hesai[index].x;
-                    point_xyzirt.y = cloud_hesai[index].y;
-                    point_xyzirt.z = cloud_hesai[index].z;
-                    point_xyzirt.intensity = cloud_hesai[index].intensity;
-                    point_xyzirt.ring =
-                        static_cast<uint8_t>(cloud_hesai[index].ring);
-                    // Hesai point time is absolute; convert to relative offset.
-                    point_xyzirt.time = static_cast<float>(
-                        (cloud_hesai[index].time - time_base) *
-                        ConfigParameters::Instance().lidar_point_time_scale_);
-                    cloud_in_ptr->at(index) = point_xyzirt;
-                  });
-
-    cloud_in_ptr->header = cloud_hesai.header;
-    cloud_in_ptr->is_dense = true;
-
-    if (!cloud_in_ptr->points.empty() &&
-        cloud_in_ptr->points.back().time <= 0.0f) {
-      LOG(WARNING) << "Lidar cloud last point offset time <= 0.0";
-      ComputePointOffsetTime(cloud_in_ptr, 10.0);
-    }
-
-    return cloud_in_ptr;
+    return ConvertHesaiMessageToCloud(cloud_ros_ptr);
   } else if (LidarModel::Instance()->lidar_sensor_type_ ==
              LidarModel::LidarSensorType::LIVOX_MID_360) {
     pcl::PointCloud<relocalization::LivoxMid360PointXYZITLT> cloud_livox_mid_360;
@@ -610,7 +792,8 @@ pcl::PointCloud<relocalization::PointXYZIRT>::Ptr PreProcessing::ConvertMessageT
     cloud_in_ptr->header = cloud_none.header;
     cloud_in_ptr->is_dense = true;
 
-    if (cloud_in_ptr->points.back().time <= 0.0f) {
+    if (!cloud_in_ptr->points.empty() &&
+        cloud_in_ptr->points.back().time <= 0.0f) {
       ComputePointOffsetTime(cloud_in_ptr, 10.0);
     }
 

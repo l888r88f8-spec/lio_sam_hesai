@@ -3,6 +3,7 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 #include <cstdlib>
+#include <cstring>
 #include <limits>
 #include <pcl/filters/extract_indices.h>
 #include <pcl/segmentation/sac_segmentation.h>
@@ -61,6 +62,142 @@ namespace {
 
 constexpr float kDegToRad = static_cast<float>(M_PI) / 180.0f;
 constexpr float kMinPlaneNorm = 1e-6f;
+
+const sensor_msgs::msg::PointField* findCloudField(
+    const sensor_msgs::msg::PointCloud2 &cloud,
+    const std::string &field_name)
+{
+    const auto iter = std::find_if(
+        cloud.fields.begin(), cloud.fields.end(),
+        [&](const sensor_msgs::msg::PointField &field) {
+            return field.name == field_name;
+        });
+    if (iter == cloud.fields.end())
+        return nullptr;
+    return &(*iter);
+}
+
+double readCloudFieldAsDouble(const uint8_t *point_data,
+                              const sensor_msgs::msg::PointField &field)
+{
+    const auto *data = point_data + field.offset;
+    switch (field.datatype)
+    {
+    case sensor_msgs::msg::PointField::INT8:
+    {
+        int8_t value{};
+        std::memcpy(&value, data, sizeof(value));
+        return value;
+    }
+    case sensor_msgs::msg::PointField::UINT8:
+    {
+        uint8_t value{};
+        std::memcpy(&value, data, sizeof(value));
+        return value;
+    }
+    case sensor_msgs::msg::PointField::INT16:
+    {
+        int16_t value{};
+        std::memcpy(&value, data, sizeof(value));
+        return value;
+    }
+    case sensor_msgs::msg::PointField::UINT16:
+    {
+        uint16_t value{};
+        std::memcpy(&value, data, sizeof(value));
+        return value;
+    }
+    case sensor_msgs::msg::PointField::INT32:
+    {
+        int32_t value{};
+        std::memcpy(&value, data, sizeof(value));
+        return value;
+    }
+    case sensor_msgs::msg::PointField::UINT32:
+    {
+        uint32_t value{};
+        std::memcpy(&value, data, sizeof(value));
+        return value;
+    }
+    case sensor_msgs::msg::PointField::FLOAT32:
+    {
+        float value{};
+        std::memcpy(&value, data, sizeof(value));
+        return value;
+    }
+    case sensor_msgs::msg::PointField::FLOAT64:
+    {
+        double value{};
+        std::memcpy(&value, data, sizeof(value));
+        return value;
+    }
+    default:
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+}
+
+bool convertHesaiCloudToCommon(
+    const sensor_msgs::msg::PointCloud2 &cloud_msg,
+    pcl::PointCloud<PointXYZIRT> &cloud_out)
+{
+    const auto *x_field = findCloudField(cloud_msg, "x");
+    const auto *y_field = findCloudField(cloud_msg, "y");
+    const auto *z_field = findCloudField(cloud_msg, "z");
+    const auto *intensity_field = findCloudField(cloud_msg, "intensity");
+    const auto *ring_field = findCloudField(cloud_msg, "ring");
+    const auto *time_field = findCloudField(cloud_msg, "timestamp");
+    if (time_field == nullptr)
+        time_field = findCloudField(cloud_msg, "time");
+
+    if (x_field == nullptr || y_field == nullptr || z_field == nullptr ||
+        intensity_field == nullptr || ring_field == nullptr)
+        return false;
+
+    const auto point_count =
+        static_cast<size_t>(cloud_msg.width) * static_cast<size_t>(cloud_msg.height);
+    cloud_out.clear();
+    cloud_out.reserve(point_count);
+
+    double time_base = std::numeric_limits<double>::quiet_NaN();
+    for (size_t i = 0; i < point_count; ++i)
+    {
+        const auto *point_data = &cloud_msg.data[i * cloud_msg.point_step];
+        const double x = readCloudFieldAsDouble(point_data, *x_field);
+        const double y = readCloudFieldAsDouble(point_data, *y_field);
+        const double z = readCloudFieldAsDouble(point_data, *z_field);
+        const double intensity = readCloudFieldAsDouble(point_data, *intensity_field);
+        const double ring = readCloudFieldAsDouble(point_data, *ring_field);
+        if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z) ||
+            !std::isfinite(intensity) || !std::isfinite(ring))
+            continue;
+
+        PointXYZIRT point{};
+        point.x = static_cast<float>(x);
+        point.y = static_cast<float>(y);
+        point.z = static_cast<float>(z);
+        point.intensity = static_cast<float>(intensity);
+        point.ring = static_cast<uint16_t>(ring);
+        point.time = 0.0f;
+
+        if (time_field != nullptr)
+        {
+            const double point_time = readCloudFieldAsDouble(point_data, *time_field);
+            if (std::isfinite(point_time))
+            {
+                if (!std::isfinite(time_base))
+                    time_base = point_time;
+                point.time = static_cast<float>(point_time - time_base);
+            }
+        }
+
+        if (pcl::isFinite(point))
+            cloud_out.push_back(point);
+    }
+
+    cloud_out.header = pcl_conversions::toPCL(cloud_msg.header);
+    cloud_out.is_dense = true;
+    return true;
+}
 
 // 计算点到平面的无符号距离。
 float pointToPlaneDistance(const PointType &point,
@@ -431,54 +568,16 @@ public:
         }
         else if (sensor == SensorType::HESAI)
         {
-            pcl::fromROSMsg(currentCloudMsg, *laserCloudIn);
+            if (!convertHesaiCloudToCommon(currentCloudMsg, *laserCloudIn))
+                pcl::fromROSMsg(currentCloudMsg, *laserCloudIn);
 
-            if (!laserCloudIn->points.empty())
+            if (!laserCloudIn->points.empty() &&
+                !hasCloudField(currentCloudMsg, "timestamp") &&
+                !hasCloudField(currentCloudMsg, "time"))
             {
-                if (hasCloudField(currentCloudMsg, "timestamp"))
-                {
-                    sensor_msgs::PointCloud2ConstIterator<double> iter_ts(currentCloudMsg, "timestamp");
-                    double t0 = std::numeric_limits<double>::max();
-                    std::vector<double> timestamps;
-                    timestamps.reserve(laserCloudIn->points.size());
-
-                    for (size_t i = 0; i < laserCloudIn->points.size(); ++i, ++iter_ts)
-                    {
-                        const double ts = *iter_ts;
-                        timestamps.push_back(ts);
-                        t0 = std::min(t0, ts);
-                    }
-
-                    for (size_t i = 0; i < laserCloudIn->points.size(); ++i)
-                    {
-                        laserCloudIn->points[i].time = static_cast<float>(timestamps[i] - t0);
-                    }
-                }
-                else if (hasCloudField(currentCloudMsg, "time"))
-                {
-                    sensor_msgs::PointCloud2ConstIterator<float> iter_time(currentCloudMsg, "time");
-                    float t0 = std::numeric_limits<float>::max();
-                    std::vector<float> rel_times;
-                    rel_times.reserve(laserCloudIn->points.size());
-
-                    for (size_t i = 0; i < laserCloudIn->points.size(); ++i, ++iter_time)
-                    {
-                        const float rel_time = *iter_time;
-                        rel_times.push_back(rel_time);
-                        t0 = std::min(t0, rel_time);
-                    }
-
-                    for (size_t i = 0; i < laserCloudIn->points.size(); ++i)
-                    {
-                        laserCloudIn->points[i].time = rel_times[i] - t0;
-                    }
-                }
-                else
-                {
-                    RCLCPP_WARN_THROTTLE(
-                        get_logger(), *get_clock(), 5000,
-                        "HESAI point cloud has no timestamp/time field. Deskew will be disabled for this frame.");
-                }
+                RCLCPP_WARN_THROTTLE(
+                    get_logger(), *get_clock(), 5000,
+                    "HESAI point cloud has no timestamp/time field. Deskew will be disabled for this frame.");
             }
         }
         else if (sensor == SensorType::OUSTER)
@@ -1613,8 +1712,8 @@ public:
     {
         cloudInfo.header = cloudHeader;
         cloudInfo.cloud_deskewed  = publishCloud(pubExtractedCloud, extractedCloud, cloudHeader.stamp, lidarFrame);
-        if (pubNonGroundCloud->get_subscription_count() != 0)
-            publishCloud(pubNonGroundCloud, nonGroundCloud, cloudHeader.stamp, lidarFrame);
+        // if (pubNonGroundCloud->get_subscription_count() != 0)
+        publishCloud(pubNonGroundCloud, nonGroundCloud, cloudHeader.stamp, lidarFrame);
         pcl::toROSMsg(*groundCloudScanOnlyDS, cloudInfo.cloud_ground);
         cloudInfo.cloud_ground.header.stamp = cloudHeader.stamp;
         cloudInfo.cloud_ground.header.frame_id = lidarFrame;

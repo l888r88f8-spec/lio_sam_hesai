@@ -1,9 +1,13 @@
 #include "slam/localization.h"
 
+#include <pcl/conversions.h>
 #include <pcl/filters/crop_box.h>
 #include <pcl/io/pcd_io.h>
 
+#include <algorithm>
+#include <cmath>
 #include <fstream>
+#include <iomanip>
 
 #include <g2o/core/sparse_optimizer.h>
 
@@ -19,6 +23,48 @@
 #include "registration/loam_point_to_plane_ivox.h"
 #include "registration/loam_point_to_plane_kdtree.h"
 #include "slam/split_map.h"
+
+namespace {
+
+bool HasPclField(const pcl::PCLPointCloud2& cloud,
+                 const std::string& field_name) {
+  return std::find_if(cloud.fields.begin(), cloud.fields.end(),
+                      [&](const pcl::PCLPointField& field) {
+                        return field.name == field_name;
+                      }) != cloud.fields.end();
+}
+
+PCLPointCloudXYZI::Ptr LoadPcdAsXYZI(const std::string& path) {
+  pcl::PCLPointCloud2 cloud_blob;
+  if (pcl::io::loadPCDFile(path, cloud_blob) != 0) {
+    return nullptr;
+  }
+
+  PCLPointCloudXYZI::Ptr cloud(new PCLPointCloudXYZI);
+  if (HasPclField(cloud_blob, "intensity")) {
+    pcl::fromPCLPointCloud2(cloud_blob, *cloud);
+    return cloud;
+  }
+
+  PCLPointCloudXYZ cloud_xyz;
+  pcl::fromPCLPointCloud2(cloud_blob, cloud_xyz);
+  cloud->reserve(cloud_xyz.size());
+  for (const auto& point_xyz : cloud_xyz) {
+    PCLPointXYZI point_xyzi;
+    point_xyzi.x = point_xyz.x;
+    point_xyzi.y = point_xyz.y;
+    point_xyzi.z = point_xyz.z;
+    point_xyzi.intensity = 0.0f;
+    cloud->push_back(point_xyzi);
+  }
+  cloud->header = cloud_xyz.header;
+  cloud->width = static_cast<std::uint32_t>(cloud->size());
+  cloud->height = 1;
+  cloud->is_dense = cloud_xyz.is_dense;
+  return cloud;
+}
+
+}  // namespace
 
 Localization::Localization(System* system_ptr) : system_ptr_(system_ptr) {
   if (use_tile_map_) {
@@ -199,6 +245,13 @@ bool Localization::Init() {
   init_result.timestamp_ = curr_time_us_;
   init_result.map_pose = init_pose;
   init_result.odom_pose = last_odom_state_.Pose();
+  if (ConfigParameters::Instance().localization_enable_ground_height_constraint_) {
+    if (const auto map_ground_z = EstimateMapGroundZ(init_pose);
+        map_ground_z.has_value()) {
+      init_result.has_map_ground_z = true;
+      init_result.map_ground_z = map_ground_z.value();
+    }
+  }
   CacheResultToSystem(init_result);
   UpdateCurrentLidarCloud(*TransformPointCloud(
       VoxelGridCloud(curr_cloud_cluster_ptr_->ordered_cloud_, 0.5), init_pose));
@@ -276,15 +329,26 @@ void Localization::Run() {
                  << timer_add_cloud.End();
     }
 
+    const bool reset_imu_integration =
+        curr_cloud_cluster_ptr_->reset_imu_integration_;
+    if (reset_imu_integration) {
+      LOG(WARNING) << std::setprecision(15)
+                   << "Reset localization IMU integration at lidar time "
+                   << static_cast<double>(curr_time_us_) * kMicroseconds2Seconds;
+    }
+
     NavStateData predict_odom_state = last_odom_state_;
-    if (odom_pre_integration_ptr_) {
+    if (!reset_imu_integration && odom_pre_integration_ptr_) {
       predict_odom_state = IntegrateImuMeasuresOdom(last_odom_state_);
     }
     predict_odom_state.timestamp_ = curr_time_us_;
 
     NavStateData predict_nav_state;
 
-    if (ConfigParameters::Instance().fusion_method_ ==
+    if (reset_imu_integration) {
+      predict_nav_state = last_nav_state_;
+      predict_nav_state.timestamp_ = curr_time_us_;
+    } else if (ConfigParameters::Instance().fusion_method_ ==
         kFusionTightCouplingOptimization) {
       // use imu integrals as predicted values for registration
       if (!pre_integration_ptr_) {
@@ -315,7 +379,12 @@ void Localization::Run() {
     }
 
     NavStateData curr_nav_state;
-    if (ConfigParameters::Instance().fusion_method_ ==
+    if (reset_imu_integration) {
+      curr_nav_state = predict_nav_state;
+      curr_nav_state.SetPose(match_pose);
+      curr_nav_state.timestamp_ = curr_time_us_;
+      predict_odom_state.SetPose(match_pose);
+    } else if (ConfigParameters::Instance().fusion_method_ ==
         kFusionTightCouplingOptimization) {
       curr_nav_state.SetPose(predict_nav_state.Pose());
       curr_nav_state.V_ = predict_nav_state.V_;
@@ -335,7 +404,6 @@ void Localization::Run() {
                  << ConfigParameters::Instance().fusion_method_;
     }
 
-    // current lidar pose
     Mat4d curr_pose = curr_nav_state.Pose();
     delta_pose_ = last_pose_.inverse() * curr_pose;
     last_pose_ = curr_pose;
@@ -345,6 +413,13 @@ void Localization::Run() {
     result.timestamp_ = curr_time_us_;
     result.map_pose = curr_pose;
     result.odom_pose = predict_odom_state.Pose();
+    if (ConfigParameters::Instance().localization_enable_ground_height_constraint_) {
+      if (const auto map_ground_z = EstimateMapGroundZ(curr_pose);
+          map_ground_z.has_value()) {
+        result.has_map_ground_z = true;
+        result.map_ground_z = map_ground_z.value();
+      }
+    }
     CacheResultToSystem(result);
     UpdateCurrentLidarCloud(*TransformPointCloud(
         VoxelGridCloud(curr_cloud_cluster_ptr_->ordered_cloud_, 0.5),
@@ -377,14 +452,7 @@ PCLPointCloudXYZI::Ptr Localization::LoadGlobalMap(const std::string& path) {
     return nullptr;
   }
 
-  PCLPointCloudXYZI::Ptr global_cloud_ptr(new PCLPointCloudXYZI);
-  const int res = pcl::io::loadPCDFile(path, *global_cloud_ptr);
-
-  if (res == 0) {
-    return global_cloud_ptr;
-  }
-
-  return nullptr;
+  return LoadPcdAsXYZI(path);
 }
 
 PCLPointCloudXYZI::Ptr Localization::LoadLocalMap(const Mat4d& pose) {
@@ -506,16 +574,8 @@ PCLPointCloudXYZI::Ptr Localization::LoadLocalMap(const Mat4d& pose) {
 }
 
 PCLPointCloudXYZI::Ptr Localization::LoadTileMap(const Vec2i& tile_map_index) {
-  PCLPointCloudXYZI::Ptr cloud(new PCLPointCloudXYZI);
-
   std::string tile_map_path = kTileMapFolder + TILE_MAP_NAME(tile_map_index);
-  int res = pcl::io::loadPCDFile(tile_map_path, *cloud);
-
-  if (res == 0) {
-    return cloud;
-  }
-
-  return nullptr;
+  return LoadPcdAsXYZI(tile_map_path);
 }
 
 std::vector<Vec2i> Localization::GenerateTileMapIndices(const Vec2i& index,
@@ -756,9 +816,58 @@ void Localization::Optimize(NavStateData& curr_nav_state,
          "diverge.";
 }
 
+std::optional<double> Localization::EstimateMapGroundZ(
+    const Mat4d& map_lidar_pose) {
+  const double radius =
+      ConfigParameters::Instance().localization_ground_search_radius_;
+  const double radius_square = radius * radius;
+  const double percentile = std::clamp(
+      ConfigParameters::Instance().localization_ground_z_percentile_, 0.0, 1.0);
+  const int min_points =
+      ConfigParameters::Instance().localization_ground_min_points_;
+  const Vec3d position = map_lidar_pose.block<3, 1>(0, 3);
+
+  std::vector<double> nearby_z;
+  {
+    std::lock_guard<std::mutex> lg(mutex_global_map_cloud_);
+    if (!global_map_cloud_ptr_ || global_map_cloud_ptr_->empty()) {
+      return std::nullopt;
+    }
+
+    nearby_z.reserve(1024);
+    for (const auto& point : global_map_cloud_ptr_->points) {
+      const double dx = static_cast<double>(point.x) - position.x();
+      const double dy = static_cast<double>(point.y) - position.y();
+      if (dx * dx + dy * dy > radius_square) {
+        continue;
+      }
+      if (!std::isfinite(point.z)) {
+        continue;
+      }
+      nearby_z.emplace_back(static_cast<double>(point.z));
+    }
+  }
+
+  if (nearby_z.size() < static_cast<std::size_t>(min_points)) {
+    LOG(WARNING) << "Skip map ground height constraint: only "
+                 << nearby_z.size() << " map points within " << radius
+                 << " m.";
+    return std::nullopt;
+  }
+
+  const auto index = static_cast<std::size_t>(
+      std::round(percentile * static_cast<double>(nearby_z.size() - 1)));
+  std::nth_element(nearby_z.begin(), nearby_z.begin() + index, nearby_z.end());
+  return nearby_z[index];
+}
+
 void Localization::CacheResultToSystem(const LocalizationResult& result) const {
   std::lock_guard<std::mutex> lg(
       system_ptr_->mutex_localization_results_deque_);
+  while (system_ptr_->localization_results_deque_.size() >=
+         System::kMaxLocalizationResultQueueSize) {
+    system_ptr_->localization_results_deque_.pop_front();
+  }
   system_ptr_->localization_results_deque_.emplace_back(result);
 }
 

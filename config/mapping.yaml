@@ -37,7 +37,7 @@
     imuGravity: 9.805                            # 重力加速度大小
     imuRPYWeight: 0.1                            # IMU姿态先验在优化中的权重
 
-    extrinsicTrans: [ 0.0,  0.0,  -0.15 ]       # 雷达到IMU的平移外参[x, y, z]
+    extrinsicTrans: [ 0.0, 0.0, 0.1 ]       # 雷达到IMU的平移外参[x, y, z]
     extrinsicRot: [ 1.0,  0.0,  0.0,
                     0.0,  1.0,  0.0,
                     0.0,  0.0,  1.0 ]            # 雷达到IMU的旋转外参矩阵
@@ -77,6 +77,8 @@
 
     groundFlattenZ: true                        # 保存或发布地面点云前是否将高度压平到固定Z
     groundFlattenValue: 0.1                      # 启用groundFlattenZ后使用的固定高度值
+    alignSavedMapGroundToZero: true              # 保存地图PCD时整体平移Z，使地面接近map.z=0
+    savedMapGroundZOffset: 0.68                  # 保存地图PCD时叠加的Z偏移，约等于雷达离地高度
 
     # LOAM特征提取阈值
     edgeThreshold: 1.0                           # 边缘特征曲率阈值

@@ -73,6 +73,9 @@ private:
 
     void Optimize(NavStateData& curr_nav_state, const Mat4d& lidar_pose);
 
+    [[nodiscard]] std::optional<double> EstimateMapGroundZ(
+        const Mat4d& map_lidar_pose);
+
 private:
     std::shared_ptr<PreIntegration> pre_integration_ptr_ = nullptr;
     std::shared_ptr<PreIntegration> odom_pre_integration_ptr_ = nullptr;

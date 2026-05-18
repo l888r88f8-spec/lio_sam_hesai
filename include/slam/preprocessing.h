@@ -31,6 +31,25 @@ class PreProcessing {
   static pcl::PointCloud<relocalization::PointXYZIRT>::Ptr ConvertMessageToCloud(
       const sensor_msgs::msg::PointCloud2::ConstSharedPtr& cloud_ros_ptr);
 
+  static bool HasCloudField(const sensor_msgs::msg::PointCloud2& cloud,
+                            const std::string& field_name);
+
+  static const sensor_msgs::msg::PointField* FindCloudField(
+      const sensor_msgs::msg::PointCloud2& cloud,
+      const std::string& field_name);
+
+  static double ReadCloudFieldAsDouble(
+      const std::uint8_t* point_data,
+      const sensor_msgs::msg::PointField& field);
+
+  static pcl::PointCloud<relocalization::PointXYZIRT>::Ptr
+  ConvertXYZIMessageToCloud(
+      const sensor_msgs::msg::PointCloud2::ConstSharedPtr& cloud_ros_ptr);
+
+  static pcl::PointCloud<relocalization::PointXYZIRT>::Ptr
+  ConvertHesaiMessageToCloud(
+      const sensor_msgs::msg::PointCloud2::ConstSharedPtr& cloud_ros_ptr);
+
   /*!
    * Compute lidar every point offset time
    * note: Only supports clockwise rotation lidar scan

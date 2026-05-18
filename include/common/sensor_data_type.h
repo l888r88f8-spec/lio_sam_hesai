@@ -60,10 +60,12 @@ struct NavStateData : DataBase {
 struct LocalizationResult : DataBase {
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-    // Poses are expressed at the IMU frame. System converts them to base_link
-    // before publishing odometry and TF.
+    // Localization keeps the original funny_lidar_slam pose convention:
+    // map_pose is map->lidar. System converts it to map->base_link for output.
     Mat4d map_pose = Mat4d::Identity();
     Mat4d odom_pose = Mat4d::Identity();
+    bool has_map_ground_z = false;
+    double map_ground_z = 0.0;
 };
 
 #endif //FUNNY_LIDAR_SLAM_SENSOR_DATA_TYPE_H

@@ -4,7 +4,7 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
 from launch.conditions import IfCondition
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 
 
@@ -13,7 +13,32 @@ def generate_launch_description():
     parameter_file = LaunchConfiguration("params_file")
     use_sim_time = LaunchConfiguration("use_sim_time")
     publish_static_tf = LaunchConfiguration("publish_static_tf")
+    debug_relocalization = LaunchConfiguration("debug_relocalization")
     rviz_config_file = os.path.join(share_dir, "config", "rviz2.rviz")
+    gdb_log_file = os.path.join(
+        os.path.expanduser("~"),
+        ".ros",
+        "log",
+        "lio_sam_hesai_relocalization_gdb.log",
+    )
+    relocalization_prefix = PythonExpression(
+        [
+            "'gdb -q --batch "
+            "-ex \"set pagination off\" "
+            "-ex \"set confirm off\" "
+            "-ex \"set logging file ",
+            gdb_log_file,
+            "\" "
+            "-ex \"set logging overwrite on\" "
+            "-ex \"set logging enabled on\" "
+            "-ex run "
+            "-ex \"thread apply all bt full\" "
+            "-ex \"set logging enabled off\" "
+            "--args' if '",
+            debug_relocalization,
+            "'.lower() == 'true' else ''",
+        ]
+    )
 
     params_declare = DeclareLaunchArgument(
         "params_file",
@@ -29,6 +54,11 @@ def generate_launch_description():
         "publish_static_tf",
         default_value="true",
         description="Publish base_link->lidar and base_link->imu static transforms.",
+    )
+    debug_relocalization_declare = DeclareLaunchArgument(
+        "debug_relocalization",
+        default_value="false",
+        description="Run the relocalization node under GDB and print a full backtrace if it crashes.",
     )
     colorized_output = SetEnvironmentVariable(
         "RCUTILS_COLORIZED_OUTPUT",
@@ -71,6 +101,7 @@ def generate_launch_description():
             parameters=[parameter_file, {"use_sim_time": use_sim_time}],
             output="screen",
             emulate_tty=True,
+            prefix=relocalization_prefix,
         ),
         Node(
             package="rviz2",
@@ -88,6 +119,7 @@ def generate_launch_description():
             params_declare,
             use_sim_time_declare,
             publish_static_tf_declare,
+            debug_relocalization_declare,
             colorized_output,
         ]
         + nodes

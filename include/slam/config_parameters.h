@@ -121,6 +121,11 @@ public:
 
     // localization map path
     std::string localization_map_path_{};
+    bool localization_enable_ground_height_constraint_{};
+    double localization_base_link_ground_height_{};
+    double localization_ground_search_radius_{};
+    double localization_ground_z_percentile_{};
+    int localization_ground_min_points_{};
 };
 
 #endif //FUNNY_LIDAR_SLAM_CONFIG_PARAMETERS_H

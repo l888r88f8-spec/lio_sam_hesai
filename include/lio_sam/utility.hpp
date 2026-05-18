@@ -111,6 +111,8 @@ public:
     int groundPlaneMinPoints;
     bool groundFlattenZ;
     float groundFlattenValue;
+    bool alignSavedMapGroundToZero;
+    float savedMapGroundZOffset;
 
     // Lidar Sensor Configuration
     SensorType sensor = SensorType::OUSTER;
@@ -212,6 +214,17 @@ public:
         declare_parameter("mapFrame", "map");
         get_parameter("mapFrame", mapFrame);
 
+        declare_parameter("sensor_topic.lidar_topic", pointCloudTopic);
+        get_parameter("sensor_topic.lidar_topic", pointCloudTopic);
+        declare_parameter("sensor_topic.imu_topic", imuTopic);
+        get_parameter("sensor_topic.imu_topic", imuTopic);
+        declare_parameter("frames.lidar", lidarFrame);
+        get_parameter("frames.lidar", lidarFrame);
+        declare_parameter("frames.base_link", baselinkFrame);
+        get_parameter("frames.base_link", baselinkFrame);
+        declare_parameter("frames.map", mapFrame);
+        get_parameter("frames.map", mapFrame);
+
         declare_parameter("useImuHeadingInitialization", false);
         get_parameter("useImuHeadingInitialization", useImuHeadingInitialization);
         declare_parameter("useGpsElevation", false);
@@ -265,10 +278,16 @@ public:
         get_parameter("groundFlattenZ", groundFlattenZ);
         declare_parameter("groundFlattenValue", 0.0);
         get_parameter("groundFlattenValue", groundFlattenValue);
+        declare_parameter("alignSavedMapGroundToZero", false);
+        get_parameter("alignSavedMapGroundToZero", alignSavedMapGroundToZero);
+        declare_parameter("savedMapGroundZOffset", 0.0);
+        get_parameter("savedMapGroundZOffset", savedMapGroundZOffset);
 
         std::string sensorStr;
         declare_parameter("sensor", "ouster");
         get_parameter("sensor", sensorStr);
+        declare_parameter("lidar.lidar_sensor_type", sensorStr);
+        get_parameter("lidar.lidar_sensor_type", sensorStr);
         if (sensorStr == "velodyne")
         {
             sensor = SensorType::VELODYNE;
@@ -281,7 +300,7 @@ public:
         {
             sensor = SensorType::LIVOX;
         }
-        else if (sensorStr == "HESAI")
+        else if (sensorStr == "HESAI" || sensorStr == "Hesai")
         {
             sensor = SensorType::HESAI;
         }
@@ -308,6 +327,14 @@ public:
         get_parameter("lidarMinRange", lidarMinRange);
         declare_parameter("lidarMaxRange", 1000.0);
         get_parameter("lidarMaxRange", lidarMaxRange);
+        declare_parameter("lidar.lidar_scan", N_SCAN);
+        get_parameter("lidar.lidar_scan", N_SCAN);
+        declare_parameter("lidar.lidar_horizon_scan", Horizon_SCAN);
+        get_parameter("lidar.lidar_horizon_scan", Horizon_SCAN);
+        declare_parameter("lidar.lidar_use_min_distance", lidarMinRange);
+        get_parameter("lidar.lidar_use_min_distance", lidarMinRange);
+        declare_parameter("lidar.lidar_use_max_distance", lidarMaxRange);
+        get_parameter("lidar.lidar_use_max_distance", lidarMaxRange);
         declare_parameter("groundScanStartIndex", 0);
         get_parameter("groundScanStartIndex", groundScanStartIndex);
         declare_parameter("groundScanEndIndex", -1);

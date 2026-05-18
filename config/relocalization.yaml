@@ -1,53 +1,55 @@
 /**:
   ros__parameters:
-    # =========================
-    # 重定位参数
-    # =========================
-    mappingMode: false
+    mappingMode: false                                      # false=重定位
 
     sensor_topic:
-      lidar_topic: "/lidar_points"
-      imu_topic: "/imu"
+      lidar_topic: "/lidar_points"                         # 原始点云
+      imu_topic: "/imu"                                    # IMU数据
 
     frames:
-      map: "map"
-      base_link: "base_link"
-      imu: "imu_link"
-      lidar: "hesai_lidar"
+      map: "map"                                           # 全局地图
+      base_link: "base_link"                               # 车体坐标
+      imu: "imu_link"                                      # IMU坐标
+      lidar: "hesai_lidar"                                 # 雷达坐标
 
     output:
-      mapping_odom_topic: "lio_sam/localization/odometry"    # 雷达匹配 + IMU 融合后的全局定位输出
+      mapping_odom_topic: "lio_sam/localization/odometry"  # 全局定位里程计
 
     localization:
-      map_path: "/home/robot/map/hesai_indoor/GlobalMap.pcd"
+      map_path: "/home/robot/map/hesai_sim/GlobalMap.pcd"  # 全局地图
+      enable_ground_height_constraint: true                        # 约束base高度
+      base_link_ground_height: 0.275                               # base离地/m
+      ground_search_radius: 5.0                                    # 地面搜索半径/m
+      ground_z_percentile: 0.20                                    # 地面z分位
+      ground_min_points: 100                                       # 最少地图点
 
     lidar:
-      lidar_sensor_type: Hesai # LeiShen_16 RoboSense_16 Velodyne_16/32/64 Ouster_128_os1 Livox_Mid_360 Livox_Avia Hesai None
-      lidar_point_jump_span: 1
-      lidar_point_time_scale: 1.0
-      lidar_use_min_distance: 0.5
-      lidar_use_max_distance: 60.0
-      lidar_rotation_noise_std: 0.01
-      lidar_position_noise_std: 0.02
-      lidar_scan: 16
-      lidar_lower_angle: 15.0
-      lidar_horizon_scan: 1000                                 # 采样率
-      lidar_vertical_resolution: 2.0
+      lidar_sensor_type: Hesai                            # 雷达型号
+      lidar_point_jump_span: 1                            # 点跳步长
+      lidar_point_time_scale: 1.0                         # 点time缩放
+      lidar_use_min_distance: 0.5                         # 最小距离/m
+      lidar_use_max_distance: 60.0                        # 最大距离/m
+      lidar_rotation_noise_std: 0.01                      # 旋转噪声
+      lidar_position_noise_std: 0.02                      # 平移噪声
+      lidar_scan: 16                                      # 线数
+      lidar_lower_angle: 15.0                             # 下边界角/deg
+      lidar_horizon_scan: 1000                            # 水平点数
+      lidar_vertical_resolution: 2.0                      # 垂直分辨率/deg
 
     imu:
-      init_acc_bias: 0.0
-      init_gyro_bias: 0.0
-      acc_noise_std: 0.1
-      gyro_noise_std: 0.01
-      acc_rw_noise_std: 1.0e-5
-      gyro_rw_noise_std: 1.0e-5
-      has_orientation: true
-      data_searcher_buffer_size: 5000
+      init_acc_bias: 0.0                                  # 加计初始零偏
+      init_gyro_bias: 0.0                                 # 陀螺初始零偏
+      acc_noise_std: 0.1                                  # 加计噪声
+      gyro_noise_std: 0.01                                # 陀螺噪声
+      acc_rw_noise_std: 1.0e-5                            # 加计随机游走
+      gyro_rw_noise_std: 1.0e-5                           # 陀螺随机游走
+      has_orientation: true                               # 使用IMU姿态
+      data_searcher_buffer_size: 5000                     # IMU缓存长度
 
-    gravity: 9.805
+    gravity: 9.805                                        # 重力/m/s^2
 
     calibration:
-      lidar_to_imu:
+      lidar_to_imu:                                      # T_lidar_to_imu
         [
           1.0, 0.0, 0.0, 0.0,
           0.0, 1.0, 0.0, 0.0,
@@ -56,41 +58,29 @@
         ]
 
     frontend:
-      fusion_opti_iters: 30
-      fusion_method: TightCouplingOptimization # LooseCoupling, TightCouplingKF, TightCouplingOptimization
+      fusion_opti_iters: 30                              # 融合优化次数
+      fusion_method: TightCouplingOptimization           # 融合方式
 
-      registration_and_searcher_mode: PointToPlane_IVOX # IcpOptimized, PointToPlane_IVOX
+      registration_and_searcher_mode: PointToPlane_IVOX  # 匹配方式
       feature:
-        planar_voxel_filter_size: 0.25 # 默认0.5
+        planar_voxel_filter_size: 0.25                   # 平面体素/m
       registration:
-        optimization_iter_num: 10
-        point_to_planar_thres: 0.1
-        position_converge_thres: 0.01
-        rotation_converge_thres: 0.01
+        optimization_iter_num: 10                        # 匹配迭代次数
+        point_to_planar_thres: 0.1                       # 点面阈值/m
+        position_converge_thres: 0.01                    # 平移收敛阈值
+        rotation_converge_thres: 0.01                    # 旋转收敛阈值
 
-    # =========================
-    # 去地点云参数
-    # =========================
-    pointCloudTopic: "/lidar_points"                            # 输入原始激光点云话题
-    lidarFrame: "hesai_lidar"                                   # 输出点云使用的雷达坐标系
+    segmentation_only_mode: true                         # 仅分割模式
+    nonGroundCloudTopic: "lio_sam/cloud_nonground"       # 非地面点云话题
 
-    segmentation_only_mode: true                                # 地面分割模式
-    nonGroundCloudTopic: "lio_sam/cloud_nonground" # 去地后的非地面点云输出话题
+    groundLeafSize: 0.1                                  # 地面体素/m
+    groundScanStartIndex: 0                              # 起始ring
+    groundScanEndIndex: 15                               # 结束ring
+    groundAngleThreshold: 15.0                           # 地面角度阈值/deg
+    groundPlaneDistance: 0.15                            # 平面距离阈值/m
+    groundPlaneMaxAngle: 30.0                            # 法向角阈值/deg
+    groundPlaneMinPoints: 80                             # 最少地面点
+    distanceForPatchBetweenRings: 0.0                    # 补点距离/m
 
-    sensor: HESAI                                               # velodyne ouster livox HESAI LSLIDAR
-    N_SCAN: 16                                                  # 雷达线数
-    Horizon_SCAN: 1000                                          # 单圈水平方向点数，采样率
-    lidarMinRange: 0.5                                          # 参与分割的最小有效距离，过近点会被过滤
-    lidarMaxRange: 60.0                                         # 参与分割的最大有效距离，过远点会被过滤
-
-    groundLeafSize: 0.1                                        # 原始点云下采样体素尺寸，越大发布越稀疏
-    groundScanStartIndex: 0                                     # 参与地面补点和最终地面输出的起始 ring 编号
-    groundScanEndIndex: 15                                      # 参与地面补点和最终地面输出的结束 ring 编号，设为-1时表示使用全部 ring
-    groundAngleThreshold: 15.0                                  # 相邻上下线束点对的竖直夹角阈值，越小越严格
-    groundPlaneDistance: 0.15                                   # 点到拟合地面平面的距离阈值，越小越严格
-    groundPlaneMaxAngle: 30.0                                   # 地面法向与竖直方向允许的最大夹角，越小越严格
-    groundPlaneMinPoints: 80                                    # 地面平面拟合所需的最少种子点数
-    distanceForPatchBetweenRings: 0.0                           # 相邻线束地面补点的最大距离，减小后会减少地面补全
-
-    useGlobalMapGround: false                                   # 是否使用全局地图辅助补充地面
-    groundFlattenZ: false                                       # 是否把地面点云压平到固定高度
+    useGlobalMapGround: false                            # 使用全局地面
+    groundFlattenZ: false                                # 压平地面

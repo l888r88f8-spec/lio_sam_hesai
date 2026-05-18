@@ -393,6 +393,14 @@ public:
                 << std::endl;
             }
 
+            shiftSavedMapCloudZ(globalCornerCloud);
+            shiftSavedMapCloudZ(globalSurfCloud);
+            if (alignSavedMapGroundToZero)
+            {
+                cout << "Saved map Z offset: " << savedMapGroundZOffset
+                     << " m (align ground to map z=0)" << endl;
+            }
+
             if(req->resolution != 0)
             {
                cout << "\n\nSave resolution: " << req->resolution << endl;
@@ -843,6 +851,14 @@ public:
 
             cout << "\r" << std::flush << "Processing frame " << i << " of " << cloudKeyPoses3D->size() << " ..." << endl;;
         }
+        shiftSavedMapCloudZ(globalCornerCloud);
+        shiftSavedMapCloudZ(globalSurfCloud);
+        if (alignSavedMapGroundToZero)
+        {
+            cout << "Saved map Z offset: " << savedMapGroundZOffset
+                 << " m (align ground to map z=0)" << endl;
+        }
+
         downSizeFilterCorner.setInputCloud(globalCornerCloud);
         downSizeFilterCorner.filter(*globalCornerCloudDS);
         pcl::io::savePCDFileASCII(savePCDDirectory + "cloudCorner.pcd", *globalCornerCloudDS);
@@ -859,14 +875,25 @@ public:
         cout << "Saving map to pcd files completed" << endl;
     }
 
+    // 保存地图时可整体平移Z，使导出的PCD地面落到map.z=0。
+    void shiftSavedMapCloudZ(const pcl::PointCloud<PointType>::Ptr &cloud) const
+    {
+        if (!alignSavedMapGroundToZero || cloud == nullptr)
+            return;
+
+        for (auto &point : cloud->points)
+            point.z += savedMapGroundZOffset;
+    }
+
     // 在导出地面地图前按配置压平高度，便于与现有地面导出参数兼容。
     void flattenGroundCloudForSave(const pcl::PointCloud<PointType>::Ptr &cloud) const
     {
         if (!groundFlattenZ || cloud == nullptr)
             return;
 
+        const float target_z = alignSavedMapGroundToZero ? 0.0f : groundFlattenValue;
         for (auto &point : cloud->points)
-            point.z = groundFlattenValue;
+            point.z = target_z;
     }
 
     // 根据关键帧索引拼接全局地面点云，并按需要执行体素下采样。
@@ -954,6 +981,7 @@ public:
             return true;
         }
 
+        shiftSavedMapCloudZ(globalGroundMap);
         flattenGroundCloudForSave(globalGroundMap);
         const int ret = useBinary
                             ? pcl::io::savePCDFileBinary(filePath, *globalGroundMap)
