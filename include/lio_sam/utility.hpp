@@ -113,6 +113,12 @@ public:
     float groundFlattenValue;
     bool alignSavedMapGroundToZero;
     float savedMapGroundZOffset;
+    bool groundPatchHorizontalEnable;
+    float groundPatchHorizontalMaxDistance;
+    bool groundGridPatchEnable;
+    float groundGridPatchResolution;
+    float groundGridPatchSearchRadius;
+    float groundGridPatchMaxSlopeDeg;
 
     // Lidar Sensor Configuration
     SensorType sensor = SensorType::OUSTER;
@@ -186,6 +192,7 @@ public:
     float historyKeyframeSearchTimeDiff;
     int   historyKeyframeSearchNum;
     float historyKeyframeFitnessScore;
+    float loopClosureMinAcceptedSeparation;
 
     // global map visualization radius
     float globalMapVisualizationSearchRadius;
@@ -282,6 +289,18 @@ public:
         get_parameter("alignSavedMapGroundToZero", alignSavedMapGroundToZero);
         declare_parameter("savedMapGroundZOffset", 0.0);
         get_parameter("savedMapGroundZOffset", savedMapGroundZOffset);
+        declare_parameter("groundPatchHorizontalEnable", false);
+        get_parameter("groundPatchHorizontalEnable", groundPatchHorizontalEnable);
+        declare_parameter("groundPatchHorizontalMaxDistance", 0.6);
+        get_parameter("groundPatchHorizontalMaxDistance", groundPatchHorizontalMaxDistance);
+        declare_parameter("groundGridPatchEnable", false);
+        get_parameter("groundGridPatchEnable", groundGridPatchEnable);
+        declare_parameter("groundGridPatchResolution", 0.10);
+        get_parameter("groundGridPatchResolution", groundGridPatchResolution);
+        declare_parameter("groundGridPatchSearchRadius", 0.40);
+        get_parameter("groundGridPatchSearchRadius", groundGridPatchSearchRadius);
+        declare_parameter("groundGridPatchMaxSlopeDeg", 25.0);
+        get_parameter("groundGridPatchMaxSlopeDeg", groundGridPatchMaxSlopeDeg);
 
         std::string sensorStr;
         declare_parameter("sensor", "ouster");
@@ -439,6 +458,8 @@ public:
         get_parameter("historyKeyframeSearchNum", historyKeyframeSearchNum);
         declare_parameter("historyKeyframeFitnessScore", 0.3);
         get_parameter("historyKeyframeFitnessScore", historyKeyframeFitnessScore);
+        declare_parameter("loopClosureMinAcceptedSeparation", 8.0);
+        get_parameter("loopClosureMinAcceptedSeparation", loopClosureMinAcceptedSeparation);
 
         declare_parameter("globalMapVisualizationSearchRadius", 1000.0);
         get_parameter("globalMapVisualizationSearchRadius", globalMapVisualizationSearchRadius);

@@ -21,7 +21,7 @@
       base_link_ground_height: 0.275                               # base离地/m
       ground_search_radius: 5.0                                    # 地面搜索半径/m
       ground_z_percentile: 0.20                                    # 地面z分位
-      ground_min_points: 100                                       # 最少地图点
+      ground_min_points: 20                                        # 最少地图点
 
     lidar:
       lidar_sensor_type: Hesai                            # 雷达型号

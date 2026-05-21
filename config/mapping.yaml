@@ -37,7 +37,7 @@
     imuGravity: 9.805                            # 重力加速度大小
     imuRPYWeight: 0.1                            # IMU姿态先验在优化中的权重
 
-    extrinsicTrans: [ 0.0, 0.0, 0.1 ]       # 雷达到IMU的平移外参[x, y, z]
+    extrinsicTrans: [ 0.0, 0.0, 0.10 ]          # 雷达到IMU的平移外参[x, y, z]，需与base_link静态TF一致
     extrinsicRot: [ 1.0,  0.0,  0.0,
                     0.0,  1.0,  0.0,
                     0.0,  0.0,  1.0 ]            # 雷达到IMU的旋转外参矩阵
@@ -58,12 +58,18 @@
     segmentation_only_mode: false                # 是否只分割地面
     saveGroundPCD: true                          # 是否保存全局地面点云，保存路径与全局地图一致
     groundLeafSize: 0.02                         # 原始点云下采样体素尺寸，越大发布越稀疏
-    groundScanStartIndex: 12                      # 参与地面补点和最终地面输出的起始 ring 编号
-    groundScanEndIndex: 15                        # 参与地面补点和最终地面输出的结束 ring 编号，设为-1时表示使用全部 ring
-    distanceForPatchBetweenRings: 2.5            # 相邻ring距离小于该值时在已确认地面之间插值补点，单位米
+    groundScanStartIndex: 0                      # 参与地面种子和补点的起始 ring 编号
+    groundScanEndIndex: 4                        # 参与地面种子和补点的结束 ring 编号，设为-1时表示使用全部 ring
+    distanceForPatchBetweenRings: 0.0            # 纵向ring间补点最大距离，0表示关闭；坡道优先使用横向补点
     groundAngleThreshold: 10.0                   # 相邻ring竖直夹角阈值，小于该值的点对可作为地面种子，单位度
+    groundPatchHorizontalEnable: false           # 横向ring内补点，保留用于对比
+    groundPatchHorizontalMaxDistance: 0.6        # 横向补点允许跨越的最大端点距离，单位米
+    groundGridPatchEnable: true                  # 是否启用局部高程栅格补点
+    groundGridPatchResolution: 0.10              # 高程栅格补点分辨率，单位米
+    groundGridPatchSearchRadius: 0.40            # 空栅格局部平面搜索半径，单位米
+    groundGridPatchMaxSlopeDeg: 25.0             # 允许补点的最大局部坡度，单位度
 
-    useGlobalMapGround: true                     # 是否使用全局地图 辅助补充当前帧地面提取
+    useGlobalMapGround: false                     # 是否使用全局地图 辅助补充当前帧地面提取
     globalMapGroundRadius: 30.0                  # 从全局地图 裁剪候选地面的水平搜索半径，单位米
     globalMapGroundZRange: 5.0                   # 从全局地图 裁剪候选地面的上下高度范围，单位米
     globalMapGroundVoxelSize: 0.05               # 全局地图 候选地面预下采样体素尺寸，单位米
@@ -75,9 +81,9 @@
     groundPlaneMaxAngle: 30.0                    # 当前帧 局部地面法向相对竖直方向允许的最大倾角，单位度
     groundPlaneMinPoints: 80                     # 当前帧 局部地面平面拟合所需的最少种子点数
 
-    groundFlattenZ: true                        # 保存或发布地面点云前是否将高度压平到固定Z
+    groundFlattenZ: false                       # 保存或发布地面点云前是否将高度压平到固定Z；坡道路面需保留真实Z
     groundFlattenValue: 0.1                      # 启用groundFlattenZ后使用的固定高度值
-    alignSavedMapGroundToZero: true              # 保存地图PCD时整体平移Z，使地面接近map.z=0
+    alignSavedMapGroundToZero: false              # 保存地图PCD时整体平移Z，使地面接近map.z=0
     savedMapGroundZOffset: 0.68                  # 保存地图PCD时叠加的Z偏移，约等于雷达离地高度
 
     # LOAM特征提取阈值
@@ -118,14 +124,15 @@
 
     # 回环检测参数
     loopClosureEnableFlag: true                  # 是否启用回环检测与回环约束
-    loopClosureFrequency: 2.0                    # 回环检测频率，单位Hz
+    loopClosureFrequency: 0.5                    # 回环检测频率，单位Hz
     surroundingKeyframeSize: 25                  # 回环局部子地图包含的邻近关键帧数量
     historyKeyframeSearchRadius: 15.0            # 历史关键帧搜索半径，单位米
     historyKeyframeSearchTimeDiff: 30.0          # 参与回环候选的最小时间间隔，单位秒
     historyKeyframeSearchNum: 25                 # 构建回环历史子地图时融合的关键帧数量
     historyKeyframeFitnessScore: 0.3             # ICP回环匹配得分阈值，越小要求越严格
+    loopClosureMinAcceptedSeparation: 10.0        # 已接受回环之间的最小空间间隔，避免同一区域连续加回环，单位米
 
     # 全局地图可视化
     globalMapVisualizationSearchRadius: 2000.0   # RViz全局地图显示半径，单位米
-    globalMapVisualizationPoseDensity: 0.5       # 可视化时关键帧位姿下采样间隔，单位米
-    globalMapVisualizationLeafSize: 0.2          # 可视化全局点云下采样体素尺寸，单位米
+    globalMapVisualizationPoseDensity: 1.5       # 可视化时关键帧位姿下采样间隔，单位米
+    globalMapVisualizationLeafSize: 1.0          # 可视化全局点云下采样体素尺寸，单位米

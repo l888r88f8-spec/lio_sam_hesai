@@ -62,6 +62,7 @@ namespace {
 
 constexpr float kDegToRad = static_cast<float>(M_PI) / 180.0f;
 constexpr float kMinPlaneNorm = 1e-6f;
+constexpr int kHorizontalPatchMaxColumnGap = 3;
 
 const sensor_msgs::msg::PointField* findCloudField(
     const sensor_msgs::msg::PointCloud2 &cloud,
@@ -1208,7 +1209,7 @@ public:
                rangeMat.at<float>(row, column) != FLT_MAX;
     }
 
-    // 返回用于地面补点和最终地面输出的 ring 行号范围 [start, end]。
+    // 返回用于地面种子和补点的 ring 行号范围 [start, end]。
     std::pair<int, int> getGroundScanRange() const
     {
         int groundScanStart = groundScanStartIndex;
@@ -1225,10 +1226,11 @@ public:
         return {groundScanStart, groundScanEnd};
     }
 
-    // 返回参与地面/非地面判定的 ring 行号范围，默认使用全部线束。
+    // 返回参与地面/非地面判定的 ring 行号范围。
+    // 地面输出被硬限制在 groundScanStartIndex~groundScanEndIndex 内。
     std::pair<int, int> getGroundClassificationRange() const
     {
-        return {0, N_SCAN - 1};
+        return getGroundScanRange();
     }
 
     // 判断两个相邻候选点是否在局部几何上连续，可视为同一片地面。
@@ -1256,6 +1258,29 @@ public:
         const float maxLinkAngle = std::max(groundPlaneMaxAngle * kDegToRad,
                                             groundAngleThreshold * 2.0f * kDegToRad);
         return localAngle <= maxLinkAngle;
+    }
+
+    int wrapGroundColumn(int column) const
+    {
+        if (column >= Horizon_SCAN)
+            return column - Horizon_SCAN;
+        if (column < 0)
+            return column + Horizon_SCAN;
+        return column;
+    }
+
+    bool hasBlockingMeasuredPointBetween(int row, int fromColumn, int gap) const
+    {
+        for (int offset = 1; offset < gap; ++offset)
+        {
+            const int column = wrapGroundColumn(fromColumn + offset);
+            if (hasValidGroundCell(row, column) &&
+                groundMat.at<signed char>(row, column) != 1)
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     // 从 groundMat 中收集真实量测到的地面种子点，避免把人工补点输出到最终地面云。
@@ -1338,6 +1363,85 @@ public:
                     }
 
                     groundOutput->push_back(patchPoint);
+                }
+            }
+        }
+    }
+
+    // 同一ring内横向补点，用于补齐扫描线方向的地面连续性。
+    void appendHorizontalGroundPatches(const pcl::ModelCoefficients::Ptr &coefficients,
+                                       pcl::PointCloud<PointType>::Ptr groundOutput)
+    {
+        if (!groundPatchHorizontalEnable ||
+            groundPatchHorizontalMaxDistance <= 0.0f)
+        {
+            return;
+        }
+
+        const float interpolationSpacing =
+            std::max(0.02f, groundLeafSize > 0.0f ? groundLeafSize : 0.05f);
+
+        const auto [groundScanStart, groundScanEnd] = getGroundScanRange();
+        for (int row = groundScanStart; row <= groundScanEnd; ++row)
+        {
+            for (int column = 0; column < Horizon_SCAN; ++column)
+            {
+                if (groundMat.at<signed char>(row, column) != 1 ||
+                    !hasValidGroundCell(row, column))
+                {
+                    continue;
+                }
+
+                for (int gap = 1; gap <= kHorizontalPatchMaxColumnGap; ++gap)
+                {
+                    const int nextColumn = wrapGroundColumn(column + gap);
+                    if (groundMat.at<signed char>(row, nextColumn) != 1 ||
+                        !hasValidGroundCell(row, nextColumn))
+                    {
+                        continue;
+                    }
+
+                    if (hasBlockingMeasuredPointBetween(row, column, gap))
+                        break;
+
+                    const PointType &fromPoint =
+                        fullCloud->points[column + row * Horizon_SCAN];
+                    const PointType &toPoint =
+                        fullCloud->points[nextColumn + row * Horizon_SCAN];
+
+                    const float dX = toPoint.x - fromPoint.x;
+                    const float dY = toPoint.y - fromPoint.y;
+                    const float dZ = toPoint.z - fromPoint.z;
+                    const float ds = std::sqrt(dX * dX + dY * dY + dZ * dZ);
+                    if (ds <= interpolationSpacing ||
+                        ds > groundPatchHorizontalMaxDistance)
+                    {
+                        break;
+                    }
+
+                    const int segmentCount =
+                        std::max(2, static_cast<int>(std::ceil(ds / interpolationSpacing)));
+                    for (int step = 1; step < segmentCount; ++step)
+                    {
+                        const float t = static_cast<float>(step) /
+                                        static_cast<float>(segmentCount);
+
+                        PointType patchPoint;
+                        patchPoint.x = fromPoint.x + dX * t;
+                        patchPoint.y = fromPoint.y + dY * t;
+                        patchPoint.z = fromPoint.z + dZ * t;
+                        patchPoint.intensity = 0.0f;
+
+                        if (coefficients &&
+                            pointToPlaneDistance(patchPoint, *coefficients) >
+                                groundPlaneDistance)
+                        {
+                            continue;
+                        }
+
+                        groundOutput->push_back(patchPoint);
+                    }
+                    break;
                 }
             }
         }
@@ -1470,8 +1574,7 @@ public:
                     break;
 
                 groundMat.at<signed char>(i, j) = 1;
-                if (i >= groundScanStart && i <= groundScanEnd)
-                    groundOutput->push_back(point);
+                groundOutput->push_back(point);
                 previousGroundRow = i;
             }
 
@@ -1489,12 +1592,12 @@ public:
                     break;
 
                 groundMat.at<signed char>(i, j) = 1;
-                if (i >= groundScanStart && i <= groundScanEnd)
-                    groundOutput->push_back(point);
+                groundOutput->push_back(point);
                 previousGroundRow = i;
             }
         }
 
+        appendHorizontalGroundPatches(coefficients, groundOutput);
         appendConfirmedGroundPatches(coefficients, groundOutput);
         appendGroundPatchToSensorCenter(coefficients, groundOutput);
     }
@@ -1512,6 +1615,7 @@ public:
         if (!fitGroundPlane(seedCloud, coefficients, inliers))
         {
             collectMeasuredGroundSeeds(groundOutput);
+            appendHorizontalGroundPatches(nullptr, groundOutput);
             appendConfirmedGroundPatches(nullptr, groundOutput);
             return !groundOutput->empty();
         }
@@ -1520,6 +1624,7 @@ public:
         if (groundOutput->empty())
         {
             collectMeasuredGroundSeeds(groundOutput);
+            appendHorizontalGroundPatches(coefficients, groundOutput);
             appendConfirmedGroundPatches(coefficients, groundOutput);
             appendGroundPatchToSensorCenter(coefficients, groundOutput);
         }
