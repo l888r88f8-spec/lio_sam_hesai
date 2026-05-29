@@ -11,7 +11,7 @@ from launch_ros.actions import Node
 def generate_launch_description():
     share_dir = get_package_share_directory("lio_sam_hesai")
     parameter_file = LaunchConfiguration("params_file")
-    use_sim_time = LaunchConfiguration("use_sim_time")
+    use_sim = LaunchConfiguration("use_sim")
     use_rviz = LaunchConfiguration("use_rviz")
     publish_static_tf = LaunchConfiguration("publish_static_tf")
     debug_relocalization = LaunchConfiguration("debug_relocalization")
@@ -47,8 +47,8 @@ def generate_launch_description():
         description="Full path to the shared relocalization + ground segmentation parameters file to use.",
     )
     use_sim_time_declare = DeclareLaunchArgument(
-        "use_sim_time",
-        default_value="true",
+        "use_sim",
+        default_value="false",
         description="Use simulation clock if true.",
     )
     use_rviz_declare = DeclareLaunchArgument(
@@ -81,7 +81,7 @@ def generate_launch_description():
                 "base_link",
                 "hesai_lidar",
             ],
-            parameters=[{"use_sim_time": use_sim_time}],
+            parameters=[{"use_sim_time": use_sim}],
             output="screen",
             emulate_tty=True,
             condition=IfCondition(publish_static_tf),
@@ -95,7 +95,7 @@ def generate_launch_description():
                 "base_link",
                 "imu_link",
             ],
-            parameters=[{"use_sim_time": use_sim_time}],
+            parameters=[{"use_sim_time": use_sim}],
             output="screen",
             emulate_tty=True,
             condition=IfCondition(publish_static_tf),
@@ -104,7 +104,7 @@ def generate_launch_description():
             package="lio_sam_hesai",
             executable="lio_sam_hesai_relocalization",
             name="lio_sam_hesai_relocalization",
-            parameters=[parameter_file, {"use_sim_time": use_sim_time}],
+            parameters=[parameter_file, {"use_sim_time": use_sim}],
             output="screen",
             emulate_tty=True,
             prefix=relocalization_prefix,
@@ -117,7 +117,7 @@ def generate_launch_description():
                 parameter_file,
                 {
                     "segmentation_only_mode": True,
-                    "use_sim_time": use_sim_time,
+                    "use_sim_time": use_sim,
                 },
             ],
             output="screen",
@@ -128,7 +128,7 @@ def generate_launch_description():
             executable="rviz2",
             name="rviz2",
             arguments=["-d", rviz_config_file],
-            parameters=[{"use_sim_time": use_sim_time}],
+            parameters=[{"use_sim_time": use_sim}],
             output="screen",
             emulate_tty=True,
             condition=IfCondition(use_rviz),

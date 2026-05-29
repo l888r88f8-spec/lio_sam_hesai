@@ -454,20 +454,26 @@ public:
                downSizeFilterSurf.filter(*globalSurfCloudDS);
                pcl::io::savePCDFileBinary(saveMapDirectory + "/SurfMap.pcd", *globalSurfCloudDS);
                //pcl::io::savePCDFileBinary(saveMapDirectory + "/localmap.pcd", *globalSurfCloudDS);
+               // build and save GlobalMap with same resolution
+               *globalMapCloud += *globalCornerCloudDS;
+               *globalMapCloud += *globalSurfCloudDS;
             }
             else
             {
-            // save corner cloud
+               // save corner cloud
                pcl::io::savePCDFileBinary(saveMapDirectory + "/CornerMap.pcd", *globalCornerCloud);
                // save surf cloud
                pcl::io::savePCDFileBinary(saveMapDirectory + "/SurfMap.pcd", *globalSurfCloud);
+               // build GlobalMap without downsampling
+               *globalMapCloud += *globalCornerCloud;
+               *globalMapCloud += *globalSurfCloud;
             }
-            // save global point cloud map
-            *globalMapCloud += *globalCornerCloud;
-            *globalMapCloud += *globalSurfCloud;
             int ret = pcl::io::savePCDFileBinary(saveMapDirectory + "/GlobalMap.pcd", *globalMapCloud);
+            const float groundRes = req->ground_resolution;
             const bool groundSaved = saveGlobalGroundMap(
-                saveMapDirectory + "/GroundMap.pcd", req->resolution, true);
+                saveMapDirectory + "/GroundMap.pcd", groundRes, true);
+            if (groundRes != req->resolution)
+                cout << "Ground save resolution: " << groundRes << endl;
             res->success = (ret == 0) && groundSaved;
             downSizeFilterCorner.setLeafSize(mappingCornerLeafSize, mappingCornerLeafSize, mappingCornerLeafSize);
             downSizeFilterSurf.setLeafSize(mappingSurfLeafSize, mappingSurfLeafSize, mappingSurfLeafSize);
@@ -898,18 +904,33 @@ public:
                  << " m (align ground to map z=0)" << endl;
         }
 
-        downSizeFilterCorner.setInputCloud(globalCornerCloud);
-        downSizeFilterCorner.filter(*globalCornerCloudDS);
+        if (savePCDResolution > 0.0f)
+        {
+            downSizeFilterCorner.setLeafSize(savePCDResolution, savePCDResolution, savePCDResolution);
+            downSizeFilterCorner.setInputCloud(globalCornerCloud);
+            downSizeFilterCorner.filter(*globalCornerCloudDS);
+
+            downSizeFilterSurf.setLeafSize(savePCDResolution, savePCDResolution, savePCDResolution);
+            downSizeFilterSurf.setInputCloud(globalSurfCloud);
+            downSizeFilterSurf.filter(*globalSurfCloudDS);
+
+            *globalMapCloud += *globalCornerCloudDS;
+            *globalMapCloud += *globalSurfCloudDS;
+        }
+        else
+        {
+            *globalCornerCloudDS = *globalCornerCloud;
+            *globalSurfCloudDS = *globalSurfCloud;
+            *globalMapCloud += *globalCornerCloud;
+            *globalMapCloud += *globalSurfCloud;
+        }
+
         pcl::io::savePCDFileASCII(savePCDDirectory + "cloudCorner.pcd", *globalCornerCloudDS);
-
-        downSizeFilterSurf.setInputCloud(globalSurfCloud);
-        downSizeFilterSurf.filter(*globalSurfCloudDS);
         pcl::io::savePCDFileASCII(savePCDDirectory + "cloudSurf.pcd", *globalSurfCloudDS);
-
-        *globalMapCloud += *globalCornerCloud;
-        *globalMapCloud += *globalSurfCloud;
         pcl::io::savePCDFileASCII(savePCDDirectory + "cloudGlobal.pcd", *globalMapCloud);
-        saveGlobalGroundMap(savePCDDirectory + "cloudGround.pcd", savePCDResolution, false);
+        saveGlobalGroundMap(savePCDDirectory + "cloudGround.pcd", saveGroundPCDResolution, false);
+        downSizeFilterCorner.setLeafSize(mappingCornerLeafSize, mappingCornerLeafSize, mappingCornerLeafSize);
+        downSizeFilterSurf.setLeafSize(mappingSurfLeafSize, mappingSurfLeafSize, mappingSurfLeafSize);
         cout << "****************************************************" << endl;
         cout << "Saving map to pcd files completed" << endl;
     }
@@ -1145,8 +1166,7 @@ public:
     }
 
     pcl::PointCloud<PointType>::Ptr makeGroundKeyFrameCloud(
-        const pcl::PointCloud<PointType>::Ptr& groundIn,
-        const PointTypePose& keyPose)
+        const pcl::PointCloud<PointType>::Ptr& groundIn)
     {
         pcl::PointCloud<PointType>::Ptr groundLocal(
             new pcl::PointCloud<PointType>());
@@ -1154,26 +1174,11 @@ public:
             return groundLocal;
 
         *groundLocal = *groundIn;
-        if (!groundGridPatchEnable)
-            return groundLocal;
-
-        PointTypePose poseCopy = keyPose;
-        pcl::PointCloud<PointType>::Ptr groundMap =
-            transformPointCloud(groundLocal, &poseCopy);
-        appendGlobalGroundGridPatches(groundMap);
-
-        pcl::PointCloud<PointType>::Ptr patchedLocal(
-            new pcl::PointCloud<PointType>());
-        pcl::transformPointCloud(
-            *groundMap,
-            *patchedLocal,
-            pclPointToAffine3f(keyPose).inverse());
-
-        return downsampleGroundMapCloud(patchedLocal, groundLeafSize);
+        return groundLocal;
     }
 
-    // 根据关键帧索引拼接全局地面点云，构建方式与普通全局地图一致：
-    // 地面补点已经进入每个关键帧，后端只按优化后的关键帧位姿做变换、聚合和降采样。
+    // 根据关键帧索引拼接全局地面点云。关键帧只保存真实量测地面；
+    // 高程栅格补点在全局坐标系内只执行一次，避免逐关键帧补点叠加成多层地面。
     pcl::PointCloud<PointType>::Ptr buildGlobalGroundMapFromIndices(
         const std::vector<int> &keyFrameIndices,
         float leafSize)
@@ -1221,6 +1226,7 @@ public:
             }
         }
 
+        appendGlobalGroundGridPatches(globalGroundKeyFrames);
         return downsampleGroundMapCloud(globalGroundKeyFrames, leafSize);
     }
 
@@ -1519,36 +1525,6 @@ public:
         loopIndexContainer[loopKeyCur] = loopKeyPre;
     }
 
-    bool isLoopClosureTooCloseToAccepted(int loopKeyCur) const
-    {
-        if (loopClosureMinAcceptedSeparation <= 0.0f ||
-            loopIndexContainer.empty() ||
-            loopKeyCur < 0 ||
-            loopKeyCur >= static_cast<int>(copy_cloudKeyPoses3D->size()))
-        {
-            return false;
-        }
-
-        const PointType& currentPose = copy_cloudKeyPoses3D->points[loopKeyCur];
-        for (const auto& loopIndex : loopIndexContainer)
-        {
-            const int acceptedCur = loopIndex.first;
-            if (acceptedCur < 0 ||
-                acceptedCur >= static_cast<int>(copy_cloudKeyPoses3D->size()))
-            {
-                continue;
-            }
-
-            if (pointDistance(currentPose,
-                              copy_cloudKeyPoses3D->points[acceptedCur]) <
-                loopClosureMinAcceptedSeparation)
-            {
-                return true;
-            }
-        }
-        return false;
-    }
-
     bool detectLoopClosureDistance(int *latestID, int *closestID)
     {
         int loopKeyCur = copy_cloudKeyPoses3D->size() - 1;
@@ -1557,8 +1533,6 @@ public:
         // check loop constraint added before
         auto it = loopIndexContainer.find(loopKeyCur);
         if (it != loopIndexContainer.end())
-            return false;
-        if (isLoopClosureTooCloseToAccepted(loopKeyCur))
             return false;
 
         // find the closest history key frame
@@ -1632,8 +1606,6 @@ public:
 
         auto it = loopIndexContainer.find(loopKeyCur);
         if (it != loopIndexContainer.end())
-            return false;
-        if (isLoopClosureTooCloseToAccepted(loopKeyCur))
             return false;
 
         *latestID = loopKeyCur;
@@ -2673,7 +2645,7 @@ public:
         //pcl::copyPointCloud(*laserCloudSurfLastDS,    *thisSurfKeyFrame);
         pcl::PointCloud<PointType>::Ptr thisSurfKeyFrame = makeSurfKeyFrameCloud();
         pcl::PointCloud<PointType>::Ptr thisGroundKeyFrame =
-            makeGroundKeyFrameCloud(laserCloudGroundLast, thisPose6D);
+            makeGroundKeyFrameCloud(laserCloudGroundLast);
 
         // save key frame cloud
         cornerCloudKeyFrames.push_back(thisCornerKeyFrame);

@@ -1,4 +1,5 @@
 float32 resolution
+float32 ground_resolution
 string destination
 ---
 bool success

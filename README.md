@@ -79,7 +79,7 @@ ros2 bag play your_data
 
 ### 2. 保存地图服务
 ```bash
-ros2 service call /lio_sam/save_map lio_sam_hesai/srv/SaveMap "{resolution: 0.2, destination: /tmp/LOAM}"
+ros2 service call /lio_sam/save_map lio_sam_hesai/srv/SaveMap "{resolution: 0.2, ground_resolution: 0.05, destination: /tmp/LOAM}"
 ```
 注意：服务名`/lio_sam/save_map`沿用了原始命名空间；但服务类型来自当前这个包。
 <img width="1387" height="992" alt="image" src="image/image.png" />

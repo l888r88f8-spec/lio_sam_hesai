@@ -93,6 +93,7 @@ public:
     string savePCDDirectory;
     bool mappingMode;
     float savePCDResolution;
+    float saveGroundPCDResolution;
     bool saveGroundPCD;
     string groundPCDDirectory;
     string groundPCDDirectoryGlobal;
@@ -115,6 +116,7 @@ public:
     float savedMapGroundZOffset;
     bool groundPatchHorizontalEnable;
     float groundPatchHorizontalMaxDistance;
+    bool groundPatchToSensorCenterEnable;
     bool groundGridPatchEnable;
     float groundGridPatchResolution;
     float groundGridPatchSearchRadius;
@@ -192,7 +194,6 @@ public:
     float historyKeyframeSearchTimeDiff;
     int   historyKeyframeSearchNum;
     float historyKeyframeFitnessScore;
-    float loopClosureMinAcceptedSeparation;
 
     // global map visualization radius
     float globalMapVisualizationSearchRadius;
@@ -249,6 +250,8 @@ public:
         get_parameter("mappingMode", mappingMode);
         declare_parameter("savePCDResolution", 0.0);
         get_parameter("savePCDResolution", savePCDResolution);
+        declare_parameter("saveGroundPCDResolution", 0.0);
+        get_parameter("saveGroundPCDResolution", saveGroundPCDResolution);
         declare_parameter("saveGroundPCD", false);
         get_parameter("saveGroundPCD", saveGroundPCD);
         declare_parameter("groundPCDDirectory", "/Downloads/LOAM_ground/");
@@ -293,6 +296,8 @@ public:
         get_parameter("groundPatchHorizontalEnable", groundPatchHorizontalEnable);
         declare_parameter("groundPatchHorizontalMaxDistance", 0.6);
         get_parameter("groundPatchHorizontalMaxDistance", groundPatchHorizontalMaxDistance);
+        declare_parameter("groundPatchToSensorCenterEnable", false);
+        get_parameter("groundPatchToSensorCenterEnable", groundPatchToSensorCenterEnable);
         declare_parameter("groundGridPatchEnable", false);
         get_parameter("groundGridPatchEnable", groundGridPatchEnable);
         declare_parameter("groundGridPatchResolution", 0.10);
@@ -458,9 +463,6 @@ public:
         get_parameter("historyKeyframeSearchNum", historyKeyframeSearchNum);
         declare_parameter("historyKeyframeFitnessScore", 0.3);
         get_parameter("historyKeyframeFitnessScore", historyKeyframeFitnessScore);
-        declare_parameter("loopClosureMinAcceptedSeparation", 8.0);
-        get_parameter("loopClosureMinAcceptedSeparation", loopClosureMinAcceptedSeparation);
-
         declare_parameter("globalMapVisualizationSearchRadius", 1000.0);
         get_parameter("globalMapVisualizationSearchRadius", globalMapVisualizationSearchRadius);
         declare_parameter("globalMapVisualizationPoseDensity", 10.0);

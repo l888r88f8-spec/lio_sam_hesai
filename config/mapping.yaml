@@ -1,6 +1,6 @@
 /**:
   ros__parameters:
-    # ros2 service call /lio_sam/save_map lio_sam_hesai/srv/SaveMap "{resolution: 0.01, destination: /map/hesai_sim}"
+    # ros2 service call /lio_sam/save_map lio_sam_hesai/srv/SaveMap "{resolution: 0.01, ground_resolution: 0.05, destination: /map/hesai_sim}"
     # Sub Topics
     pointCloudTopic: "/lidar_points"            # "/ls/lslidar_point_cloud"# Point cloud data in
     imuTopic: "/imu"                            # IMU data in
@@ -9,11 +9,11 @@
     gpsTopic: "odometry/gps"                    # GPS odometry topic from navsat out
 
     # Frames
-    lidarFrame: "hesai_lidar"
-    baselinkFrame: "base_link"
-    odometryFrame: "odom"
     mapFrame: "map"
-
+    odometryFrame: "odom"
+    baselinkFrame: "base_link"
+    lidarFrame: "hesai_lidar"
+    
     # GPS 相关参数
     useImuHeadingInitialization: false           # 使用 GPS 时，是否用 IMU 航向角辅助初始化
     useGpsElevation: false                       # 是否使用 GPS 高程；高程噪声大时建议关闭
@@ -23,7 +23,7 @@
     # 激光雷达参数
     sensor: HESAI                             # 雷达类型，可选 velodyne ouster LSLIDAR livox HESAI
     N_SCAN: 16                                   # 雷达线数
-    Horizon_SCAN: 1000                           # 单圈水平方向点数
+    Horizon_SCAN: 2000                           # 单圈水平方向点数
     downsampleRate: 1                            # 输入点云按ring的下采样倍率，1表示不降采样
     lidarMinRange: 0.5                           # 参与建图的最小量测距离，单位米
     lidarMaxRange: 60.0                          # 参与建图的最大量测距离，单位米
@@ -35,7 +35,7 @@
     imuAccBiasN: 2.0e-3                          # 加速度零偏随机游走噪声
     imuGyrBiasN: 2.5e-5                          # 角速度零偏随机游走噪声
     imuGravity: 9.805                            # 重力加速度大小
-    imuRPYWeight: 0.1                            # IMU姿态先验在优化中的权重
+    imuRPYWeight: 0.8                            # IMU姿态先验在优化中的权重
 
     extrinsicTrans: [ 0.0, 0.0, 0.10 ]          # 雷达到IMU的平移外参[x, y, z]，需与base_link静态TF一致
     extrinsicRot: [ 1.0,  0.0,  0.0,
@@ -50,7 +50,8 @@
     # CTRL+C地图与点云导出
     savePCD: false                               # 程序退出时是否自动保存全局地图点云
     savePCDDirectory: "/Downloads/LOAM_hesai/"   # 全局地图导出目录，相对HOME，程序会删除后重建该目录
-    savePCDResolution: 0.1                       # 自动导出地图时的额外下采样分辨率，0表示不额外下采样
+    savePCDResolution: 0.1                       # 自动导出全局地图时的下采样分辨率，0表示不额外下采样
+    saveGroundPCDResolution: 0.05                # 自动导出全局地面地图时的下采样分辨率，0表示不额外下采样
 
     # 地面分割与地面导出
     globalMapTopic: "lio_sam/mapping/map_global"
@@ -58,13 +59,14 @@
     segmentation_only_mode: false                # 是否只分割地面
     saveGroundPCD: true                          # 是否保存全局地面点云，保存路径与全局地图一致
     groundLeafSize: 0.02                         # 原始点云下采样体素尺寸，越大发布越稀疏
-    groundScanStartIndex: 0                      # 参与地面种子和补点的起始 ring 编号
-    groundScanEndIndex: 4                        # 参与地面种子和补点的结束 ring 编号，设为-1时表示使用全部 ring
+    groundScanStartIndex: 11                      # 参与地面种子和补点的起始 ring 编号
+    groundScanEndIndex: 15                        # 参与地面种子和补点的结束 ring 编号，设为-1时表示使用全部 ring
     distanceForPatchBetweenRings: 0.0            # 纵向ring间补点最大距离，0表示关闭；坡道优先使用横向补点
     groundAngleThreshold: 10.0                   # 相邻ring竖直夹角阈值，小于该值的点对可作为地面种子，单位度
     groundPatchHorizontalEnable: false           # 横向ring内补点，保留用于对比
     groundPatchHorizontalMaxDistance: 0.6        # 横向补点允许跨越的最大端点距离，单位米
-    groundGridPatchEnable: true                  # 是否启用局部高程栅格补点
+    groundPatchToSensorCenterEnable: false       # 是否补齐机器人中心到最内圈地面之间的空洞
+    groundGridPatchEnable: false                  # 是否启用局部高程栅格补点
     groundGridPatchResolution: 0.10              # 高程栅格补点分辨率，单位米
     groundGridPatchSearchRadius: 0.40            # 空栅格局部平面搜索半径，单位米
     groundGridPatchMaxSlopeDeg: 25.0             # 允许补点的最大局部坡度，单位度
@@ -123,16 +125,15 @@
     surroundingKeyframeSearchRadius: 20.0        # 扫描到地图优化时局部子地图搜索半径，单位米
 
     # 回环检测参数
-    loopClosureEnableFlag: true                  # 是否启用回环检测与回环约束
+    loopClosureEnableFlag: false                  # 是否启用回环检测与回环约束
     loopClosureFrequency: 0.5                    # 回环检测频率，单位Hz
     surroundingKeyframeSize: 25                  # 回环局部子地图包含的邻近关键帧数量
-    historyKeyframeSearchRadius: 15.0            # 历史关键帧搜索半径，单位米
+    historyKeyframeSearchRadius: 8.0            # 历史关键帧搜索半径，单位米
     historyKeyframeSearchTimeDiff: 30.0          # 参与回环候选的最小时间间隔，单位秒
-    historyKeyframeSearchNum: 25                 # 构建回环历史子地图时融合的关键帧数量
-    historyKeyframeFitnessScore: 0.3             # ICP回环匹配得分阈值，越小要求越严格
-    loopClosureMinAcceptedSeparation: 10.0        # 已接受回环之间的最小空间间隔，避免同一区域连续加回环，单位米
+    historyKeyframeSearchNum: 15                 # 构建回环历史子地图时融合的关键帧数量
+    historyKeyframeFitnessScore: 0.15             # ICP回环匹配得分阈值，越小要求越严格
 
     # 全局地图可视化
     globalMapVisualizationSearchRadius: 2000.0   # RViz全局地图显示半径，单位米
     globalMapVisualizationPoseDensity: 1.5       # 可视化时关键帧位姿下采样间隔，单位米
-    globalMapVisualizationLeafSize: 1.0          # 可视化全局点云下采样体素尺寸，单位米
+    globalMapVisualizationLeafSize: 0.3          # 可视化全局点云下采样体素尺寸，单位米

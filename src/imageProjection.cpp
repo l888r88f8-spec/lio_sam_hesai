@@ -159,7 +159,27 @@ bool convertHesaiCloudToCommon(
     cloud_out.clear();
     cloud_out.reserve(point_count);
 
-    double time_base = std::numeric_limits<double>::quiet_NaN();
+    double time_base = std::numeric_limits<double>::max();
+    if (time_field != nullptr)
+    {
+        for (size_t i = 0; i < point_count; ++i)
+        {
+            const auto *point_data = &cloud_msg.data[i * cloud_msg.point_step];
+            const double x = readCloudFieldAsDouble(point_data, *x_field);
+            const double y = readCloudFieldAsDouble(point_data, *y_field);
+            const double z = readCloudFieldAsDouble(point_data, *z_field);
+            const double intensity = readCloudFieldAsDouble(point_data, *intensity_field);
+            const double ring = readCloudFieldAsDouble(point_data, *ring_field);
+            const double point_time = readCloudFieldAsDouble(point_data, *time_field);
+            if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z) ||
+                !std::isfinite(intensity) || !std::isfinite(ring) ||
+                !std::isfinite(point_time))
+                continue;
+
+            time_base = std::min(time_base, point_time);
+        }
+    }
+
     for (size_t i = 0; i < point_count; ++i)
     {
         const auto *point_data = &cloud_msg.data[i * cloud_msg.point_step];
@@ -183,11 +203,9 @@ bool convertHesaiCloudToCommon(
         if (time_field != nullptr)
         {
             const double point_time = readCloudFieldAsDouble(point_data, *time_field);
-            if (std::isfinite(point_time))
+            if (std::isfinite(point_time) && time_base != std::numeric_limits<double>::max())
             {
-                if (!std::isfinite(time_base))
-                    time_base = point_time;
-                point.time = static_cast<float>(point_time - time_base);
+                point.time = static_cast<float>(std::max(0.0, point_time - time_base));
             }
         }
 
@@ -1474,6 +1492,9 @@ public:
     void appendGroundPatchToSensorCenter(const pcl::ModelCoefficients::Ptr &coefficients,
                                          pcl::PointCloud<PointType>::Ptr groundOutput)
     {
+        if (!groundPatchToSensorCenterEnable)
+            return;
+
         PointType centerGroundPoint;
         if (!getGroundCenterPointOnPlane(coefficients, &centerGroundPoint))
             return;
