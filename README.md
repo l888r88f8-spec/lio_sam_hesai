@@ -15,7 +15,7 @@
 - 增加地面点云和非地面点云输出（用于3D导航）
 
 ## 依赖要求
-- Ubuntu 22.04 + ROS 2 Humble（其他ROS 2发行版理论上也可能可用）
+- Ubuntu 22.04 + Humble / Ubuntu 24.04 + Jazzy
 - GTSAM 4.x（`libgtsam-dev`和`libgtsam-unstable-dev`）
 - PCL、OpenCV（可通过下面的ROS软件包安装）
 
@@ -116,8 +116,38 @@ ros2 launch lio_sam_hesai localization_with_nonground.launch.py
 - DDS/QoS：如果运行Livox驱动，请根据实际情况调整相关参数。
 - 地面分割只适合机械雷达。
 
+## 更新日志
+
+### 2026-05-29
+- 适配Ubuntu 24.04编译环境，改进GTSAM、Eigen和g2o的查找与链接方式。
+- `SaveMap`服务新增`ground_resolution`参数，支持全局地图和地面地图使用不同保存分辨率。
+
+### 2026-05-21
+- 增加基于局部高程栅格的地面补点能力，用于生成更连续的地面地图。
+- 调整地面地图构建流程：关键帧保留真实地面量测，全局地面补点在全局坐标系中统一执行。
+
+### 2026-05-08
+- 重定位流程不再依赖外部小车里程计。
+- 重定位节点直接发布`map -> base_link`，简化TF树。
+- 调整重定位配置、RViz显示和launch文件，支持`publish_static_tf`参数控制内置静态TF。
+
+### 2026-04-23
+- 修复重定位过程中TF树中断的问题。
+- 调整重定位状态发布逻辑，提高TF连续性。
+
+### 2026-04-09
+- 增加地面点云构建和非地面点云输出。
+- 新增`localization_with_nonground.launch.py`，用于重定位时同步输出非地面点云。
+
+### 2026-03-28
+- 增加重定位功能，新增`localization.launch.py`和`relocalization.yaml`。
+- 将建图配置整理为`mapping.yaml`，保留LIO-SAM建图主流程。
+
+### 2025-12-23
+- 初始化ROS 2版本工程，完成Hesai XT16适配基础。
+
 ## 致谢
 - 适配与维护：LRF
 - 基于Tixiao Shan的原始项目[LIO-SAM](https://github.com/TixiaoShan/LIO-SAM)以及Vishnura的[LIO_SAM_MID360](https://github.com/rajvishnu07/lio_sam_mid360)开发，引用信息请参见`LICENSE`和原始仓库。
 - 本项目的重定位功能参考了[funny_lidar_slam](https://github.com/zm0612/funny_lidar_slam)。
-- 感谢gpt的支持。
+
