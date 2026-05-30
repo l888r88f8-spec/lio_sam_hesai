@@ -1,4 +1,5 @@
 #include "utility.hpp"
+#include "lio_sam/ground_ring_policy.h"
 #include "lio_sam_hesai/msg/cloud_info.hpp"
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
@@ -1230,25 +1231,35 @@ public:
     // 返回用于地面种子和补点的 ring 行号范围 [start, end]。
     std::pair<int, int> getGroundScanRange() const
     {
-        int groundScanStart = groundScanStartIndex;
-        int groundScanEnd = groundScanEndIndex;
-
-        if (groundScanEnd < 0)
-            groundScanEnd = N_SCAN - 1;
-
-        groundScanStart = std::min(std::max(groundScanStart, 0), N_SCAN - 1);
-        groundScanEnd = std::min(std::max(groundScanEnd, 0), N_SCAN - 1);
-        if (groundScanStart > groundScanEnd)
-            std::swap(groundScanStart, groundScanEnd);
-
-        return {groundScanStart, groundScanEnd};
+        const auto range = lio_sam_hesai::normalizeGroundScanRange(
+            groundScanStartIndex, groundScanEndIndex, N_SCAN);
+        return {range.start, range.end};
     }
 
     // 返回参与地面/非地面判定的 ring 行号范围。
-    // 地面输出被硬限制在 groundScanStartIndex~groundScanEndIndex 内。
+    // 非地面点云需要从全部 ring 中剔除地面点。
     std::pair<int, int> getGroundClassificationRange() const
     {
-        return getGroundScanRange();
+        const auto range = lio_sam_hesai::fullGroundClassificationRange(N_SCAN);
+        return {range.start, range.end};
+    }
+
+    // 地面建图输出仍只使用配置的 ring 范围。
+    bool shouldOutputGroundPoint(int row) const
+    {
+        const auto [groundScanStart, groundScanEnd] = getGroundScanRange();
+        const lio_sam_hesai::GroundRingRange outputRange{
+            groundScanStart, groundScanEnd};
+        return lio_sam_hesai::isGroundOutputRing(row, outputRange);
+    }
+
+    void markGroundCellForNonGroundFiltering(
+        int row, int column, const PointType &point,
+        pcl::PointCloud<PointType>::Ptr groundOutput)
+    {
+        groundMat.at<signed char>(row, column) = 1;
+        if (shouldOutputGroundPoint(row))
+            groundOutput->push_back(point);
     }
 
     // 判断两个相邻候选点是否在局部几何上连续，可视为同一片地面。
@@ -1572,8 +1583,7 @@ public:
                 if (groundMat.at<signed char>(i, j) != 1 || !nearPlane)
                     continue;
 
-                groundMat.at<signed char>(i, j) = 1;
-                groundOutput->push_back(point);
+                markGroundCellForNonGroundFiltering(i, j, point, groundOutput);
                 minConfirmedRow = std::min(minConfirmedRow, i);
                 maxConfirmedRow = std::max(maxConfirmedRow, i);
             }
@@ -1594,8 +1604,7 @@ public:
                 if (!nearPlane || !isGroundConnected(previousGroundRow, j, i, j))
                     break;
 
-                groundMat.at<signed char>(i, j) = 1;
-                groundOutput->push_back(point);
+                markGroundCellForNonGroundFiltering(i, j, point, groundOutput);
                 previousGroundRow = i;
             }
 
@@ -1612,8 +1621,7 @@ public:
                 if (!nearPlane || !isGroundConnected(i, j, previousGroundRow, j))
                     break;
 
-                groundMat.at<signed char>(i, j) = 1;
-                groundOutput->push_back(point);
+                markGroundCellForNonGroundFiltering(i, j, point, groundOutput);
                 previousGroundRow = i;
             }
         }

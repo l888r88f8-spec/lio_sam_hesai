@@ -118,6 +118,9 @@ ros2 launch lio_sam_hesai localization_with_nonground.launch.py
 
 ## 更新日志
 
+### 2026-05-30
+- 输出的所有RING的非地面点。
+
 ### 2026-05-29
 - 适配Ubuntu 24.04编译环境，改进GTSAM、Eigen和g2o的查找与链接方式。
 - `SaveMap`服务新增`ground_resolution`参数，支持全局地图和地面地图使用不同保存分辨率。

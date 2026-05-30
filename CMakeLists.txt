@@ -217,7 +217,10 @@ install(
 ament_export_include_directories(include)
 
 if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
   find_package(ament_lint_auto REQUIRED)
+  ament_add_gtest(test_ground_ring_policy test/test_ground_ring_policy.cpp)
+  target_include_directories(test_ground_ring_policy PRIVATE include)
   # the following line skips the linter which checks for copyrights
   # uncomment the line when a copyright and license is not present in all source files
   #set(ament_cmake_copyright_FOUND TRUE)
