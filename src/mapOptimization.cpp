@@ -1,5 +1,6 @@
 #include "utility.hpp"
 #include "ivox_map/ivox_map.h"
+#include "lio_sam/ground_grid_patcher.h"
 #include "lio_sam_hesai/msg/cloud_info.hpp"
 #include "lio_sam_hesai/srv/save_map.hpp"
 #include <gtsam/geometry/Rot3.h>
@@ -19,7 +20,6 @@
 #include <pcl/segmentation/sac_segmentation.h>
 #include <pcl/search/kdtree.h>
 #include <unordered_map>
-#include <unordered_set>
 #include <cmath>
 
 using namespace gtsam;
@@ -104,43 +104,6 @@ struct VoxelAcc
 
     VoxelAcc() : sx(0.0), sy(0.0), sz(0.0), n(0), kf_count(0), last_kf(-1) {}
 };
-
-struct GroundGridKey
-{
-    int ix = 0;
-    int iy = 0;
-
-    bool operator==(const GroundGridKey& other) const noexcept
-    {
-        return ix == other.ix && iy == other.iy;
-    }
-};
-
-struct GroundGridKeyHash
-{
-    std::size_t operator()(const GroundGridKey& key) const noexcept
-    {
-        const std::size_t h1 = std::hash<int>{}(key.ix);
-        const std::size_t h2 = std::hash<int>{}(key.iy);
-        return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
-    }
-};
-
-struct GroundGridCell
-{
-    std::vector<int> point_indices;
-};
-
-struct GroundPlaneModel
-{
-    float a = 0.0f;
-    float b = 0.0f;
-    float c = 1.0f;
-    float d = 0.0f;
-};
-
-using GroundGridMap = std::unordered_map<GroundGridKey, GroundGridCell, GroundGridKeyHash>;
-using GroundGridKeySet = std::unordered_set<GroundGridKey, GroundGridKeyHash>;
 
 static inline VoxelIndex voxelIndexOf(const PointType& p, float voxelSize)
 {
@@ -956,199 +919,23 @@ public:
             point.z = target_z;
     }
 
-    GroundGridKey groundGridKeyForPoint(const PointType& point) const
-    {
-        const float res = std::max(groundGridPatchResolution, 0.02f);
-        return {
-            static_cast<int>(std::floor(point.x / res)),
-            static_cast<int>(std::floor(point.y / res))
-        };
-    }
-
-    PointType groundGridCellCenter(const GroundGridKey& key, float z) const
-    {
-        const float res = std::max(groundGridPatchResolution, 0.02f);
-        PointType point;
-        point.x = (static_cast<float>(key.ix) + 0.5f) * res;
-        point.y = (static_cast<float>(key.iy) + 0.5f) * res;
-        point.z = z;
-        point.intensity = 0.0f;
-        return point;
-    }
-
-    bool evaluateGroundPlaneZ(const GroundPlaneModel& plane,
-                              float x, float y, float* z) const
-    {
-        if (z == nullptr || std::fabs(plane.c) < 1e-6f)
-            return false;
-        *z = -(plane.a * x + plane.b * y + plane.d) / plane.c;
-        return std::isfinite(*z);
-    }
-
-    float groundPlaneSlopeDeg(const GroundPlaneModel& plane) const
-    {
-        const float norm_xy = std::sqrt(plane.a * plane.a + plane.b * plane.b);
-        const float norm_z = std::fabs(plane.c);
-        return std::atan2(norm_xy, norm_z) * 180.0f / static_cast<float>(M_PI);
-    }
-
-    bool fitGroundPatchPlane(const pcl::PointCloud<PointType>::Ptr& points,
-                             GroundPlaneModel* plane) const
-    {
-        if (!plane || points == nullptr || points->size() < 6)
-            return false;
-
-        pcl::ModelCoefficients coefficients;
-        pcl::PointIndices inliers;
-        pcl::SACSegmentation<PointType> segmentation;
-        segmentation.setOptimizeCoefficients(true);
-        segmentation.setModelType(pcl::SACMODEL_PLANE);
-        segmentation.setMethodType(pcl::SAC_RANSAC);
-        segmentation.setMaxIterations(80);
-        segmentation.setDistanceThreshold(groundPlaneDistance);
-        segmentation.setInputCloud(points);
-        segmentation.segment(inliers, coefficients);
-
-        if (coefficients.values.size() < 4 || inliers.indices.size() < 6)
-            return false;
-
-        plane->a = coefficients.values[0];
-        plane->b = coefficients.values[1];
-        plane->c = coefficients.values[2];
-        plane->d = coefficients.values[3];
-
-        return groundPlaneSlopeDeg(*plane) <= groundGridPatchMaxSlopeDeg;
-    }
-
-    void buildGroundGrid(const pcl::PointCloud<PointType>::Ptr& cloud,
-                         GroundGridMap* grid) const
-    {
-        if (!grid)
-            return;
-        grid->clear();
-        if (cloud == nullptr)
-            return;
-
-        for (int i = 0; i < static_cast<int>(cloud->points.size()); ++i)
-        {
-            const PointType& point = cloud->points[i];
-            if (!std::isfinite(point.x) || !std::isfinite(point.y) ||
-                !std::isfinite(point.z))
-            {
-                continue;
-            }
-            (*grid)[groundGridKeyForPoint(point)].point_indices.push_back(i);
-        }
-    }
-
-    void collectGroundPatchCandidates(const GroundGridMap& grid,
-                                      GroundGridKeySet* candidates) const
-    {
-        if (!candidates)
-            return;
-        candidates->clear();
-        const float res = std::max(groundGridPatchResolution, 0.02f);
-        const int cell_radius = std::max(
-            1, static_cast<int>(std::ceil(groundGridPatchSearchRadius / res)));
-
-        for (const auto& entry : grid)
-        {
-            const GroundGridKey& occupied_key = entry.first;
-            for (int dx = -cell_radius; dx <= cell_radius; ++dx)
-            {
-                for (int dy = -cell_radius; dy <= cell_radius; ++dy)
-                {
-                    if (dx == 0 && dy == 0)
-                        continue;
-
-                    GroundGridKey candidate{occupied_key.ix + dx,
-                                            occupied_key.iy + dy};
-                    if (grid.find(candidate) != grid.end())
-                        continue;
-
-                    candidates->insert(candidate);
-                }
-            }
-        }
-    }
-
-    void collectNeighborGroundPoints(const GroundGridKey& key,
-                                     const pcl::PointCloud<PointType>::Ptr& cloud,
-                                     const GroundGridMap& grid,
-                                     pcl::PointCloud<PointType>::Ptr neighbors) const
-    {
-        neighbors->clear();
-        if (cloud == nullptr)
-            return;
-
-        const float res = std::max(groundGridPatchResolution, 0.02f);
-        const int cell_radius = std::max(
-            1, static_cast<int>(std::ceil(groundGridPatchSearchRadius / res)));
-
-        for (int dx = -cell_radius; dx <= cell_radius; ++dx)
-        {
-            for (int dy = -cell_radius; dy <= cell_radius; ++dy)
-            {
-                GroundGridKey neighbor_key{key.ix + dx, key.iy + dy};
-                const auto iter = grid.find(neighbor_key);
-                if (iter == grid.end())
-                    continue;
-
-                for (const int index : iter->second.point_indices)
-                {
-                    if (index >= 0 && index < static_cast<int>(cloud->points.size()))
-                        neighbors->push_back(cloud->points[index]);
-                }
-            }
-        }
-    }
-
     void appendGlobalGroundGridPatches(pcl::PointCloud<PointType>::Ptr cloud) const
     {
-        if (!groundGridPatchEnable ||
-            groundGridPatchResolution <= 0.0f ||
-            groundGridPatchSearchRadius <= 0.0f ||
-            cloud == nullptr ||
-            cloud->empty())
-        {
-            return;
-        }
-
-        GroundGridMap grid;
-        buildGroundGrid(cloud, &grid);
-        if (grid.empty())
+        if (!groundGridPatchEnable)
             return;
 
-        GroundGridKeySet candidates;
-        collectGroundPatchCandidates(grid, &candidates);
-        if (candidates.empty())
-            return;
-
-        pcl::PointCloud<PointType>::Ptr neighbors(new pcl::PointCloud<PointType>());
-        std::vector<PointType> patch_points;
-        const std::size_t max_patch_points = cloud->size();
-        patch_points.reserve(std::min(max_patch_points, candidates.size()));
-
-        for (const GroundGridKey& candidate : candidates)
-        {
-            collectNeighborGroundPoints(candidate, cloud, grid, neighbors);
-            GroundPlaneModel plane;
-            if (!fitGroundPatchPlane(neighbors, &plane))
-                continue;
-
-            float z = 0.0f;
-            PointType center = groundGridCellCenter(candidate, 0.0f);
-            if (!evaluateGroundPlaneZ(plane, center.x, center.y, &z))
-                continue;
-
-            center.z = z;
-            patch_points.push_back(center);
-            if (patch_points.size() >= max_patch_points)
-                break;
-        }
-
-        for (const auto& point : patch_points)
-            cloud->push_back(point);
+        lio_sam_hesai::GroundGridPatchOptions options;
+        options.resolution = groundGridPatchResolution;
+        options.search_radius = groundGridPatchSearchRadius;
+        options.max_slope_deg = groundGridPatchMaxSlopeDeg;
+        options.plane_distance_threshold = groundPlaneDistance;
+        options.max_height_range = groundGridPatchMaxHeightRange;
+        options.max_roughness = groundGridPatchMaxRoughness;
+        options.max_prediction_margin = groundGridPatchMaxPredictionMargin;
+        options.min_plane_inlier_ratio = groundGridPatchMinInlierRatio;
+        options.min_neighbor_cells = groundGridPatchMinNeighborCells;
+        options.min_support_quadrants = groundGridPatchMinSupportQuadrants;
+        lio_sam_hesai::appendGroundGridPatches(cloud, options);
     }
 
     pcl::PointCloud<PointType>::Ptr downsampleGroundMapCloud(

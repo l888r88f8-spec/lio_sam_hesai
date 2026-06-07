@@ -16,7 +16,7 @@
       mapping_odom_topic: "lio_sam/localization/odometry"  # 全局定位里程计
 
     localization:
-      map_path: "/home/clab/map/hesai_sim2/GlobalMap.pcd"  # 全局地图
+      map_path: "/home/robot/map/hesai_sim/GlobalMap.pcd"  # 全局地图
       enable_ground_height_constraint: true                        # 约束base高度
       base_link_ground_height: 0.275                               # base离地/m
       ground_search_radius: 5.0                                    # 地面搜索半径/m

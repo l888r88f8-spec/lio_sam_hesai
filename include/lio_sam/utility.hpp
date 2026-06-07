@@ -121,6 +121,12 @@ public:
     float groundGridPatchResolution;
     float groundGridPatchSearchRadius;
     float groundGridPatchMaxSlopeDeg;
+    float groundGridPatchMaxHeightRange;
+    float groundGridPatchMaxRoughness;
+    float groundGridPatchMaxPredictionMargin;
+    float groundGridPatchMinInlierRatio;
+    int groundGridPatchMinNeighborCells;
+    int groundGridPatchMinSupportQuadrants;
 
     // Lidar Sensor Configuration
     SensorType sensor = SensorType::OUSTER;
@@ -306,6 +312,18 @@ public:
         get_parameter("groundGridPatchSearchRadius", groundGridPatchSearchRadius);
         declare_parameter("groundGridPatchMaxSlopeDeg", 25.0);
         get_parameter("groundGridPatchMaxSlopeDeg", groundGridPatchMaxSlopeDeg);
+        declare_parameter("groundGridPatchMaxHeightRange", 0.12);
+        get_parameter("groundGridPatchMaxHeightRange", groundGridPatchMaxHeightRange);
+        declare_parameter("groundGridPatchMaxRoughness", 0.05);
+        get_parameter("groundGridPatchMaxRoughness", groundGridPatchMaxRoughness);
+        declare_parameter("groundGridPatchMaxPredictionMargin", 0.08);
+        get_parameter("groundGridPatchMaxPredictionMargin", groundGridPatchMaxPredictionMargin);
+        declare_parameter("groundGridPatchMinInlierRatio", 0.70);
+        get_parameter("groundGridPatchMinInlierRatio", groundGridPatchMinInlierRatio);
+        declare_parameter("groundGridPatchMinNeighborCells", 6);
+        get_parameter("groundGridPatchMinNeighborCells", groundGridPatchMinNeighborCells);
+        declare_parameter("groundGridPatchMinSupportQuadrants", 3);
+        get_parameter("groundGridPatchMinSupportQuadrants", groundGridPatchMinSupportQuadrants);
 
         std::string sensorStr;
         declare_parameter("sensor", "ouster");

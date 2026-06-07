@@ -35,7 +35,7 @@
     imuAccBiasN: 2.0e-3                          # 加速度零偏随机游走噪声
     imuGyrBiasN: 2.5e-5                          # 角速度零偏随机游走噪声
     imuGravity: 9.805                            # 重力加速度大小
-    imuRPYWeight: 0.8                            # IMU姿态先验在优化中的权重
+    imuRPYWeight: 0.2                            # IMU姿态先验在优化中的权重
 
     extrinsicTrans: [ 0.0, 0.0, 0.10 ]          # 雷达到IMU的平移外参[x, y, z]，需与base_link静态TF一致
     extrinsicRot: [ 1.0,  0.0,  0.0,
@@ -59,17 +59,25 @@
     segmentation_only_mode: false                # 是否只分割地面
     saveGroundPCD: true                          # 是否保存全局地面点云，保存路径与全局地图一致
     groundLeafSize: 0.02                         # 原始点云下采样体素尺寸，越大发布越稀疏
-    groundScanStartIndex: 11                      # 参与地面种子和补点的起始 ring 编号
+    groundScanStartIndex: 10                      # 参与地面种子和补点的起始 ring 编号
     groundScanEndIndex: 15                        # 参与地面种子和补点的结束 ring 编号，设为-1时表示使用全部 ring
-    distanceForPatchBetweenRings: 0.0            # 纵向ring间补点最大距离，0表示关闭；坡道优先使用横向补点
     groundAngleThreshold: 10.0                   # 相邻ring竖直夹角阈值，小于该值的点对可作为地面种子，单位度
+    
+    distanceForPatchBetweenRings: 0.0            # 纵向ring间补点最大距离，0表示关闭；坡道优先使用横向补点
     groundPatchHorizontalEnable: false           # 横向ring内补点，保留用于对比
     groundPatchHorizontalMaxDistance: 0.6        # 横向补点允许跨越的最大端点距离，单位米
     groundPatchToSensorCenterEnable: false       # 是否补齐机器人中心到最内圈地面之间的空洞
-    groundGridPatchEnable: false                  # 是否启用局部高程栅格补点
+    
+    groundGridPatchEnable: true                   # 是否启用局部高程栅格补点
     groundGridPatchResolution: 0.10              # 高程栅格补点分辨率，单位米
     groundGridPatchSearchRadius: 0.40            # 空栅格局部平面搜索半径，单位米
     groundGridPatchMaxSlopeDeg: 25.0             # 允许补点的最大局部坡度，单位度
+    groundGridPatchMaxHeightRange: 0.12          # 单个栅格内允许的最大高度跨度，过大视为粗糙/非连续地面
+    groundGridPatchMaxRoughness: 0.05            # 单个栅格内允许的最大Z粗糙度，单位米
+    groundGridPatchMaxPredictionMargin: 0.08     # 补点预测高度允许超出邻域地面高度范围的余量，单位米
+    groundGridPatchMinInlierRatio: 0.70          # 局部平面拟合内点比例下限
+    groundGridPatchMinNeighborCells: 6           # 候选空格周围最少有效地面栅格数
+    groundGridPatchMinSupportQuadrants: 3        # 候选空格周围最少支撑象限数，用于避免开放边界外扩
 
     useGlobalMapGround: false                     # 是否使用全局地图 辅助补充当前帧地面提取
     globalMapGroundRadius: 30.0                  # 从全局地图 裁剪候选地面的水平搜索半径，单位米
@@ -125,13 +133,13 @@
     surroundingKeyframeSearchRadius: 20.0        # 扫描到地图优化时局部子地图搜索半径，单位米
 
     # 回环检测参数
-    loopClosureEnableFlag: false                  # 是否启用回环检测与回环约束
-    loopClosureFrequency: 0.5                    # 回环检测频率，单位Hz
+    loopClosureEnableFlag: true                  # 是否启用回环检测与回环约束
+    loopClosureFrequency: 1.0                    # 回环检测频率，单位Hz
     surroundingKeyframeSize: 25                  # 回环局部子地图包含的邻近关键帧数量
-    historyKeyframeSearchRadius: 8.0            # 历史关键帧搜索半径，单位米
+    historyKeyframeSearchRadius: 15.0            # 历史关键帧搜索半径，单位米
     historyKeyframeSearchTimeDiff: 30.0          # 参与回环候选的最小时间间隔，单位秒
-    historyKeyframeSearchNum: 15                 # 构建回环历史子地图时融合的关键帧数量
-    historyKeyframeFitnessScore: 0.15             # ICP回环匹配得分阈值，越小要求越严格
+    historyKeyframeSearchNum: 25                 # 构建回环历史子地图时融合的关键帧数量
+    historyKeyframeFitnessScore: 0.25             # ICP回环匹配得分阈值，越小要求越严格
 
     # 全局地图可视化
     globalMapVisualizationSearchRadius: 2000.0   # RViz全局地图显示半径，单位米
