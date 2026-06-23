@@ -54,20 +54,14 @@
     saveGroundPCDResolution: 0.05                # 自动导出全局地面地图时的下采样分辨率，0表示不额外下采样
 
     # 地面分割与地面导出
-    globalMapTopic: "lio_sam/mapping/map_global"
     nonGroundCloudTopic: "lio_sam/cloud_nonground"
     segmentation_only_mode: false                # 是否只分割地面
     saveGroundPCD: true                          # 是否保存全局地面点云，保存路径与全局地图一致
     groundLeafSize: 0.02                         # 原始点云下采样体素尺寸，越大发布越稀疏
-    groundScanStartIndex: 10                      # 参与地面种子和补点的起始 ring 编号
-    groundScanEndIndex: 15                        # 参与地面种子和补点的结束 ring 编号，设为-1时表示使用全部 ring
+    groundScanStartIndex: 10                      # 参与地面种子的起始 ring 编号
+    groundScanEndIndex: 15                        # 参与地面种子的结束 ring 编号，设为-1时表示使用全部 ring
     groundAngleThreshold: 10.0                   # 相邻ring竖直夹角阈值，小于该值的点对可作为地面种子，单位度
-    
-    distanceForPatchBetweenRings: 0.0            # 纵向ring间补点最大距离，0表示关闭；坡道优先使用横向补点
-    groundPatchHorizontalEnable: false           # 横向ring内补点，保留用于对比
-    groundPatchHorizontalMaxDistance: 0.6        # 横向补点允许跨越的最大端点距离，单位米
-    groundPatchToSensorCenterEnable: false       # 是否补齐机器人中心到最内圈地面之间的空洞
-    
+
     groundGridPatchEnable: true                   # 是否启用局部高程栅格补点
     groundGridPatchResolution: 0.10              # 高程栅格补点分辨率，单位米
     groundGridPatchSearchRadius: 0.40            # 空栅格局部平面搜索半径，单位米
@@ -78,14 +72,6 @@
     groundGridPatchMinInlierRatio: 0.70          # 局部平面拟合内点比例下限
     groundGridPatchMinNeighborCells: 6           # 候选空格周围最少有效地面栅格数
     groundGridPatchMinSupportQuadrants: 3        # 候选空格周围最少支撑象限数，用于避免开放边界外扩
-
-    useGlobalMapGround: false                     # 是否使用全局地图 辅助补充当前帧地面提取
-    globalMapGroundRadius: 30.0                  # 从全局地图 裁剪候选地面的水平搜索半径，单位米
-    globalMapGroundZRange: 5.0                   # 从全局地图 裁剪候选地面的上下高度范围，单位米
-    globalMapGroundVoxelSize: 0.05               # 全局地图 候选地面预下采样体素尺寸，单位米
-    globalMapGroundDistance: 0.18                # 全局地图 地面平面拟合时的点到平面距离阈值，单位米
-    globalMapGroundMaxAngle: 30.0                # 全局地图 地面法向相对竖直方向允许的最大倾角，单位度
-    globalMapGroundMinPoints: 200                # 全局地图 提取地面时要求的最少点数
 
     groundPlaneDistance: 0.12                    # 当前帧 局部地面平面拟合的点到平面距离阈值，单位米
     groundPlaneMaxAngle: 30.0                    # 当前帧 局部地面法向相对竖直方向允许的最大倾角，单位度

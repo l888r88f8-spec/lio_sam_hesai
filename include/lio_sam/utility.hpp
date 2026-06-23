@@ -74,7 +74,6 @@ public:
     string imuTopic;
     string odomTopic;
     string gpsTopic;
-    string globalMapTopic;
 
     //Frames
     string lidarFrame;
@@ -100,13 +99,6 @@ public:
     bool groundFinalUseOdom;
     float groundLeafSize;
     float groundGlobalLeafSize;
-    bool useGlobalMapGround;
-    float globalMapGroundRadius;
-    float globalMapGroundZRange;
-    float globalMapGroundVoxelSize;
-    float globalMapGroundDistance;
-    float globalMapGroundMaxAngle;
-    int globalMapGroundMinPoints;
     float groundPlaneDistance;
     float groundPlaneMaxAngle;
     int groundPlaneMinPoints;
@@ -114,9 +106,6 @@ public:
     float groundFlattenValue;
     bool alignSavedMapGroundToZero;
     float savedMapGroundZOffset;
-    bool groundPatchHorizontalEnable;
-    float groundPatchHorizontalMaxDistance;
-    bool groundPatchToSensorCenterEnable;
     bool groundGridPatchEnable;
     float groundGridPatchResolution;
     float groundGridPatchSearchRadius;
@@ -137,7 +126,6 @@ public:
     float lidarMaxRange;
     int groundScanStartIndex;
     int groundScanEndIndex;
-    float distanceForPatchBetweenRings;
     float groundAngleThreshold;
 
     // IMU
@@ -216,8 +204,6 @@ public:
         get_parameter("odomTopic", odomTopic);
         declare_parameter("gpsTopic", "lio_sam/odometry/gps");
         get_parameter("gpsTopic", gpsTopic);
-        declare_parameter("globalMapTopic", "lio_sam/mapping/map_global");
-        get_parameter("globalMapTopic", globalMapTopic);
 
         declare_parameter("lidarFrame", "laser_data_frame");
         get_parameter("lidarFrame", lidarFrame);
@@ -270,20 +256,6 @@ public:
         get_parameter("groundLeafSize", groundLeafSize);
         declare_parameter("groundGlobalLeafSize", 0.2);
         get_parameter("groundGlobalLeafSize", groundGlobalLeafSize);
-        declare_parameter("useGlobalMapGround", false);
-        get_parameter("useGlobalMapGround", useGlobalMapGround);
-        declare_parameter("globalMapGroundRadius", 20.0);
-        get_parameter("globalMapGroundRadius", globalMapGroundRadius);
-        declare_parameter("globalMapGroundZRange", 5.0);
-        get_parameter("globalMapGroundZRange", globalMapGroundZRange);
-        declare_parameter("globalMapGroundVoxelSize", 0.2);
-        get_parameter("globalMapGroundVoxelSize", globalMapGroundVoxelSize);
-        declare_parameter("globalMapGroundDistance", 0.2);
-        get_parameter("globalMapGroundDistance", globalMapGroundDistance);
-        declare_parameter("globalMapGroundMaxAngle", 15.0);
-        get_parameter("globalMapGroundMaxAngle", globalMapGroundMaxAngle);
-        declare_parameter("globalMapGroundMinPoints", 200);
-        get_parameter("globalMapGroundMinPoints", globalMapGroundMinPoints);
         declare_parameter("groundPlaneDistance", 0.12);
         get_parameter("groundPlaneDistance", groundPlaneDistance);
         declare_parameter("groundPlaneMaxAngle", 35.0);
@@ -298,12 +270,6 @@ public:
         get_parameter("alignSavedMapGroundToZero", alignSavedMapGroundToZero);
         declare_parameter("savedMapGroundZOffset", 0.0);
         get_parameter("savedMapGroundZOffset", savedMapGroundZOffset);
-        declare_parameter("groundPatchHorizontalEnable", false);
-        get_parameter("groundPatchHorizontalEnable", groundPatchHorizontalEnable);
-        declare_parameter("groundPatchHorizontalMaxDistance", 0.6);
-        get_parameter("groundPatchHorizontalMaxDistance", groundPatchHorizontalMaxDistance);
-        declare_parameter("groundPatchToSensorCenterEnable", false);
-        get_parameter("groundPatchToSensorCenterEnable", groundPatchToSensorCenterEnable);
         declare_parameter("groundGridPatchEnable", false);
         get_parameter("groundGridPatchEnable", groundGridPatchEnable);
         declare_parameter("groundGridPatchResolution", 0.10);
@@ -381,8 +347,6 @@ public:
         get_parameter("groundScanStartIndex", groundScanStartIndex);
         declare_parameter("groundScanEndIndex", -1);
         get_parameter("groundScanEndIndex", groundScanEndIndex);
-        declare_parameter("distanceForPatchBetweenRings", 1.0);
-        get_parameter("distanceForPatchBetweenRings", distanceForPatchBetweenRings);
         declare_parameter("groundAngleThreshold", 10.0);
         get_parameter("groundAngleThreshold", groundAngleThreshold);
 

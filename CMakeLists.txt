@@ -224,6 +224,7 @@ if(BUILD_TESTING)
   ament_add_gtest(test_ground_grid_patcher test/test_ground_grid_patcher.cpp)
   target_include_directories(test_ground_grid_patcher PRIVATE include ${PCL_INCLUDE_DIRS})
   target_link_libraries(test_ground_grid_patcher ${PCL_LIBRARIES})
+  ament_add_gtest(test_ground_patch_parameter_surface test/test_ground_patch_parameter_surface.cpp)
   # the following line skips the linter which checks for copyrights
   # uncomment the line when a copyright and license is not present in all source files
   #set(ament_cmake_copyright_FOUND TRUE)

@@ -80,7 +80,4 @@
     groundPlaneDistance: 0.15                            # 平面距离阈值/m
     groundPlaneMaxAngle: 30.0                            # 法向角阈值/deg
     groundPlaneMinPoints: 80                             # 最少地面点
-    distanceForPatchBetweenRings: 0.0                    # 补点距离/m
-
-    useGlobalMapGround: false                            # 使用全局地面
     groundFlattenZ: false                                # 压平地面
