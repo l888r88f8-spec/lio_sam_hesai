@@ -7,7 +7,11 @@
 #include <cstring>
 #include <fstream>
 #include <limits>
+#include <new>
 #include <utility>
+#include <vector>
+
+#include <unistd.h>
 
 namespace relocalization {
 namespace {
@@ -17,6 +21,7 @@ constexpr std::uint32_t kDbVersion = 2U;
 constexpr std::uint32_t kEndianMarker = 0x01020304U;
 constexpr std::uint32_t kMaxTagLength = 4096U;
 constexpr std::uint64_t kMaxEntryCount = 500000U;
+constexpr std::uint64_t kMaxDbPayloadBytes = 512U * 1024U * 1024U;
 constexpr int kMaxDescriptorDimension = 2048;
 constexpr double kTwoPi = 6.28318530717958647692;
 
@@ -41,18 +46,64 @@ bool CheckedMultiply(std::uint64_t lhs, std::uint64_t rhs,
   return true;
 }
 
+bool CalculatePayloadBytes(const ScanContextConfig& config,
+                           std::uint64_t count,
+                           std::uint64_t* payload_bytes) {
+  if (count > kMaxEntryCount) {
+    return false;
+  }
+
+  std::uint64_t descriptor_values = 0U;
+  std::uint64_t descriptor_bytes = 0U;
+  if (!CheckedMultiply(static_cast<std::uint64_t>(config.num_ring),
+                       static_cast<std::uint64_t>(config.num_sector),
+                       &descriptor_values) ||
+      !CheckedMultiply(descriptor_values, sizeof(float), &descriptor_bytes) ||
+      descriptor_bytes > std::numeric_limits<std::uint64_t>::max() -
+                             16U * sizeof(double)) {
+    return false;
+  }
+
+  return CheckedMultiply(count, descriptor_bytes + 16U * sizeof(double),
+                         payload_bytes) &&
+         *payload_bytes <= kMaxDbPayloadBytes;
+}
+
+bool CreateTemporaryPath(const std::string& path, std::string* temporary_path) {
+  if (path.empty() || temporary_path == nullptr) {
+    return false;
+  }
+
+  std::string template_path = path + ".tmp.XXXXXX";
+  std::vector<char> buffer(template_path.begin(), template_path.end());
+  buffer.push_back('\0');
+  const int descriptor = mkstemp(buffer.data());
+  if (descriptor < 0) {
+    return false;
+  }
+  if (close(descriptor) != 0) {
+    std::remove(buffer.data());
+    return false;
+  }
+
+  *temporary_path = buffer.data();
+  return true;
+}
+
 bool IsFiniteConfig(const ScanContextConfig& config) {
   if (config.num_ring <= 0 || config.num_ring > kMaxDescriptorDimension ||
       config.num_sector <= 0 || config.num_sector > kMaxDescriptorDimension ||
       config.knn_candidates <= 0 || config.min_valid_points < 0) {
     return false;
   }
+  const double ring_size = config.max_radius / config.num_ring;
   return std::isfinite(config.max_radius) &&
          std::isfinite(config.min_radius) &&
          std::isfinite(config.height_offset) &&
          std::isfinite(config.ringkey_max_dist) &&
          config.max_radius > config.min_radius && config.min_radius >= 0.0 &&
-         config.ringkey_max_dist >= 0.0;
+         config.ringkey_max_dist >= 0.0 && std::isfinite(ring_size) &&
+         ring_size >= std::numeric_limits<double>::min();
 }
 
 bool IsValidDescriptor(const ScanContextDescriptor& descriptor,
@@ -129,6 +180,10 @@ ScanContextDescriptor ScanContext::MakeDescriptor(
       config_.num_ring, config_.num_sector);
   const double ring_size = config_.max_radius / config_.num_ring;
   const double sector_size = kTwoPi / config_.num_sector;
+  if (!std::isfinite(ring_size) ||
+      ring_size < std::numeric_limits<double>::min()) {
+    return {};
+  }
 
   for (const auto& point : cloud.points) {
     if (!std::isfinite(point.x) || !std::isfinite(point.y) ||
@@ -152,8 +207,13 @@ ScanContextDescriptor ScanContext::MakeDescriptor(
         static_cast<int>(range / ring_size), config_.num_ring - 1);
     const int sector = std::min(
         static_cast<int>(azimuth / sector_size), config_.num_sector - 1);
-    const float height = static_cast<float>(std::max(
-        0.0, static_cast<double>(point.z) + config_.height_offset));
+    const double shifted_height =
+        std::max(0.0, static_cast<double>(point.z) + config_.height_offset);
+    if (!std::isfinite(shifted_height)) {
+      continue;
+    }
+    const float height = static_cast<float>(std::min(
+        shifted_height, static_cast<double>(std::numeric_limits<float>::max())));
     descriptor(ring, sector) = std::max(descriptor(ring, sector), height);
   }
 
@@ -198,8 +258,8 @@ std::pair<float, int> ScanContext::DistanceBetween(
     float total_distance = 0.0F;
     int valid_columns = 0;
     for (int column = 0; column < num_sector; ++column) {
-      const Eigen::VectorXf query_column = query.col(column);
-      const Eigen::VectorXf database_column =
+      const auto query_column = query.col(column);
+      const auto database_column =
           database.col((column + shift) % num_sector);
       const float query_norm = query_column.norm();
       const float database_norm = database_column.norm();
@@ -241,17 +301,26 @@ bool ScanContext::SaveDB(const std::string& path,
     }
   }
 
-  const std::string temporary_path = path + ".tmp";
-  std::ofstream stream(temporary_path,
-                       std::ios::binary | std::ios::trunc | std::ios::out);
-  if (!stream.is_open()) {
-    return false;
-  }
-
   const std::uint32_t tag_length =
       static_cast<std::uint32_t>(map_tag.size());
   const std::uint64_t count =
       static_cast<std::uint64_t>(descriptors_.size());
+  std::uint64_t payload_bytes = 0U;
+  if (!CalculatePayloadBytes(config_, count, &payload_bytes)) {
+    return false;
+  }
+
+  std::string temporary_path;
+  if (!CreateTemporaryPath(path, &temporary_path)) {
+    return false;
+  }
+  std::ofstream stream(temporary_path,
+                       std::ios::binary | std::ios::trunc | std::ios::out);
+  if (!stream.is_open()) {
+    std::remove(temporary_path.c_str());
+    return false;
+  }
+
   stream.write(kDbMagic.data(), static_cast<std::streamsize>(kDbMagic.size()));
   const bool header_ok = stream.good() && WriteValue(stream, kDbVersion) &&
                          WriteValue(stream, kEndianMarker) &&
@@ -324,23 +393,10 @@ bool ScanContext::LoadDB(const std::string& path, std::string* map_tag_out) {
     return false;
   }
 
-  std::uint64_t descriptor_values = 0U;
-  std::uint64_t descriptor_bytes = 0U;
-  std::uint64_t entry_bytes = 0U;
   std::uint64_t all_entry_bytes = 0U;
-  if (!CheckedMultiply(static_cast<std::uint64_t>(loaded_config.num_ring),
-                       static_cast<std::uint64_t>(loaded_config.num_sector),
-                       &descriptor_values) ||
-      !CheckedMultiply(descriptor_values, sizeof(float), &descriptor_bytes) ||
-      descriptor_bytes > std::numeric_limits<std::uint64_t>::max() -
-                              16U * sizeof(double) ||
-      !CheckedMultiply(count,
-                       descriptor_bytes + 16U * sizeof(double),
-                       &all_entry_bytes)) {
+  if (!CalculatePayloadBytes(loaded_config, count, &all_entry_bytes)) {
     return false;
   }
-  entry_bytes = descriptor_bytes + 16U * sizeof(double);
-  (void)entry_bytes;
 
   const std::streamoff header_end = stream.tellg();
   if (header_end < 0 || header_end > file_size) {
@@ -366,36 +422,40 @@ bool ScanContext::LoadDB(const std::string& path, std::string* map_tag_out) {
   std::vector<Eigen::Matrix4d, Eigen::aligned_allocator<Eigen::Matrix4d>> poses;
   std::vector<ScanContextRingKey,
               Eigen::aligned_allocator<ScanContextRingKey>> ring_keys;
-  descriptors.reserve(static_cast<std::size_t>(count));
-  poses.reserve(static_cast<std::size_t>(count));
-  ring_keys.reserve(static_cast<std::size_t>(count));
+  try {
+    descriptors.reserve(static_cast<std::size_t>(count));
+    poses.reserve(static_cast<std::size_t>(count));
+    ring_keys.reserve(static_cast<std::size_t>(count));
 
-  for (std::uint64_t index = 0U; index < count; ++index) {
-    ScanContextDescriptor descriptor(loaded_config.num_ring,
-                                     loaded_config.num_sector);
-    for (int row = 0; row < descriptor.rows(); ++row) {
-      for (int column = 0; column < descriptor.cols(); ++column) {
-        if (!ReadValue(stream, &descriptor(row, column))) {
-          return false;
+    for (std::uint64_t index = 0U; index < count; ++index) {
+      ScanContextDescriptor descriptor(loaded_config.num_ring,
+                                       loaded_config.num_sector);
+      for (int row = 0; row < descriptor.rows(); ++row) {
+        for (int column = 0; column < descriptor.cols(); ++column) {
+          if (!ReadValue(stream, &descriptor(row, column))) {
+            return false;
+          }
         }
       }
-    }
 
-    Eigen::Matrix4d pose = Eigen::Matrix4d::Identity();
-    for (int row = 0; row < 4; ++row) {
-      for (int column = 0; column < 4; ++column) {
-        if (!ReadValue(stream, &pose(row, column))) {
-          return false;
+      Eigen::Matrix4d pose = Eigen::Matrix4d::Identity();
+      for (int row = 0; row < 4; ++row) {
+        for (int column = 0; column < 4; ++column) {
+          if (!ReadValue(stream, &pose(row, column))) {
+            return false;
+          }
         }
       }
+      if (!IsValidDescriptor(descriptor, loaded_config) ||
+          !IsPlausiblePose(pose)) {
+        return false;
+      }
+      descriptors.push_back(std::move(descriptor));
+      poses.push_back(pose);
+      ring_keys.push_back(MakeRingKey(descriptors.back()));
     }
-    if (!IsValidDescriptor(descriptor, loaded_config) ||
-        !IsPlausiblePose(pose)) {
-      return false;
-    }
-    descriptors.push_back(std::move(descriptor));
-    poses.push_back(pose);
-    ring_keys.push_back(MakeRingKey(descriptors.back()));
+  } catch (const std::bad_alloc&) {
+    return false;
   }
 
   config_ = loaded_config;
