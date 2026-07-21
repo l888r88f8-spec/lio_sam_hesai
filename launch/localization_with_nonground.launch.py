@@ -42,33 +42,33 @@ def generate_launch_description():
 
     nodes = [
         # base_link -> hesai_lidar
-        Node(
-            package="tf2_ros",
-            executable="static_transform_publisher",
-            arguments=[
-                "0.02", "0.0", "0.32", "0.0", "0.0", "0.0",
-                "base_link",
-                "hesai_lidar",
-            ],
-            parameters=[{"use_sim_time": use_sim}],
-            output="screen",
-            emulate_tty=True,
-            condition=IfCondition(publish_static_tf),
-        ),
-        # base_link -> imu_link
-        Node(
-            package="tf2_ros",
-            executable="static_transform_publisher",
-            arguments=[
-                "0.02", "0.0", "0.02", "0.0", "0.0", "0.0",
-                "base_link",
-                "imu_link",
-            ],
-            parameters=[{"use_sim_time": use_sim}],
-            output="screen",
-            emulate_tty=True,
-            condition=IfCondition(publish_static_tf),
-        ),
+        # Node(
+        #     package="tf2_ros",
+        #     executable="static_transform_publisher",
+        #     arguments=[
+        #         "0.02", "0.0", "0.32", "0.0", "0.0", "0.0",
+        #         "base_link",
+        #         "hesai_lidar",
+        #     ],
+        #     parameters=[{"use_sim_time": use_sim}],
+        #     output="screen",
+        #     emulate_tty=True,
+        #     condition=IfCondition(publish_static_tf),
+        # ),
+        # # base_link -> imu_link
+        # Node(
+        #     package="tf2_ros",
+        #     executable="static_transform_publisher",
+        #     arguments=[
+        #         "0.02", "0.0", "0.02", "0.0", "0.0", "0.0",
+        #         "base_link",
+        #         "imu_link",
+        #     ],
+        #     parameters=[{"use_sim_time": use_sim}],
+        #     output="screen",
+        #     emulate_tty=True,
+        #     condition=IfCondition(publish_static_tf),
+        # ),
         Node(
             package="lio_sam_hesai",
             executable="lio_sam_hesai_relocalization",
