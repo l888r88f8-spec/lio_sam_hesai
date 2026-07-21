@@ -225,6 +225,9 @@ if(BUILD_TESTING)
   target_include_directories(test_ground_grid_patcher PRIVATE include ${PCL_INCLUDE_DIRS})
   target_link_libraries(test_ground_grid_patcher ${PCL_LIBRARIES})
   ament_add_gtest(test_ground_patch_parameter_surface test/test_ground_patch_parameter_surface.cpp)
+  ament_add_gtest(test_scan_context test/test_scan_context.cpp src/relocalization/scan_context.cpp)
+  target_include_directories(test_scan_context PRIVATE include)
+  target_link_libraries(test_scan_context ${PCL_LIBRARIES})
   # the following line skips the linter which checks for copyrights
   # uncomment the line when a copyright and license is not present in all source files
   #set(ament_cmake_copyright_FOUND TRUE)
