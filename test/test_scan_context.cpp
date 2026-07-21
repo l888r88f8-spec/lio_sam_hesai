@@ -69,6 +69,17 @@ TEST(ScanContextTest, DescriptorHasConfiguredShapeAndRingKeySize) {
   EXPECT_EQ(ring_key.size(), config.num_ring);
 }
 
+TEST(ScanContextTest, RingKeyContainsPerRowMeans) {
+  relocalization::ScanContextDescriptor descriptor(2, 3);
+  descriptor << 0.0F, 1.0F, 2.0F, 3.0F, 3.0F, 3.0F;
+
+  const auto ring_key = relocalization::ScanContext::MakeRingKey(descriptor);
+
+  ASSERT_EQ(ring_key.size(), 2);
+  EXPECT_FLOAT_EQ(ring_key(0), 1.0F);
+  EXPECT_FLOAT_EQ(ring_key(1), 3.0F);
+}
+
 TEST(ScanContextTest, DistanceReportsPositiveYawShiftForRotatedScene) {
   relocalization::ScanContextConfig config;
   config.num_ring = 20;
@@ -77,8 +88,9 @@ TEST(ScanContextTest, DistanceReportsPositiveYawShiftForRotatedScene) {
       relocalization::ScanContextDescriptor::Zero(config.num_ring,
                                                    config.num_sector);
   for (int column = 0; column < config.num_sector; ++column) {
-    database(column % config.num_ring, column) =
-        static_cast<float>(column + 1);
+    database(0, column) = 1.0F;
+    database(1, column) = static_cast<float>(column + 1);
+    database(2, column) = static_cast<float>((column + 3) * (column + 7));
   }
 
   // A sensor yawed +60 degrees sees the static scene rotated -60 degrees in
@@ -94,6 +106,14 @@ TEST(ScanContextTest, DistanceReportsPositiveYawShiftForRotatedScene) {
 
   EXPECT_NEAR(distance, 0.0F, 1.0e-6F);
   EXPECT_EQ(shift, 10);
+
+  config.ringkey_max_dist = 10000.0;
+  config.min_valid_points = 1;
+  relocalization::ScanContext scan_context(config);
+  scan_context.AddKeyFrame(database, Eigen::Matrix4d::Identity());
+  const auto candidates = scan_context.Query(query, 1);
+  ASSERT_EQ(candidates.size(), 1U);
+  EXPECT_NEAR(candidates.front().yaw_shift, kPi / 3.0, 1.0e-6);
 }
 
 TEST(ScanContextTest, DescriptorKeepsNegativeHeightAndRejectsInvalidPoints) {
@@ -116,6 +136,10 @@ TEST(ScanContextTest, DescriptorKeepsNegativeHeightAndRejectsInvalidPoints) {
   pcl::PointXYZI invalid = valid;
   invalid.x = std::numeric_limits<float>::quiet_NaN();
   cloud.push_back(invalid);
+  pcl::PointXYZI invalid_intensity = valid;
+  invalid_intensity.z = 100.0F;
+  invalid_intensity.intensity = std::numeric_limits<float>::infinity();
+  cloud.push_back(invalid_intensity);
 
   const auto descriptor = scan_context.MakeDescriptor(cloud);
   EXPECT_NEAR(descriptor(5, 0), 0.75F, 1.0e-6F);
@@ -157,6 +181,13 @@ TEST(ScanContextTest, SaveLoadQueryAndCorruptDbPreserveExistingDatabase) {
     corrupt << "not a scan-context database";
   }
   EXPECT_FALSE(loaded.LoadDB(corrupt_path));
+  EXPECT_EQ(loaded.Size(), 3U);
+
+  {
+    std::ofstream appended(path, std::ios::binary | std::ios::app);
+    appended.put('\x7f');
+  }
+  EXPECT_FALSE(loaded.LoadDB(path));
   EXPECT_EQ(loaded.Size(), 3U);
 
   std::remove(path.c_str());

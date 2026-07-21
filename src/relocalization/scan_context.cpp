@@ -132,7 +132,7 @@ ScanContextDescriptor ScanContext::MakeDescriptor(
 
   for (const auto& point : cloud.points) {
     if (!std::isfinite(point.x) || !std::isfinite(point.y) ||
-        !std::isfinite(point.z)) {
+        !std::isfinite(point.z) || !std::isfinite(point.intensity)) {
       continue;
     }
 
@@ -349,7 +349,7 @@ bool ScanContext::LoadDB(const std::string& path, std::string* map_tag_out) {
   const std::uint64_t remaining =
       static_cast<std::uint64_t>(file_size - header_end);
   if (remaining < tag_length ||
-      remaining - tag_length < all_entry_bytes) {
+      remaining - tag_length != all_entry_bytes) {
     return false;
   }
 
