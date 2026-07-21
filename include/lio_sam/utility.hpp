@@ -89,6 +89,7 @@ public:
 
     // Save pcd
     bool savePCD;
+    bool generateScDb;
     string savePCDDirectory;
     bool mappingMode;
     float savePCDResolution;
@@ -236,6 +237,8 @@ public:
 
         declare_parameter("savePCD", false);
         get_parameter("savePCD", savePCD);
+        declare_parameter("generateScDb", true);
+        get_parameter("generateScDb", generateScDb);
         declare_parameter("savePCDDirectory", "/Downloads/LOAM/");
         get_parameter("savePCDDirectory", savePCDDirectory);
         declare_parameter("mappingMode", true);

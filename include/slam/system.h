@@ -14,6 +14,7 @@
 #include <mutex>
 #include <nav_msgs/msg/odometry.hpp>
 #include <nav_msgs/msg/path.hpp>
+#include <optional>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -35,6 +36,9 @@ class System : public rclcpp::Node {
   ~System();
 
   void Run();
+
+  // lookupTransform(lidar, base) returns the transform from base to lidar.
+  std::optional<Mat4d> GetBaseToLidarTransform();
 
   static constexpr std::size_t kMaxRawCloudQueueSize = 3;
   static constexpr std::size_t kMaxCloudClusterQueueSize = 2;
@@ -62,7 +66,7 @@ class System : public rclcpp::Node {
 
   static bool InitIMU(const IMUData& imu_data, Vec3d& init_mean_acc);
 
-  bool UpdateLidarToBaseTransform();
+  bool UpdateBaseToLidarTransform();
 
  private:
   // ros2 subscribers
@@ -112,6 +116,7 @@ class System : public rclcpp::Node {
   std::mutex mutex_raw_cloud_deque_;
   std::mutex mutex_cloud_cluster_deque_;
   std::mutex mutex_localization_results_deque_;
+  std::mutex mutex_base_to_lidar_transform_;
 
   // deque
   std::deque<LocalizationResult, Eigen::aligned_allocator<LocalizationResult>>
@@ -122,8 +127,8 @@ class System : public rclcpp::Node {
   // localization ros path
   nav_msgs::msg::Path localization_path_;
 
-  Mat4d T_lidar_to_base_ = Mat4d::Identity();
-  bool has_lidar_to_base_ = false;
+  Mat4d T_base_to_lidar_ = Mat4d::Identity();
+  bool has_base_to_lidar_ = false;
   double last_localization_z_offset_ = 0.0;
   bool has_localization_z_offset_ = false;
 };

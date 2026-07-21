@@ -9,6 +9,7 @@
 #include "imu/pre_integration.h"
 #include "registration/registration_interface.h"
 #include "registration/icp_optimized.h"
+#include "relocalization/scan_context.h"
 
 #include <atomic>
 #include <map>
@@ -18,6 +19,8 @@
 #include <set>
 #include <unordered_set>
 #include <vector>
+
+#include <pcl/kdtree/kdtree_flann.h>
 
 class Localization {
 public:
@@ -36,11 +39,21 @@ public:
 private:
     bool Init();
 
+    void LoadScanContextDb();
+
+    [[nodiscard]] std::optional<Mat4d> TryAutoRelocalize();
+
     void InitPreintegration();
 
     void InitMatcher();
 
     void SetLidarPoseInformation();
+
+    [[nodiscard]] Mat4d MapLidarPoseToMapImuPose(
+        const Mat4d& map_lidar_pose) const;
+
+    [[nodiscard]] Mat4d MapImuPoseToMapLidarPose(
+        const Mat4d& map_imu_pose) const;
 
     void CacheResultToSystem(const LocalizationResult& result) const;
 
@@ -52,6 +65,8 @@ private:
      * @return local map cloud
      */
     PCLPointCloudXYZI::Ptr LoadLocalMap(const Mat4d& pose);
+
+    PCLPointCloudXYZI::Ptr LoadCandidateLocalMap(const Mat4d& pose);
 
     void LoadTileMapIndices();
 
@@ -106,6 +121,8 @@ private:
     std::mutex mutex_global_map_cloud_;
     PCLPointCloudXYZI lidar_cloud_;
     PCLPointCloudXYZI::Ptr global_map_cloud_ptr_{nullptr};
+    PCLPointCloudXYZI::Ptr global_map_xy_cloud_ptr_{nullptr};
+    pcl::KdTreeFLANN<PCLPointXYZI>::Ptr global_map_xy_kdtree_{nullptr};
 
     bool use_tile_map_{false}; // Not recommended
     bool need_update_local_map_{};
@@ -116,6 +133,11 @@ private:
 
     std::optional<Mat4d> init_pose_optional_;
     std::mutex mutex_init_pose_optional_;
+
+    relocalization::ScanContext scan_context_;
+    bool scan_context_db_loaded_{false};
+    std::optional<Mat4d> consistency_ref_pose_;
+    int consistency_hit_count_{0};
 };
 
 #endif //FUNNY_LIDAR_SLAM_LOCALIZATION_H

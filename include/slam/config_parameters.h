@@ -126,6 +126,13 @@ public:
     double localization_ground_search_radius_{};
     double localization_ground_z_percentile_{};
     int localization_ground_min_points_{};
+    bool localization_auto_relocalization_{false};
+    std::string localization_sc_db_path_{};
+    int localization_sc_top_n_{8};
+    double localization_sc_fitness_thres_{1.0};
+    int localization_sc_consistency_frames_{3};
+    double localization_sc_consistency_trans_thres_{0.5};
+    double localization_sc_consistency_yaw_thres_{0.1};
 };
 
 #endif //FUNNY_LIDAR_SLAM_CONFIG_PARAMETERS_H

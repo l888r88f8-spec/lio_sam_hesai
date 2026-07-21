@@ -107,6 +107,20 @@ void System::InitConfigParameters() {
               config.localization_ground_z_percentile_, 0.20);
   util::param(this, "localization.ground_min_points",
               config.localization_ground_min_points_, 100);
+  util::param(this, "localization.auto_relocalization",
+              config.localization_auto_relocalization_, false);
+  util::param(this, "localization.sc_db_path",
+              config.localization_sc_db_path_, config.localization_sc_db_path_);
+  util::param(this, "localization.sc_top_n", config.localization_sc_top_n_,
+              8);
+  util::param(this, "localization.sc_fitness_thres",
+              config.localization_sc_fitness_thres_, 1.0);
+  util::param(this, "localization.sc_consistency_frames",
+              config.localization_sc_consistency_frames_, 3);
+  util::param(this, "localization.sc_consistency_trans_thres",
+              config.localization_sc_consistency_trans_thres_, 0.5);
+  util::param(this, "localization.sc_consistency_yaw_thres",
+              config.localization_sc_consistency_yaw_thres_, 0.1);
 
   // lidar config parameters
   util::param(this, "lidar.lidar_sensor_type", config.lidar_sensor_type_,
@@ -451,9 +465,12 @@ bool System::InitIMU(const IMUData& imu_data, Vec3d& init_mean_acc) {
   return false;
 }
 
-bool System::UpdateLidarToBaseTransform() {
-  if (has_lidar_to_base_) {
-    return true;
+bool System::UpdateBaseToLidarTransform() {
+  {
+    std::lock_guard<std::mutex> lg(mutex_base_to_lidar_transform_);
+    if (has_base_to_lidar_) {
+      return true;
+    }
   }
 
   const auto& base_frame = ConfigParameters::Instance().base_link_frame_;
@@ -463,15 +480,28 @@ bool System::UpdateLidarToBaseTransform() {
     auto tf_msg = tf_buffer_->lookupTransform(
         lidar_frame, base_frame, rclcpp::Time(0));
     Eigen::Isometry3d tf_eigen = tf2::transformToEigen(tf_msg);
-    T_lidar_to_base_ = tf_eigen.matrix();
-    has_lidar_to_base_ = true;
+    std::lock_guard<std::mutex> lg(mutex_base_to_lidar_transform_);
+    if (!has_base_to_lidar_) {
+      T_base_to_lidar_ = tf_eigen.matrix();
+      has_base_to_lidar_ = true;
+    }
   } catch (const tf2::TransformException& ex) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
                          "TF lookup failed (%s -> %s): %s", lidar_frame.c_str(),
                          base_frame.c_str(), ex.what());
   }
 
-  return has_lidar_to_base_;
+  std::lock_guard<std::mutex> lg(mutex_base_to_lidar_transform_);
+  return has_base_to_lidar_;
+}
+
+std::optional<Mat4d> System::GetBaseToLidarTransform() {
+  if (!UpdateBaseToLidarTransform()) {
+    return std::nullopt;
+  }
+
+  std::lock_guard<std::mutex> lg(mutex_base_to_lidar_transform_);
+  return T_base_to_lidar_;
 }
 
 void System::Run() {
@@ -517,7 +547,8 @@ bool System::ProcessLocalizationResultCache() {
 
   const rclcpp::Time stamp(result.timestamp_ * 1000ULL);
 
-  if (!UpdateLidarToBaseTransform()) {
+  const auto base_to_lidar = GetBaseToLidarTransform();
+  if (!base_to_lidar.has_value()) {
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 2000,
         "Skip localization result because %s -> %s TF is unavailable.",
@@ -526,7 +557,7 @@ bool System::ProcessLocalizationResultCache() {
     return false;
   }
 
-  Mat4d map_base_pose = result.map_pose * T_lidar_to_base_;
+  Mat4d map_base_pose = result.map_pose * base_to_lidar.value();
   if (ConfigParameters::Instance().localization_enable_ground_height_constraint_ &&
       result.has_map_ground_z) {
     const double desired_base_z =

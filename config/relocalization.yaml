@@ -22,6 +22,13 @@
       ground_search_radius: 5.0                                    # 地面搜索半径/m
       ground_z_percentile: 0.20                                    # 地面z分位
       ground_min_points: 20                                        # 最少地图点
+      auto_relocalization: true                                    # 无需 RViz 初始位姿的自动重定位
+      sc_db_path: ""                                               # 空值表示与 GlobalMap.pcd 同目录
+      sc_top_n: 8                                                  # Scan Context 检索候选数
+      sc_fitness_thres: 1.0                                        # 精配准 fitness 阈值
+      sc_consistency_frames: 3                                     # 连续一致帧数
+      sc_consistency_trans_thres: 0.5                              # 一致性平移阈值/m
+      sc_consistency_yaw_thres: 0.1                                # 一致性航向阈值/rad
 
     lidar:
       lidar_sensor_type: Hesai                            # 雷达型号

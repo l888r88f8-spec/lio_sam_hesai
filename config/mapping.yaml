@@ -49,6 +49,7 @@
 
     # CTRL+C地图与点云导出
     savePCD: false                               # 程序退出时是否自动保存全局地图点云
+    generateScDb: true                           # 保存地图时生成 Scan Context 重定位数据库
     savePCDDirectory: "/Downloads/LOAM_hesai/"   # 全局地图导出目录，相对HOME，程序会删除后重建该目录
     savePCDResolution: 0.1                       # 自动导出全局地图时的下采样分辨率，0表示不额外下采样
     saveGroundPCDResolution: 0.05                # 自动导出全局地面地图时的下采样分辨率，0表示不额外下采样

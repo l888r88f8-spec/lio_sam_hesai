@@ -3,6 +3,7 @@
 #include "lio_sam/ground_grid_patcher.h"
 #include "lio_sam_hesai/msg/cloud_info.hpp"
 #include "lio_sam_hesai/srv/save_map.hpp"
+#include "relocalization/scan_context.h"
 #include <gtsam/geometry/Rot3.h>
 #include <gtsam/geometry/Pose3.h>
 #include <gtsam/slam/PriorFactor.h>
@@ -326,9 +327,34 @@ public:
             // create directory and remove old files;
             int unused = system((std::string("exec rm -r ") + saveMapDirectory).c_str());
             unused = system((std::string("mkdir -p ") + saveMapDirectory).c_str());
-            // save key frame transformations
-            pcl::io::savePCDFileBinary(saveMapDirectory + "/trajectory.pcd", *cloudKeyPoses3D);
-            pcl::io::savePCDFileBinary(saveMapDirectory + "/transformations.pcd", *cloudKeyPoses6D);
+
+            // Copy the keyframe metadata while mapping/loop closure is locked.
+            // The feature-cloud pointers are immutable once keyframes are saved,
+            // so the expensive map export can safely run after releasing mtx.
+            pcl::PointCloud<PointType>::Ptr keyPoses3DSnapshot(
+                new pcl::PointCloud<PointType>());
+            pcl::PointCloud<PointTypePose>::Ptr keyPoses6DSnapshot(
+                new pcl::PointCloud<PointTypePose>());
+            std::vector<pcl::PointCloud<PointType>::Ptr> cornerKeyFramesSnapshot;
+            std::vector<pcl::PointCloud<PointType>::Ptr> surfKeyFramesSnapshot;
+            {
+                std::lock_guard<std::mutex> lock(mtx);
+                *keyPoses3DSnapshot = *cloudKeyPoses3D;
+                *keyPoses6DSnapshot = *cloudKeyPoses6D;
+                const std::size_t keyFrameCount = std::min(
+                    std::min(keyPoses3DSnapshot->size(), keyPoses6DSnapshot->size()),
+                    std::min(cornerCloudKeyFrames.size(), surfCloudKeyFrames.size()));
+                keyPoses3DSnapshot->resize(keyFrameCount);
+                keyPoses6DSnapshot->resize(keyFrameCount);
+                cornerKeyFramesSnapshot.assign(cornerCloudKeyFrames.begin(),
+                                               cornerCloudKeyFrames.begin() + keyFrameCount);
+                surfKeyFramesSnapshot.assign(surfCloudKeyFrames.begin(),
+                                             surfCloudKeyFrames.begin() + keyFrameCount);
+            }
+
+            // Save key frame transformations from the same snapshot used below.
+            pcl::io::savePCDFileBinary(saveMapDirectory + "/trajectory.pcd", *keyPoses3DSnapshot);
+            pcl::io::savePCDFileBinary(saveMapDirectory + "/transformations.pcd", *keyPoses6DSnapshot);
             // extract global point cloud map
             pcl::PointCloud<PointType>::Ptr globalCornerCloud(new pcl::PointCloud<PointType>());
             pcl::PointCloud<PointType>::Ptr globalCornerCloudDS(new pcl::PointCloud<PointType>());
@@ -346,15 +372,45 @@ public:
             if (useStaticFilter)
             {
                 // Reserve a rough amount to reduce rehash; tune if needed.
-                voxSurf.reserve((size_t)cloudKeyPoses3D->size() * 2000);
+                voxSurf.reserve((size_t)keyPoses3DSnapshot->size() * 2000);
                 if (globalStaticFilterCorners)
-                    voxCorner.reserve((size_t)cloudKeyPoses3D->size() * 400);
+                    voxCorner.reserve((size_t)keyPoses3DSnapshot->size() * 400);
             }
 
-            for (int i = 0; i < (int)cloudKeyPoses3D->size(); i++) 
+            relocalization::ScanContext scanContextGenerator;
+            const bool generateScanContextDb = generateScDb;
+            for (int i = 0; i < (int)keyPoses3DSnapshot->size(); i++)
             {
-                pcl::PointCloud<PointType>::Ptr cornerT = transformPointCloud(cornerCloudKeyFrames[i],  &cloudKeyPoses6D->points[i]);
-                pcl::PointCloud<PointType>::Ptr surfT   = transformPointCloud(surfCloudKeyFrames[i],    &cloudKeyPoses6D->points[i]);
+                if (cornerKeyFramesSnapshot[i] == nullptr ||
+                    surfKeyFramesSnapshot[i] == nullptr)
+                {
+                    RCLCPP_WARN(get_logger(),
+                                "Skipping keyframe %d with missing feature cloud", i);
+                    continue;
+                }
+                pcl::PointCloud<PointType>::Ptr cornerT = transformPointCloud(cornerKeyFramesSnapshot[i],  &keyPoses6DSnapshot->points[i]);
+                pcl::PointCloud<PointType>::Ptr surfT   = transformPointCloud(surfKeyFramesSnapshot[i],    &keyPoses6DSnapshot->points[i]);
+
+                if (generateScanContextDb)
+                {
+                    pcl::PointCloud<PointType> localFeatureCloud;
+                    localFeatureCloud.reserve(cornerKeyFramesSnapshot[i]->size() +
+                                              surfKeyFramesSnapshot[i]->size());
+                    localFeatureCloud += *cornerKeyFramesSnapshot[i];
+                    localFeatureCloud += *surfKeyFramesSnapshot[i];
+                    if (!localFeatureCloud.empty())
+                    {
+                        Eigen::Matrix4d keyFramePose =
+                            pclPointToAffine3f(keyPoses6DSnapshot->points[i])
+                                .cast<double>()
+                                .matrix();
+                        if (alignSavedMapGroundToZero)
+                            keyFramePose(2, 3) += savedMapGroundZOffset;
+                        scanContextGenerator.AddKeyFrame(
+                            scanContextGenerator.MakeDescriptor(localFeatureCloud),
+                            keyFramePose);
+                    }
+                }
 
                 rawCornerPts += cornerT->size();
                 rawSurfPts   += surfT->size();
@@ -375,7 +431,7 @@ public:
                     *globalSurfCloud   += *surfT;
                 }
 
-                cout << "" << std::flush << "Processing feature cloud " << i << " of " << cloudKeyPoses6D->size() << " ..." << endl;
+                cout << "" << std::flush << "Processing feature cloud " << i << " of " << keyPoses6DSnapshot->size() << " ..." << endl;
             }
 
             if (useStaticFilter)
@@ -432,12 +488,35 @@ public:
                *globalMapCloud += *globalSurfCloud;
             }
             int ret = pcl::io::savePCDFileBinary(saveMapDirectory + "/GlobalMap.pcd", *globalMapCloud);
+            bool scanContextDbSaved = !generateScanContextDb;
+            if (generateScanContextDb)
+            {
+                const std::string scanContextPath = saveMapDirectory + "/sc_db.bin";
+                scanContextDbSaved =
+                    ret == 0 && scanContextGenerator.Size() > 0 &&
+                    scanContextGenerator.SaveDB(scanContextPath, "GlobalMap.pcd");
+                if (scanContextDbSaved)
+                {
+                    cout << "Scan Context DB (" << scanContextGenerator.Size()
+                         << " keyframes) saved: " << scanContextPath << endl;
+                }
+                else
+                {
+                    RCLCPP_ERROR(get_logger(),
+                                 "Failed to save Scan Context DB: %s",
+                                 scanContextPath.c_str());
+                }
+            }
             const float groundRes = req->ground_resolution;
-            const bool groundSaved = saveGlobalGroundMap(
-                saveMapDirectory + "/GroundMap.pcd", groundRes, true);
+            bool groundSaved = false;
+            {
+                std::lock_guard<std::mutex> lock(mtx);
+                groundSaved = saveGlobalGroundMap(
+                    saveMapDirectory + "/GroundMap.pcd", groundRes, true);
+            }
             if (groundRes != req->resolution)
                 cout << "Ground save resolution: " << groundRes << endl;
-            res->success = (ret == 0) && groundSaved;
+            res->success = (ret == 0) && groundSaved && scanContextDbSaved;
             downSizeFilterCorner.setLeafSize(mappingCornerLeafSize, mappingCornerLeafSize, mappingCornerLeafSize);
             downSizeFilterSurf.setLeafSize(mappingSurfLeafSize, mappingSurfLeafSize, mappingSurfLeafSize);
             cout << "****************************************************" << endl;

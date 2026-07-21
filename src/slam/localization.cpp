@@ -4,10 +4,13 @@
 #include <pcl/filters/crop_box.h>
 #include <pcl/io/pcd_io.h>
 
+#include <Eigen/Geometry>
+
 #include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <iomanip>
+#include <limits>
 
 #include <g2o/core/sparse_optimizer.h>
 
@@ -77,8 +80,21 @@ Localization::Localization(System* system_ptr) : system_ptr_(system_ptr) {
 
 void Localization::SetInitPose(const Mat4d& pose) {
   std::lock_guard<std::mutex> lg(mutex_init_pose_optional_);
-  init_pose_optional_ = pose;
+  // RViz/System provides map->lidar, while registration consumes the
+  // deskewed IMU-frame cloud and therefore uses map->imu internally.
+  init_pose_optional_ = MapLidarPoseToMapImuPose(pose);
   has_init_ = false;
+}
+
+Mat4d Localization::MapLidarPoseToMapImuPose(
+    const Mat4d& map_lidar_pose) const {
+  return map_lidar_pose *
+         ConfigParameters::Instance().calibration_lidar_to_imu_.inverse();
+}
+
+Mat4d Localization::MapImuPoseToMapLidarPose(
+    const Mat4d& map_imu_pose) const {
+  return map_imu_pose * ConfigParameters::Instance().calibration_lidar_to_imu_;
 }
 
 void Localization::SetLidarPoseInformation() {
@@ -182,19 +198,88 @@ void Localization::InitPreintegration() {
 
 bool Localization::Init() {
   Mat4d init_pose;
+  bool has_manual_init_pose = false;
   {
     std::lock_guard<std::mutex> lg(mutex_init_pose_optional_);
-    if (!init_pose_optional_.has_value()) {
+    if (init_pose_optional_.has_value()) {
+      init_pose = init_pose_optional_.value();
+      init_pose_optional_.reset();
+      has_manual_init_pose = true;
+      consistency_ref_pose_.reset();
+      consistency_hit_count_ = 0;
+    }
+  }
+
+  if (!has_manual_init_pose) {
+    if (!ConfigParameters::Instance().localization_auto_relocalization_ ||
+        !scan_context_db_loaded_) {
       LOG_EVERY_N(INFO, 10) << "Please set initialization pose for "
                                "localization by RViz -> 2D Pose Estimate";
       return false;
     }
 
-    init_pose = init_pose_optional_.value();
-    init_pose_optional_.reset();
+    const auto auto_pose = TryAutoRelocalize();
+    if (!auto_pose.has_value()) {
+      consistency_ref_pose_.reset();
+      consistency_hit_count_ = 0;
+      return false;
+    }
+
+    {
+      std::lock_guard<std::mutex> lg(mutex_init_pose_optional_);
+      if (init_pose_optional_.has_value()) {
+        init_pose = init_pose_optional_.value();
+        init_pose_optional_.reset();
+        has_manual_init_pose = true;
+        consistency_ref_pose_.reset();
+        consistency_hit_count_ = 0;
+      }
+    }
+
+    if (!has_manual_init_pose) {
+      const int required_frames = std::max(
+          1, ConfigParameters::Instance().localization_sc_consistency_frames_);
+      const double translation_threshold = std::max(
+          0.0,
+          ConfigParameters::Instance().localization_sc_consistency_trans_thres_);
+      const double yaw_threshold = std::max(
+          0.0,
+          ConfigParameters::Instance().localization_sc_consistency_yaw_thres_);
+      if (consistency_ref_pose_.has_value()) {
+        const Mat4d delta = consistency_ref_pose_.value().inverse() *
+                            auto_pose.value();
+        const double translation_delta = delta.block<3, 1>(0, 3).norm();
+        const double yaw_delta =
+            std::fabs(std::atan2(delta(1, 0), delta(0, 0)));
+        if (translation_delta <= translation_threshold &&
+            yaw_delta <= yaw_threshold) {
+          ++consistency_hit_count_;
+        } else {
+          consistency_ref_pose_ = auto_pose;
+          consistency_hit_count_ = 1;
+        }
+      } else {
+        consistency_ref_pose_ = auto_pose;
+        consistency_hit_count_ = 1;
+      }
+
+      if (consistency_hit_count_ < required_frames) {
+        LOG(INFO) << "Auto relocalization consistency "
+                  << consistency_hit_count_ << "/" << required_frames;
+        return false;
+      }
+
+      init_pose = auto_pose.value();
+      consistency_ref_pose_.reset();
+      consistency_hit_count_ = 0;
+    }
   }
 
-  const auto local_map = LoadLocalMap(init_pose);
+  // Auto candidates each use a temporary matcher; start final initialization
+  // with a fresh local-map matcher for both automatic and manual poses.
+  InitMatcher();
+  const auto local_map =
+      LoadLocalMap(MapImuPoseToMapLidarPose(init_pose));
 
   if (!local_map || local_map->empty()) {
     LOG(WARNING) << "Initial local map is empty, please check localization map "
@@ -243,10 +328,10 @@ bool Localization::Init() {
 
   LocalizationResult init_result;
   init_result.timestamp_ = curr_time_us_;
-  init_result.map_pose = init_pose;
+  init_result.map_pose = MapImuPoseToMapLidarPose(init_pose);
   init_result.odom_pose = last_odom_state_.Pose();
   if (ConfigParameters::Instance().localization_enable_ground_height_constraint_) {
-    if (const auto map_ground_z = EstimateMapGroundZ(init_pose);
+    if (const auto map_ground_z = EstimateMapGroundZ(init_result.map_pose);
         map_ground_z.has_value()) {
       init_result.has_map_ground_z = true;
       init_result.map_ground_z = map_ground_z.value();
@@ -276,6 +361,23 @@ void Localization::Run() {
       global_map_cloud_ptr_ =
           VoxelGridCloud(global_map_cloud_ptr_, filter_size);
     }
+
+    if (global_map_cloud_ptr_ && !global_map_cloud_ptr_->empty()) {
+      global_map_xy_cloud_ptr_.reset(new PCLPointCloudXYZI(
+          *global_map_cloud_ptr_));
+      for (auto& point : global_map_xy_cloud_ptr_->points) {
+        point.z = 0.0F;
+      }
+      global_map_xy_kdtree_.reset(new pcl::KdTreeFLANN<PCLPointXYZI>());
+      global_map_xy_kdtree_->setInputCloud(global_map_xy_cloud_ptr_);
+    } else {
+      global_map_xy_cloud_ptr_.reset();
+      global_map_xy_kdtree_.reset();
+    }
+  }
+
+  if (ConfigParameters::Instance().localization_auto_relocalization_) {
+    LoadScanContextDb();
   }
 
   // If use tile map, load tile map indices file
@@ -316,7 +418,7 @@ void Localization::Run() {
     }
 
     Timer timer_load_map;
-    auto local_map = LoadLocalMap(last_pose_);
+    auto local_map = LoadLocalMap(MapImuPoseToMapLidarPose(last_pose_));
     if (need_update_local_map_) {
       if (!local_map || local_map->empty()) {
         LOG(WARNING) << "Skip localization frame because local map is empty.";
@@ -411,10 +513,10 @@ void Localization::Run() {
     // Cache result to System for visualization
     LocalizationResult result;
     result.timestamp_ = curr_time_us_;
-    result.map_pose = curr_pose;
+    result.map_pose = MapImuPoseToMapLidarPose(curr_pose);
     result.odom_pose = predict_odom_state.Pose();
     if (ConfigParameters::Instance().localization_enable_ground_height_constraint_) {
-      if (const auto map_ground_z = EstimateMapGroundZ(curr_pose);
+      if (const auto map_ground_z = EstimateMapGroundZ(result.map_pose);
           map_ground_z.has_value()) {
         result.has_map_ground_z = true;
         result.map_ground_z = map_ground_z.value();
@@ -453,6 +555,170 @@ PCLPointCloudXYZI::Ptr Localization::LoadGlobalMap(const std::string& path) {
   }
 
   return LoadPcdAsXYZI(path);
+}
+
+void Localization::LoadScanContextDb() {
+  if (use_tile_map_) {
+    LOG(WARNING) << "Scan Context auto relocalization is disabled for tile maps.";
+    scan_context_db_loaded_ = false;
+    return;
+  }
+  std::string db_path = ConfigParameters::Instance().localization_sc_db_path_;
+  if (db_path.empty()) {
+    std::string map_path = ConfigParameters::Instance().localization_map_path_;
+    if (map_path.empty()) {
+      map_path = kDataPath + kGlobalMapFileName;
+    }
+    const auto slash = map_path.find_last_of('/');
+    db_path = slash == std::string::npos
+                  ? "sc_db.bin"
+                  : map_path.substr(0, slash + 1U) + "sc_db.bin";
+  }
+
+  std::string map_tag;
+  scan_context_db_loaded_ = scan_context_.LoadDB(db_path, &map_tag);
+  if (scan_context_db_loaded_) {
+    LOG(INFO) << "Loaded Scan Context DB with " << scan_context_.Size()
+              << " keyframes from " << db_path << " (map_tag=" << map_tag
+              << ").";
+  } else {
+    LOG(WARNING) << "Failed to load Scan Context DB from " << db_path
+                 << "; automatic relocalization is unavailable.";
+  }
+}
+
+std::optional<Mat4d> Localization::TryAutoRelocalize() {
+  if (!scan_context_db_loaded_ || scan_context_.Empty() ||
+      !curr_cloud_cluster_ptr_ || curr_cloud_cluster_ptr_->ordered_cloud_.empty()) {
+    return std::nullopt;
+  }
+  if (!ConfigParameters::Instance().imu_has_orientation_ ||
+      curr_cloud_cluster_ptr_->imu_data_.empty()) {
+    LOG_EVERY_N(WARNING, 10)
+        << "Scan Context auto relocalization requires an IMU orientation.";
+    return std::nullopt;
+  }
+
+  const Mat4d& lidar_to_imu =
+      ConfigParameters::Instance().calibration_lidar_to_imu_;
+  const double calibration_determinant =
+      lidar_to_imu.block<3, 3>(0, 0).determinant();
+  if (!lidar_to_imu.allFinite() ||
+      !std::isfinite(calibration_determinant) ||
+      std::fabs(calibration_determinant) <
+          std::numeric_limits<double>::epsilon()) {
+    LOG(WARNING) << "Skip Scan Context relocalization due to invalid "
+                    "lidar-to-IMU calibration.";
+    return std::nullopt;
+  }
+  const Mat4d imu_to_lidar = lidar_to_imu.inverse();
+
+  // Mapping keyframe features are in the lidar frame, whereas localization
+  // ordered_cloud_ is deskewed in the IMU frame. Convert only the descriptor
+  // input so Scan Context compares like-for-like local geometry.
+  const PCLPointCloudXYZI query_cloud = TransformPointCloud(
+      curr_cloud_cluster_ptr_->ordered_cloud_, imu_to_lidar);
+  const auto query_descriptor = scan_context_.MakeDescriptor(query_cloud);
+  const int top_n = std::max(
+      1, ConfigParameters::Instance().localization_sc_top_n_);
+  const auto candidates = scan_context_.Query(query_descriptor, top_n);
+  if (candidates.empty()) {
+    LOG_EVERY_N(INFO, 10) << "Scan Context returned no relocalization candidate.";
+    return std::nullopt;
+  }
+
+  Eigen::Quaterniond imu_orientation =
+      curr_cloud_cluster_ptr_->imu_data_.back().orientation_;
+  if (!imu_orientation.coeffs().allFinite() ||
+      imu_orientation.squaredNorm() < std::numeric_limits<double>::epsilon()) {
+    LOG(WARNING) << "Skip Scan Context relocalization due to invalid IMU orientation.";
+    return std::nullopt;
+  }
+  imu_orientation.normalize();
+  const Mat3d imu_rotation = imu_orientation.toRotationMatrix();
+  const double roll = std::atan2(imu_rotation(2, 1), imu_rotation(2, 2));
+  const double pitch = std::atan2(
+      -imu_rotation(2, 0),
+      std::hypot(imu_rotation(2, 1), imu_rotation(2, 2)));
+  const float fitness_threshold = static_cast<float>(std::max(
+      0.0, ConfigParameters::Instance().localization_sc_fitness_thres_));
+  const Mat3d lidar_to_imu_rotation = lidar_to_imu.block<3, 3>(0, 0);
+  const Mat3d imu_to_lidar_rotation = imu_to_lidar.block<3, 3>(0, 0);
+
+  std::optional<Mat4d> base_to_lidar;
+  if (ConfigParameters::Instance().localization_enable_ground_height_constraint_) {
+    base_to_lidar = system_ptr_->GetBaseToLidarTransform();
+    if (!base_to_lidar.has_value()) {
+      LOG_EVERY_N(WARNING, 10)
+          << "Scan Context relocalization is waiting for base-to-lidar TF.";
+      return std::nullopt;
+    }
+  }
+
+  std::optional<Mat4d> best_pose;
+  float best_fitness = std::numeric_limits<float>::infinity();
+  for (const auto& candidate : candidates) {
+    const double lidar_yaw =
+        std::atan2(candidate.pose(1, 0), candidate.pose(0, 0)) +
+        candidate.yaw_shift;
+    const Mat3d nominal_map_lidar_rotation =
+        Eigen::AngleAxisd(lidar_yaw, Vec3d::UnitZ()).toRotationMatrix();
+    const Mat3d nominal_map_imu_rotation =
+        nominal_map_lidar_rotation * imu_to_lidar_rotation;
+    const double imu_yaw = std::atan2(
+        nominal_map_imu_rotation(1, 0), nominal_map_imu_rotation(0, 0));
+    const Mat3d map_imu_rotation =
+        (Eigen::AngleAxisd(imu_yaw, Vec3d::UnitZ()) *
+         Eigen::AngleAxisd(pitch, Vec3d::UnitY()) *
+         Eigen::AngleAxisd(roll, Vec3d::UnitX()))
+            .toRotationMatrix();
+
+    Mat4d candidate_lidar_pose = candidate.pose;
+    candidate_lidar_pose.block<3, 3>(0, 0) =
+        map_imu_rotation * lidar_to_imu_rotation;
+
+    if (ConfigParameters::Instance().localization_enable_ground_height_constraint_) {
+      if (const auto ground_z = EstimateMapGroundZ(candidate_lidar_pose);
+          ground_z.has_value()) {
+        // System's cached transform maps base_link coordinates into the
+        // lidar frame, so map->base is map->lidar * base->lidar.
+        const Vec3d base_to_lidar_translation =
+            base_to_lidar.value().block<3, 1>(0, 3);
+        candidate_lidar_pose(2, 3) =
+            ground_z.value() + ConfigParameters::Instance()
+                                   .localization_base_link_ground_height_ -
+            (candidate_lidar_pose.block<3, 3>(0, 0) *
+             base_to_lidar_translation)
+                .z();
+      }
+    }
+
+    const auto local_map = LoadCandidateLocalMap(candidate_lidar_pose);
+    if (!local_map || local_map->empty()) {
+      continue;
+    }
+
+    // IncrementalNDT and some LOAM matchers retain their local map. Isolate
+    // every candidate so one failed place cannot bias the next candidate.
+    InitMatcher();
+    matcher_->AddCloudToLocalMap({*local_map});
+    Mat4d match_pose = candidate_lidar_pose * imu_to_lidar;
+    if (!matcher_->Match(curr_cloud_cluster_ptr_, match_pose)) {
+      continue;
+    }
+    const float fitness = matcher_->GetFitnessScore(2.0F);
+    if (std::isfinite(fitness) && fitness < fitness_threshold &&
+        fitness < best_fitness) {
+      best_fitness = fitness;
+      best_pose = match_pose;
+    }
+  }
+
+  if (best_pose.has_value()) {
+    LOG(INFO) << "Auto relocalization candidate accepted with fitness "
+              << best_fitness << ".";
+  }
+  return best_pose;
 }
 
 PCLPointCloudXYZI::Ptr Localization::LoadLocalMap(const Mat4d& pose) {
@@ -571,6 +837,51 @@ PCLPointCloudXYZI::Ptr Localization::LoadLocalMap(const Mat4d& pose) {
 
     return map_cloud;
   }
+}
+
+PCLPointCloudXYZI::Ptr Localization::LoadCandidateLocalMap(
+    const Mat4d& pose) {
+  if (use_tile_map_) {
+    LOG(WARNING) << "Scan Context auto relocalization does not support tile maps.";
+    return nullptr;
+  }
+
+  PCLPointCloudXYZI::Ptr map_cloud(new PCLPointCloudXYZI);
+  std::lock_guard<std::mutex> lg(mutex_global_map_cloud_);
+  if (!global_map_cloud_ptr_ || global_map_cloud_ptr_->empty() ||
+      !global_map_xy_kdtree_) {
+    return nullptr;
+  }
+
+  constexpr double kLocalMapHalfExtent = 100.0;
+  const Vec3d position = pose.block<3, 1>(0, 3);
+  PCLPointXYZI query_point;
+  query_point.x = static_cast<float>(position.x());
+  query_point.y = static_cast<float>(position.y());
+  query_point.z = 0.0F;
+  std::vector<int> point_indices;
+  std::vector<float> point_squared_distances;
+  global_map_xy_kdtree_->radiusSearch(
+      query_point, std::sqrt(2.0) * kLocalMapHalfExtent, point_indices,
+      point_squared_distances);
+  map_cloud->reserve(point_indices.size());
+  for (const int point_index : point_indices) {
+    if (point_index < 0 ||
+        point_index >= static_cast<int>(global_map_cloud_ptr_->size())) {
+      continue;
+    }
+    const auto& point = global_map_cloud_ptr_->points[point_index];
+    if (std::fabs(static_cast<double>(point.x) - position.x()) >
+            kLocalMapHalfExtent ||
+        std::fabs(static_cast<double>(point.y) - position.y()) >
+            kLocalMapHalfExtent ||
+        std::fabs(static_cast<double>(point.z) - position.z()) >
+            kLocalMapHalfExtent) {
+      continue;
+    }
+    map_cloud->push_back(point);
+  }
+  return map_cloud;
 }
 
 PCLPointCloudXYZI::Ptr Localization::LoadTileMap(const Vec2i& tile_map_index) {
@@ -818,29 +1129,37 @@ void Localization::Optimize(NavStateData& curr_nav_state,
 
 std::optional<double> Localization::EstimateMapGroundZ(
     const Mat4d& map_lidar_pose) {
-  const double radius =
-      ConfigParameters::Instance().localization_ground_search_radius_;
-  const double radius_square = radius * radius;
+  const double radius = std::max(
+      0.0, ConfigParameters::Instance().localization_ground_search_radius_);
   const double percentile = std::clamp(
       ConfigParameters::Instance().localization_ground_z_percentile_, 0.0, 1.0);
-  const int min_points =
-      ConfigParameters::Instance().localization_ground_min_points_;
+  const int min_points = std::max(
+      0, ConfigParameters::Instance().localization_ground_min_points_);
   const Vec3d position = map_lidar_pose.block<3, 1>(0, 3);
 
   std::vector<double> nearby_z;
   {
     std::lock_guard<std::mutex> lg(mutex_global_map_cloud_);
-    if (!global_map_cloud_ptr_ || global_map_cloud_ptr_->empty()) {
+    if (!global_map_cloud_ptr_ || global_map_cloud_ptr_->empty() ||
+        !global_map_xy_kdtree_) {
       return std::nullopt;
     }
 
-    nearby_z.reserve(1024);
-    for (const auto& point : global_map_cloud_ptr_->points) {
-      const double dx = static_cast<double>(point.x) - position.x();
-      const double dy = static_cast<double>(point.y) - position.y();
-      if (dx * dx + dy * dy > radius_square) {
+    PCLPointXYZI query_point;
+    query_point.x = static_cast<float>(position.x());
+    query_point.y = static_cast<float>(position.y());
+    query_point.z = 0.0F;
+    std::vector<int> point_indices;
+    std::vector<float> point_squared_distances;
+    global_map_xy_kdtree_->radiusSearch(
+        query_point, radius, point_indices, point_squared_distances);
+    nearby_z.reserve(point_indices.size());
+    for (const int point_index : point_indices) {
+      if (point_index < 0 ||
+          point_index >= static_cast<int>(global_map_cloud_ptr_->size())) {
         continue;
       }
+      const auto& point = global_map_cloud_ptr_->points[point_index];
       if (!std::isfinite(point.z)) {
         continue;
       }

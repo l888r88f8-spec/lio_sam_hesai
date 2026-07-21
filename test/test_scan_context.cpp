@@ -156,6 +156,7 @@ TEST(ScanContextTest, SaveLoadQueryAndCorruptDbPreserveExistingDatabase) {
     Eigen::Matrix4d pose = Eigen::Matrix4d::Identity();
     pose(0, 3) = static_cast<double>(scene_id) * 10.0;
     pose(1, 3) = static_cast<double>(scene_id) * -5.0;
+    pose(2, 3) = static_cast<double>(scene_id) * 1.5;
     source.AddKeyFrame(
         source.MakeDescriptor(MakeAsymmetricCloud(0.0, scene_id)), pose);
   }
@@ -175,6 +176,7 @@ TEST(ScanContextTest, SaveLoadQueryAndCorruptDbPreserveExistingDatabase) {
   const auto candidates = loaded.Query(query, 3);
   ASSERT_FALSE(candidates.empty());
   EXPECT_NEAR(candidates.front().pose(0, 3), 10.0, 1.0e-6);
+  EXPECT_NEAR(candidates.front().pose(2, 3), 1.5, 1.0e-6);
 
   {
     std::ofstream corrupt(corrupt_path, std::ios::binary | std::ios::trunc);

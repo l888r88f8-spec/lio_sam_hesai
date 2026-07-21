@@ -114,6 +114,7 @@ ament_target_dependencies(${PROJECT_NAME}_mapOptimization rclcpp rclpy std_msgs 
 target_sources(${PROJECT_NAME}_mapOptimization PRIVATE
   src/ivox_map/ivox_map.cpp
   src/ivox_map/voxel_grid_node.cpp
+  src/relocalization/scan_context.cpp
 )
 
 if (OpenMP_CXX_FOUND)
@@ -226,6 +227,8 @@ if(BUILD_TESTING)
   target_include_directories(test_ground_grid_patcher PRIVATE include ${PCL_INCLUDE_DIRS})
   target_link_libraries(test_ground_grid_patcher ${PCL_LIBRARIES})
   ament_add_gtest(test_ground_patch_parameter_surface test/test_ground_patch_parameter_surface.cpp)
+  ament_add_gtest(test_auto_relocalization_parameter_surface
+    test/test_auto_relocalization_parameter_surface.cpp)
   ament_add_gtest(test_scan_context test/test_scan_context.cpp)
   target_include_directories(test_scan_context PRIVATE include)
   target_link_libraries(test_scan_context ${PROJECT_NAME}_relocalization_lib ${PCL_LIBRARIES})
