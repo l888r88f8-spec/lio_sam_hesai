@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cerrno>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -24,12 +25,6 @@ constexpr std::uint64_t kMaxEntryCount = 500000U;
 constexpr std::uint64_t kMaxDbPayloadBytes = 512U * 1024U * 1024U;
 constexpr int kMaxDescriptorDimension = 2048;
 constexpr double kTwoPi = 6.28318530717958647692;
-
-template <typename T>
-bool WriteValue(std::ostream& stream, const T& value) {
-  stream.write(reinterpret_cast<const char*>(&value), sizeof(T));
-  return stream.good();
-}
 
 template <typename T>
 bool ReadValue(std::istream& stream, T* value) {
@@ -69,8 +64,33 @@ bool CalculatePayloadBytes(const ScanContextConfig& config,
          *payload_bytes <= kMaxDbPayloadBytes;
 }
 
-bool CreateTemporaryPath(const std::string& path, std::string* temporary_path) {
-  if (path.empty() || temporary_path == nullptr) {
+bool WriteBytes(int file_descriptor, const void* data, std::size_t size) {
+  const auto* bytes = static_cast<const char*>(data);
+  while (size > 0U) {
+    const ssize_t written = write(file_descriptor, bytes, size);
+    if (written < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      return false;
+    }
+    if (written == 0) {
+      return false;
+    }
+    bytes += written;
+    size -= static_cast<std::size_t>(written);
+  }
+  return true;
+}
+
+template <typename T>
+bool WriteValue(int file_descriptor, const T& value) {
+  return WriteBytes(file_descriptor, &value, sizeof(T));
+}
+
+bool CreateTemporaryFile(const std::string& path, std::string* temporary_path,
+                         int* file_descriptor) {
+  if (path.empty() || temporary_path == nullptr || file_descriptor == nullptr) {
     return false;
   }
 
@@ -81,12 +101,9 @@ bool CreateTemporaryPath(const std::string& path, std::string* temporary_path) {
   if (descriptor < 0) {
     return false;
   }
-  if (close(descriptor) != 0) {
-    std::remove(buffer.data());
-    return false;
-  }
 
   *temporary_path = buffer.data();
+  *file_descriptor = descriptor;
   return true;
 }
 
@@ -154,18 +171,19 @@ bool ReadConfig(std::istream& stream, ScanContextConfig* config) {
   return IsFiniteConfig(*config);
 }
 
-bool WriteConfig(std::ostream& stream, const ScanContextConfig& config) {
+bool WriteConfig(int file_descriptor, const ScanContextConfig& config) {
   const std::int32_t num_ring = config.num_ring;
   const std::int32_t num_sector = config.num_sector;
   const std::int32_t knn_candidates = config.knn_candidates;
   const std::int32_t min_valid_points = config.min_valid_points;
-  return WriteValue(stream, num_ring) && WriteValue(stream, num_sector) &&
-         WriteValue(stream, config.max_radius) &&
-         WriteValue(stream, config.min_radius) &&
-         WriteValue(stream, config.height_offset) &&
-         WriteValue(stream, knn_candidates) &&
-         WriteValue(stream, config.ringkey_max_dist) &&
-         WriteValue(stream, min_valid_points);
+  return WriteValue(file_descriptor, num_ring) &&
+         WriteValue(file_descriptor, num_sector) &&
+         WriteValue(file_descriptor, config.max_radius) &&
+         WriteValue(file_descriptor, config.min_radius) &&
+         WriteValue(file_descriptor, config.height_offset) &&
+         WriteValue(file_descriptor, knn_candidates) &&
+         WriteValue(file_descriptor, config.ringkey_max_dist) &&
+         WriteValue(file_descriptor, min_valid_points);
 }
 
 }  // namespace
@@ -311,50 +329,40 @@ bool ScanContext::SaveDB(const std::string& path,
   }
 
   std::string temporary_path;
-  if (!CreateTemporaryPath(path, &temporary_path)) {
-    return false;
-  }
-  std::ofstream stream(temporary_path,
-                       std::ios::binary | std::ios::trunc | std::ios::out);
-  if (!stream.is_open()) {
-    std::remove(temporary_path.c_str());
+  int temporary_file_descriptor = -1;
+  if (!CreateTemporaryFile(path, &temporary_path, &temporary_file_descriptor)) {
     return false;
   }
 
-  stream.write(kDbMagic.data(), static_cast<std::streamsize>(kDbMagic.size()));
-  const bool header_ok = stream.good() && WriteValue(stream, kDbVersion) &&
-                         WriteValue(stream, kEndianMarker) &&
-                         WriteConfig(stream, config_) &&
-                         WriteValue(stream, tag_length) &&
-                         WriteValue(stream, count);
-  if (!header_ok) {
-    stream.close();
-    std::remove(temporary_path.c_str());
-    return false;
+  bool write_ok = WriteBytes(temporary_file_descriptor, kDbMagic.data(),
+                             kDbMagic.size()) &&
+                  WriteValue(temporary_file_descriptor, kDbVersion) &&
+                  WriteValue(temporary_file_descriptor, kEndianMarker) &&
+                  WriteConfig(temporary_file_descriptor, config_) &&
+                  WriteValue(temporary_file_descriptor, tag_length) &&
+                  WriteValue(temporary_file_descriptor, count);
+  if (write_ok && !map_tag.empty()) {
+    write_ok = WriteBytes(temporary_file_descriptor, map_tag.data(),
+                          map_tag.size());
   }
-
-  stream.write(map_tag.data(), static_cast<std::streamsize>(map_tag.size()));
-  for (std::size_t index = 0; stream.good() && index < descriptors_.size();
-       ++index) {
+  for (std::size_t index = 0; write_ok && index < descriptors_.size(); ++index) {
     const auto& descriptor = descriptors_[index];
-    for (int row = 0; stream.good() && row < descriptor.rows(); ++row) {
-      for (int column = 0; column < descriptor.cols(); ++column) {
-        if (!WriteValue(stream, descriptor(row, column))) {
-          break;
-        }
+    for (int row = 0; write_ok && row < descriptor.rows(); ++row) {
+      for (int column = 0; write_ok && column < descriptor.cols(); ++column) {
+        write_ok =
+            WriteValue(temporary_file_descriptor, descriptor(row, column));
       }
     }
-    for (int row = 0; stream.good() && row < 4; ++row) {
-      for (int column = 0; column < 4; ++column) {
-        if (!WriteValue(stream, poses_[index](row, column))) {
-          break;
-        }
+    for (int row = 0; write_ok && row < 4; ++row) {
+      for (int column = 0; write_ok && column < 4; ++column) {
+        write_ok =
+            WriteValue(temporary_file_descriptor, poses_[index](row, column));
       }
     }
   }
 
-  stream.close();
-  if (!stream.good()) {
+  const bool close_ok = close(temporary_file_descriptor) == 0;
+  if (!write_ok || !close_ok) {
     std::remove(temporary_path.c_str());
     return false;
   }
