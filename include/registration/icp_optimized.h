@@ -248,7 +248,11 @@ class IcpOptimized final : public RegistrationInterface {
 
  private:
   bool IsNeedAddCloud(const Eigen::Matrix<Type, 4, 4>& T) {
-    static Eigen::Matrix<Type, 4, 4> last_T = T;
+    if (!has_last_add_cloud_T_) {
+      last_add_cloud_T_ = T;
+      has_last_add_cloud_T_ = true;
+    }
+    Eigen::Matrix<Type, 4, 4>& last_T = last_add_cloud_T_;
 
     const Eigen::Matrix<Type, 3, 3> R_delta =
         last_T.template block<3, 3>(0, 0).inverse() *
@@ -275,6 +279,9 @@ class IcpOptimized final : public RegistrationInterface {
   const Type rotation_converge_thres_{0.05};
   const Type rot_thre_add_cloud_{0.2}, dist_thre_add_cloud_{1.0};
   bool has_converge_{false};
+  Eigen::Matrix<Type, 4, 4> last_add_cloud_T_ =
+      Eigen::Matrix<Type, 4, 4>::Identity();
+  bool has_last_add_cloud_T_ = false;
 
   CloudType::Ptr local_map_ptr_ = nullptr;
   CloudType::Ptr source_cloud_ptr_ = nullptr;

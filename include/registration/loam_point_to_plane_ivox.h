@@ -57,22 +57,21 @@ public:
 
     void AddCloudToLocalMap(const std::initializer_list<PCLPointCloudXYZI> &cloud_list) override {
         CHECK_EQ(cloud_list.size(), 1) << "LoamPointToPlane only need planar cloud";
-        static bool is_first = true;
 
         if (is_localization_mode_) {
             Timer timer_init_ivox;
-            is_first = true;
+            is_first_add_cloud_ = true;
             InitIVox();
             DLOG(INFO) << "Init ivox use time: " << timer_init_ivox.End();
         }
 
         const auto planar_cloud = *(cloud_list.begin());
 
-        if (is_first) {
+        if (is_first_add_cloud_) {
             Timer timer_add_points;
             ivox_map_ptr_->AddPoints(planar_cloud.points);
             DLOG(INFO) << "Add points to ivox use time: " << timer_add_points.End();
-            is_first = false;
+            is_first_add_cloud_ = false;
         } else {
             IVoxMap::PointVector points_to_add;
             IVoxMap::PointVector point_no_need_downsample;
@@ -266,7 +265,7 @@ private:
                           }
 
                           Eigen::Matrix<Type, 5, 3> A; // save target planar point
-                          static Eigen::Matrix<Type, 5, 1> b = Eigen::Matrix<Type, 5, 1>::Ones() * Type(-1.0);
+                          const Eigen::Matrix<Type, 5, 1> b = Eigen::Matrix<Type, 5, 1>::Ones() * Type(-1.0);
                           for (unsigned int j = 0; j < 5u; ++j) {
                               A.row(j) << static_cast<Type>(point_vector[j].x),
                                   static_cast<Type>(point_vector[j].y),
@@ -358,6 +357,7 @@ private:
     Eigen::Matrix<Type, 4, 4> final_transformation_{};
     pcl::KdTreeFLANN<PointType> kdtree_flann_{};
     bool is_localization_mode_ = false;
+    bool is_first_add_cloud_ = true;
     CloudType::Ptr source_cloud_ptr_ = nullptr;
 };
 

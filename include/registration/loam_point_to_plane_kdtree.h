@@ -182,7 +182,11 @@ public:
 
 private:
     bool IsNeedAddCloud(const Eigen::Matrix<Type, 4, 4>& T) {
-        static Eigen::Matrix<Type, 4, 4> last_T = T;
+        if (!has_last_add_cloud_T_) {
+            last_add_cloud_T_ = T;
+            has_last_add_cloud_T_ = true;
+        }
+        Eigen::Matrix<Type, 4, 4>& last_T = last_add_cloud_T_;
 
         const Eigen::Matrix<Type, 3, 3> R_delta =
             last_T.template block<3, 3>(0, 0).inverse() * T.template block<3, 3>(0, 0);
@@ -219,7 +223,7 @@ private:
                           }
 
                           Eigen::Matrix<Type, 5, 3> A; // save target planar point
-                          static Eigen::Matrix<Type, 5, 1> b = Eigen::Matrix<Type, 5, 1>::Ones() * (Type(-1.0));
+                          const Eigen::Matrix<Type, 5, 1> b = Eigen::Matrix<Type, 5, 1>::Ones() * (Type(-1.0));
                           for (unsigned int j = 0; j < 5u; ++j) {
                               A.row(j) << static_cast<Type>(local_map_ptr_->points[indices[j]].x),
                                   static_cast<Type>(local_map_ptr_->points[indices[j]].y),
@@ -314,9 +318,12 @@ private:
     Eigen::Matrix<Type, 6, 1> g_{};
 
     Eigen::Matrix<Type, 4, 4> final_transformation_{};
+    Eigen::Matrix<Type, 4, 4> last_add_cloud_T_ =
+        Eigen::Matrix<Type, 4, 4>::Identity();
     pcl::KdTreeFLANN<PointType> kdtree_flann_{};
 
     bool is_localization_mode_ = false;
+    bool has_last_add_cloud_T_ = false;
 };
 
 #endif //FUNNY_LIDAR_SLAM_LOAM_POINT_TO_PLANE_KDTREE_H
