@@ -43,3 +43,12 @@ TEST(RelocalizationEfficiencySurface, MatchersKeepUpdateStatePerInstance) {
   ExpectNoToken(kdtree, "static Eigen::Matrix<Type, 4, 4> last_T");
   ExpectNoToken(kdtree, "static Eigen::Matrix<Type, 5, 1> b");
 }
+
+TEST(RelocalizationEfficiencySurface, ExposesHighConfidenceEarlyAccept) {
+  ExpectToken("include/slam/config_parameters.h",
+              "localization_sc_accept_fitness_");
+  ExpectToken("src/slam/system.cpp", "localization.sc_accept_fitness");
+  ExpectToken("config/relocalization.yaml", "sc_accept_fitness:");
+  ExpectToken("src/slam/localization.cpp",
+              "ShouldEarlyAcceptRelocalization");
+}

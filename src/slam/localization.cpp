@@ -27,6 +27,7 @@
 #include "registration/incremental_ndt.h"
 #include "registration/loam_point_to_plane_ivox.h"
 #include "registration/loam_point_to_plane_kdtree.h"
+#include "relocalization/acceptance_policy.h"
 #include "slam/split_map.h"
 
 namespace {
@@ -223,7 +224,8 @@ bool Localization::Init() {
       return false;
     }
 
-    const auto auto_pose = TryAutoRelocalize();
+    float auto_fitness = std::numeric_limits<float>::infinity();
+    const auto auto_pose = TryAutoRelocalize(&auto_fitness);
     if (!auto_pose.has_value()) {
       consistency_ref_pose_.reset();
       consistency_hit_count_ = 0;
@@ -241,7 +243,18 @@ bool Localization::Init() {
       }
     }
 
-    if (!has_manual_init_pose) {
+    if (!has_manual_init_pose &&
+        ShouldEarlyAcceptRelocalization(
+            auto_fitness,
+            ConfigParameters::Instance().localization_sc_accept_fitness_)) {
+      LOG(INFO) << "Auto relocalization accepted early with fitness "
+                << auto_fitness << " (< "
+                << ConfigParameters::Instance().localization_sc_accept_fitness_
+                << ").";
+      init_pose = auto_pose.value();
+      consistency_ref_pose_.reset();
+      consistency_hit_count_ = 0;
+    } else if (!has_manual_init_pose) {
       const int required_frames = std::max(
           1, ConfigParameters::Instance().localization_sc_consistency_frames_);
       const double translation_threshold = std::max(
@@ -597,7 +610,8 @@ void Localization::LoadScanContextDb() {
   }
 }
 
-std::optional<Mat4d> Localization::TryAutoRelocalize() {
+std::optional<Mat4d> Localization::TryAutoRelocalize(
+    float* best_fitness_out) {
   if (!scan_context_db_loaded_ || scan_context_.Empty() ||
       !curr_cloud_cluster_ptr_ || curr_cloud_cluster_ptr_->ordered_cloud_.empty()) {
     return std::nullopt;
@@ -773,6 +787,9 @@ std::optional<Mat4d> Localization::TryAutoRelocalize() {
   if (best_pose.has_value()) {
     LOG(INFO) << "Auto relocalization candidate accepted with fitness "
               << best_fitness << ".";
+  }
+  if (best_fitness_out != nullptr) {
+    *best_fitness_out = best_fitness;
   }
   return best_pose;
 }

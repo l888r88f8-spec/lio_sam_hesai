@@ -41,7 +41,8 @@ private:
 
     void LoadScanContextDb();
 
-    [[nodiscard]] std::optional<Mat4d> TryAutoRelocalize();
+    [[nodiscard]] std::optional<Mat4d> TryAutoRelocalize(
+        float* best_fitness_out = nullptr);
 
     void InitPreintegration();
 

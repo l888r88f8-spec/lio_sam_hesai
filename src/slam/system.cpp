@@ -123,6 +123,8 @@ void System::InitConfigParameters() {
               config.localization_sc_consistency_yaw_thres_, 0.1);
   util::param(this, "localization.sc_ringkey_max_dist",
               config.localization_sc_ringkey_max_dist_, 5.0);
+  util::param(this, "localization.sc_accept_fitness",
+              config.localization_sc_accept_fitness_, 0.3);
 
   // lidar config parameters
   util::param(this, "lidar.lidar_sensor_type", config.lidar_sensor_type_,

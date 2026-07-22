@@ -30,6 +30,7 @@
       sc_consistency_trans_thres: 0.5                              # 一致性平移阈值/m
       sc_consistency_yaw_thres: 0.1                                # 一致性航向阈值/rad
       sc_ringkey_max_dist: 5.0                                     # ring-key 粗筛门限(越大越宽松),精配准兜底
+      sc_accept_fitness: 0.3                                       # 单帧fitness低于此值直接接受,跳过多帧一致性
 
     lidar:
       lidar_sensor_type: Hesai                            # 雷达型号
