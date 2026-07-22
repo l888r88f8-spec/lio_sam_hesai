@@ -578,6 +578,11 @@ void Localization::LoadScanContextDb() {
   std::string map_tag;
   scan_context_db_loaded_ = scan_context_.LoadDB(db_path, &map_tag);
   if (scan_context_db_loaded_) {
+    // LoadDB overwrites config from the file; re-apply the retrieval-only
+    // ring-key gate from the runtime parameters (the fine registration below
+    // is the real validator, so a generous gate is preferred).
+    scan_context_.SetRingKeyMaxDist(
+        ConfigParameters::Instance().localization_sc_ringkey_max_dist_);
     LOG(INFO) << "Loaded Scan Context DB with " << scan_context_.Size()
               << " keyframes from " << db_path << " (map_tag=" << map_tag
               << ").";

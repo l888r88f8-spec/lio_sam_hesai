@@ -63,6 +63,15 @@ class ScanContext {
   std::vector<ScanContextCandidate> Query(
       const ScanContextDescriptor& query, int top_n) const;
 
+  // Override the ring-key coarse-filter gate without touching descriptor
+  // geometry (which must stay consistent with the loaded database). Negative
+  // values are ignored. Retrieval-only tuning, safe to change after LoadDB.
+  void SetRingKeyMaxDist(double ringkey_max_dist) {
+    if (ringkey_max_dist >= 0.0) {
+      config_.ringkey_max_dist = ringkey_max_dist;
+    }
+  }
+
   // The returned shift aligns database column (column + shift) to query
   // column. The corresponding query yaw correction is positive shift times
   // 2*pi/num_sector.

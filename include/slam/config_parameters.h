@@ -133,6 +133,7 @@ public:
     int localization_sc_consistency_frames_{3};
     double localization_sc_consistency_trans_thres_{0.5};
     double localization_sc_consistency_yaw_thres_{0.1};
+    double localization_sc_ringkey_max_dist_{5.0};
 };
 
 #endif //FUNNY_LIDAR_SLAM_CONFIG_PARAMETERS_H
