@@ -8,12 +8,14 @@
 
 #include <algorithm>
 #include <cmath>
+#include <exception>
 #include <fstream>
 #include <iomanip>
 #include <limits>
 
 #include <g2o/core/sparse_optimizer.h>
 
+#include "common/bounded_async.h"
 #include "optimization/g2o/accel_bias_rw_edge.h"
 #include "optimization/g2o/gyro_bias_rw_edge.h"
 #include "optimization/g2o/g2o_optimizer_header.h"
@@ -110,10 +112,10 @@ void Localization::SetLidarPoseInformation() {
       Mat3d::Identity() * 1.0 / std::pow(lidar_posi_std, 2.0);
 }
 
-void Localization::InitMatcher() {
+std::shared_ptr<RegistrationInterface> Localization::CreateMatcher() const {
   if (ConfigParameters::Instance().registration_and_searcher_mode_ ==
       kIcpOptimized) {
-    matcher_ = std::make_shared<IcpOptimized<double>>(
+    return std::make_shared<IcpOptimized<double>>(
         ConfigParameters::Instance().registration_opti_iter_num_,
         ConfigParameters::Instance().registration_local_map_size_,
         static_cast<float>(ConfigParameters::Instance()
@@ -133,7 +135,7 @@ void Localization::InitMatcher() {
         true);
   } else if (ConfigParameters::Instance().registration_and_searcher_mode_ ==
              kIncrementalNDT) {
-    matcher_ = std::make_shared<IncrementalNDT>(
+    return std::make_shared<IncrementalNDT>(
         ConfigParameters::Instance().registration_ndt_voxel_size_,
         ConfigParameters::Instance().registration_ndt_outlier_threshold_,
         ConfigParameters::Instance().registration_source_cloud_filter_size_,
@@ -148,14 +150,14 @@ void Localization::InitMatcher() {
         ConfigParameters::Instance().registration_opti_iter_num_, true);
   } else if (ConfigParameters::Instance().registration_and_searcher_mode_ ==
              kPointToPlane_IVOX) {
-    matcher_ = std::make_shared<LoamPointToPlaneIVOX<double>>(
+    return std::make_shared<LoamPointToPlaneIVOX<double>>(
         ConfigParameters::Instance().registration_point_to_planar_thres_,
         ConfigParameters::Instance().registration_position_converge_thres_,
         ConfigParameters::Instance().registration_rotation_converge_thres_,
         ConfigParameters::Instance().registration_opti_iter_num_, true);
   } else if (ConfigParameters::Instance().registration_and_searcher_mode_ ==
              kPointToPlane_KdTree) {
-    matcher_ = std::make_shared<LoamPointToPlaneKdtree<double>>(
+    return std::make_shared<LoamPointToPlaneKdtree<double>>(
         ConfigParameters::Instance().registration_point_to_planar_thres_,
         ConfigParameters::Instance().registration_position_converge_thres_,
         ConfigParameters::Instance().registration_rotation_converge_thres_,
@@ -169,7 +171,10 @@ void Localization::InitMatcher() {
                   "You can choose one of the following: "
                   "IcpOptimized, kIncrementalNDT";
   }
+  return nullptr;
 }
+
+void Localization::InitMatcher() { matcher_ = CreateMatcher(); }
 
 void Localization::InitPreintegration() {
   PreIntegration::ConfigPara config_para;
@@ -660,8 +665,14 @@ std::optional<Mat4d> Localization::TryAutoRelocalize() {
     }
   }
 
-  std::optional<Mat4d> best_pose;
-  float best_fitness = std::numeric_limits<float>::infinity();
+  struct CandidateTask {
+    Mat4d init_match_pose = Mat4d::Identity();
+    PCLPointCloudXYZI::Ptr local_map;
+  };
+
+  Timer preparation_timer;
+  std::vector<CandidateTask> tasks;
+  tasks.reserve(candidates.size());
   for (const auto& candidate : candidates) {
     const double lidar_yaw =
         std::atan2(candidate.pose(1, 0), candidate.pose(0, 0)) +
@@ -698,24 +709,64 @@ std::optional<Mat4d> Localization::TryAutoRelocalize() {
       }
     }
 
-    const auto local_map = LoadCandidateLocalMap(candidate_lidar_pose);
+    auto local_map = LoadCandidateLocalMap(candidate_lidar_pose);
     if (!local_map || local_map->empty()) {
       continue;
     }
 
-    // IncrementalNDT and some LOAM matchers retain their local map. Isolate
-    // every candidate so one failed place cannot bias the next candidate.
-    InitMatcher();
-    matcher_->AddCloudToLocalMap({*local_map});
-    Mat4d match_pose = candidate_lidar_pose * imu_to_lidar;
-    if (!matcher_->Match(curr_cloud_cluster_ptr_, match_pose)) {
-      continue;
-    }
-    const float fitness = matcher_->GetFitnessScore(2.0F);
-    if (std::isfinite(fitness) && fitness < fitness_threshold &&
-        fitness < best_fitness) {
-      best_fitness = fitness;
-      best_pose = match_pose;
+    CandidateTask task;
+    task.init_match_pose = candidate_lidar_pose * imu_to_lidar;
+    task.local_map = std::move(local_map);
+    tasks.push_back(std::move(task));
+  }
+  const double preparation_ms = preparation_timer.End();
+
+  struct MatchResult {
+    bool ok = false;
+    Mat4d pose = Mat4d::Identity();
+    float fitness = std::numeric_limits<float>::infinity();
+  };
+
+  const std::size_t worker_count =
+      AutomaticAsyncWorkerCount(tasks.size());
+  const PointcloudClusterPtr source_cloud = curr_cloud_cluster_ptr_;
+  Timer registration_timer;
+  const auto results = RunBoundedAsync(
+      tasks.size(), worker_count, [&](std::size_t index) {
+        MatchResult result;
+        try {
+          auto matcher = CreateMatcher();
+          matcher->AddCloudToLocalMap({*tasks[index].local_map});
+          Mat4d match_pose = tasks[index].init_match_pose;
+          if (!matcher->Match(source_cloud, match_pose)) {
+            return result;
+          }
+          result.fitness = matcher->GetFitnessScore(2.0F);
+          result.pose = match_pose;
+          result.ok = true;
+        } catch (const std::exception& error) {
+          LOG(WARNING) << "Auto relocalization candidate " << index
+                       << " threw during fine registration: " << error.what();
+        } catch (...) {
+          LOG(WARNING) << "Auto relocalization candidate " << index
+                       << " threw an unknown exception during fine registration.";
+        }
+        return result;
+      });
+  const double registration_ms = registration_timer.End();
+  LOG(INFO) << "Auto relocalization prepared " << tasks.size()
+            << " candidates in " << preparation_ms << " ms and evaluated them "
+            << "with " << worker_count << " workers in " << registration_ms
+            << " ms.";
+
+  std::optional<Mat4d> best_pose;
+  float best_fitness = std::numeric_limits<float>::infinity();
+  for (const auto& result : results) {
+    if (result.ok && std::isfinite(result.fitness) &&
+        result.fitness < fitness_threshold &&
+        result.fitness < best_fitness) {
+      best_fitness = result.fitness;
+      best_pose = result.pose;
     }
   }
 

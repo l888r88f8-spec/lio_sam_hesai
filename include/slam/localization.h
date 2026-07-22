@@ -47,6 +47,10 @@ private:
 
     void InitMatcher();
 
+    // Builds a fresh matcher without modifying matcher_. Parallel candidate
+    // evaluation requires one independent matcher per task.
+    [[nodiscard]] std::shared_ptr<RegistrationInterface> CreateMatcher() const;
+
     void SetLidarPoseInformation();
 
     [[nodiscard]] Mat4d MapLidarPoseToMapImuPose(
