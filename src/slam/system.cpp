@@ -125,6 +125,9 @@ void System::InitConfigParameters() {
               config.localization_sc_ringkey_max_dist_, 5.0);
   util::param(this, "localization.sc_accept_fitness",
               config.localization_sc_accept_fitness_, 0.3);
+  util::param(this, "localization.ground_map_path",
+              config.localization_ground_map_path_,
+              config.localization_ground_map_path_);
 
   // lidar config parameters
   util::param(this, "lidar.lidar_sensor_type", config.lidar_sensor_type_,

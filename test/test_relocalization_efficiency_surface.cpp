@@ -52,3 +52,13 @@ TEST(RelocalizationEfficiencySurface, ExposesHighConfidenceEarlyAccept) {
   ExpectToken("src/slam/localization.cpp",
               "ShouldEarlyAcceptRelocalization");
 }
+
+TEST(RelocalizationEfficiencySurface, ExposesDedicatedGroundMap) {
+  ExpectToken("include/slam/config_parameters.h",
+              "localization_ground_map_path_");
+  ExpectToken("src/slam/system.cpp", "localization.ground_map_path");
+  ExpectToken("config/relocalization.yaml", "ground_map_path:");
+  ExpectToken("include/slam/localization.h", "ground_map_cloud_ptr_");
+  ExpectToken("include/slam/localization.h", "ground_map_xy_cloud_ptr_");
+  ExpectToken("include/slam/localization.h", "ground_map_xy_kdtree_");
+}

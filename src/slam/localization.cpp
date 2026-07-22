@@ -28,6 +28,7 @@
 #include "registration/loam_point_to_plane_ivox.h"
 #include "registration/loam_point_to_plane_kdtree.h"
 #include "relocalization/acceptance_policy.h"
+#include "relocalization/ground_map_source.h"
 #include "slam/split_map.h"
 
 namespace {
@@ -391,6 +392,34 @@ void Localization::Run() {
     } else {
       global_map_xy_cloud_ptr_.reset();
       global_map_xy_kdtree_.reset();
+    }
+
+    std::string ground_map_path =
+        ConfigParameters::Instance().localization_ground_map_path_;
+    if (ground_map_path.empty()) {
+      const auto slash = global_map_path.find_last_of('/');
+      ground_map_path = slash == std::string::npos
+                            ? "GroundMap.pcd"
+                            : global_map_path.substr(0, slash + 1U) +
+                                  "GroundMap.pcd";
+    }
+    PCLPointCloudXYZI::Ptr ground_map = LoadGlobalMap(ground_map_path);
+    if (ground_map && !ground_map->empty()) {
+      ground_map_cloud_ptr_ = ground_map;
+      ground_map_xy_cloud_ptr_.reset(new PCLPointCloudXYZI(*ground_map));
+      for (auto& point : ground_map_xy_cloud_ptr_->points) {
+        point.z = 0.0F;
+      }
+      ground_map_xy_kdtree_.reset(new pcl::KdTreeFLANN<PCLPointXYZI>());
+      ground_map_xy_kdtree_->setInputCloud(ground_map_xy_cloud_ptr_);
+      LOG(INFO) << "Loaded dedicated ground map with " << ground_map->size()
+                << " points from " << ground_map_path << ".";
+    } else {
+      ground_map_cloud_ptr_.reset();
+      ground_map_xy_cloud_ptr_.reset();
+      ground_map_xy_kdtree_.reset();
+      LOG(WARNING) << "Ground map unavailable at " << ground_map_path
+                   << "; EstimateMapGroundZ falls back to the global map.";
     }
   }
 
@@ -1213,8 +1242,10 @@ std::optional<double> Localization::EstimateMapGroundZ(
   std::vector<double> nearby_z;
   {
     std::lock_guard<std::mutex> lg(mutex_global_map_cloud_);
-    if (!global_map_cloud_ptr_ || global_map_cloud_ptr_->empty() ||
-        !global_map_xy_kdtree_) {
+    const auto source = SelectGroundMapSource(
+        global_map_cloud_ptr_, global_map_xy_kdtree_, ground_map_cloud_ptr_,
+        ground_map_xy_kdtree_);
+    if (!source.has_value()) {
       return std::nullopt;
     }
 
@@ -1224,15 +1255,15 @@ std::optional<double> Localization::EstimateMapGroundZ(
     query_point.z = 0.0F;
     std::vector<int> point_indices;
     std::vector<float> point_squared_distances;
-    global_map_xy_kdtree_->radiusSearch(
+    source->xy_kdtree->radiusSearch(
         query_point, radius, point_indices, point_squared_distances);
     nearby_z.reserve(point_indices.size());
     for (const int point_index : point_indices) {
       if (point_index < 0 ||
-          point_index >= static_cast<int>(global_map_cloud_ptr_->size())) {
+          point_index >= static_cast<int>(source->height_cloud->size())) {
         continue;
       }
-      const auto& point = global_map_cloud_ptr_->points[point_index];
+      const auto& point = source->height_cloud->points[point_index];
       if (!std::isfinite(point.z)) {
         continue;
       }

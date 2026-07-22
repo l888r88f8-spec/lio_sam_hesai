@@ -128,6 +128,9 @@ private:
     PCLPointCloudXYZI::Ptr global_map_cloud_ptr_{nullptr};
     PCLPointCloudXYZI::Ptr global_map_xy_cloud_ptr_{nullptr};
     pcl::KdTreeFLANN<PCLPointXYZI>::Ptr global_map_xy_kdtree_{nullptr};
+    PCLPointCloudXYZI::Ptr ground_map_cloud_ptr_{nullptr};
+    PCLPointCloudXYZI::Ptr ground_map_xy_cloud_ptr_{nullptr};
+    pcl::KdTreeFLANN<PCLPointXYZI>::Ptr ground_map_xy_kdtree_{nullptr};
 
     bool use_tile_map_{false}; // Not recommended
     bool need_update_local_map_{};
