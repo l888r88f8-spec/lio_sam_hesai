@@ -29,6 +29,19 @@ void ExpectToken(const std::string& file, const std::string& token) {
       << token << " is missing from " << file;
 }
 
+void ExpectQuotedParameter(const std::string& file,
+                           const std::string& parameter_name) {
+  EXPECT_NE(ReadProjectFile(file).find("\"" + parameter_name + "\""),
+            std::string::npos)
+      << parameter_name << " is missing from " << file;
+}
+
+void ExpectMappingYamlParameter(const std::string& leaf) {
+  const std::string text = ReadProjectFile("config/mapping.yaml");
+  EXPECT_NE(text.find("\n      " + leaf + ":"), std::string::npos)
+      << "map_save." << leaf << " is missing from config/mapping.yaml";
+}
+
 }  // namespace
 
 TEST(AutoRelocalizationParameterSurface, ExposesAllRuntimeParameters) {
@@ -51,8 +64,26 @@ TEST(AutoRelocalizationParameterSurface, ExposesAllRuntimeParameters) {
 }
 
 TEST(AutoRelocalizationParameterSurface, ExposesMappingDatabaseExport) {
-  ExpectToken("include/lio_sam/utility.hpp", "generateScDb");
-  ExpectToken("config/mapping.yaml", "generateScDb");
+  const std::array<std::string, 3> canonical_parameters = {
+      "map_save.generate_scan_context_db",
+      "map_save.align_ground_to_zero",
+      "map_save.ground_z_offset",
+  };
+  const std::array<std::string, 3> yaml_leaves = {
+      "generate_scan_context_db",
+      "align_ground_to_zero",
+      "ground_z_offset",
+  };
+
+  for (const auto& parameter : canonical_parameters) {
+    ExpectQuotedParameter("include/lio_sam/utility.hpp", parameter);
+  }
+  EXPECT_NE(ReadProjectFile("config/mapping.yaml").find("\n    map_save:"),
+            std::string::npos)
+      << "map_save is missing from config/mapping.yaml";
+  for (const auto& leaf : yaml_leaves) {
+    ExpectMappingYamlParameter(leaf);
+  }
 
   const std::array<std::string, 9> tokens = {
       "generateScDb",

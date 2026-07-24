@@ -229,6 +229,8 @@ if(BUILD_TESTING)
   ament_add_gtest(test_ground_patch_parameter_surface test/test_ground_patch_parameter_surface.cpp)
   ament_add_gtest(test_auto_relocalization_parameter_surface
     test/test_auto_relocalization_parameter_surface.cpp)
+  ament_add_gtest(test_unified_parameter_schema
+    test/test_unified_parameter_schema.cpp)
   ament_add_gtest(test_relocalization_efficiency_surface
     test/test_relocalization_efficiency_surface.cpp)
   ament_add_gtest(test_bounded_async test/test_bounded_async.cpp)
