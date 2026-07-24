@@ -40,6 +40,8 @@
 #include <tf2_eigen/tf2_eigen.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
+#include "common/lidar_imu_calibration.h"
+
 #include <vector>
 #include <cmath>
 #include <algorithm>
@@ -197,108 +199,95 @@ public:
 
     ParamServer(std::string node_name, const rclcpp::NodeOptions & options) : Node(node_name, options)
     {
-        declare_parameter("pointCloudTopic", "points");
-        get_parameter("pointCloudTopic", pointCloudTopic);
-        declare_parameter("imuTopic", "imu/data");
-        get_parameter("imuTopic", imuTopic);
-        declare_parameter("odomTopic", "lio_sam/odometry/imu");
-        get_parameter("odomTopic", odomTopic);
-        declare_parameter("gpsTopic", "lio_sam/odometry/gps");
-        get_parameter("gpsTopic", gpsTopic);
-
-        declare_parameter("lidarFrame", "laser_data_frame");
-        get_parameter("lidarFrame", lidarFrame);
-        declare_parameter("baselinkFrame", "base_link");
-        get_parameter("baselinkFrame", baselinkFrame);
-        declare_parameter("odometryFrame", "odom");
-        get_parameter("odometryFrame", odometryFrame);
-        declare_parameter("mapFrame", "map");
-        get_parameter("mapFrame", mapFrame);
-
-        declare_parameter("sensor_topic.lidar_topic", pointCloudTopic);
+        declare_parameter("sensor_topic.lidar_topic", "points");
         get_parameter("sensor_topic.lidar_topic", pointCloudTopic);
-        declare_parameter("sensor_topic.imu_topic", imuTopic);
+        declare_parameter("sensor_topic.imu_topic", "imu/data");
         get_parameter("sensor_topic.imu_topic", imuTopic);
-        declare_parameter("frames.lidar", lidarFrame);
+        declare_parameter("sensor_topic.odom_topic", "lio_sam/odometry/imu");
+        get_parameter("sensor_topic.odom_topic", odomTopic);
+        declare_parameter("sensor_topic.gps_topic", "lio_sam/odometry/gps");
+        get_parameter("sensor_topic.gps_topic", gpsTopic);
+
+        declare_parameter("frames.lidar", "laser_data_frame");
         get_parameter("frames.lidar", lidarFrame);
-        declare_parameter("frames.base_link", baselinkFrame);
+        declare_parameter("frames.base_link", "base_link");
         get_parameter("frames.base_link", baselinkFrame);
-        declare_parameter("frames.map", mapFrame);
+        declare_parameter("frames.odometry", "odom");
+        get_parameter("frames.odometry", odometryFrame);
+        declare_parameter("frames.map", "map");
         get_parameter("frames.map", mapFrame);
 
-        declare_parameter("useImuHeadingInitialization", false);
-        get_parameter("useImuHeadingInitialization", useImuHeadingInitialization);
-        declare_parameter("useGpsElevation", false);
-        get_parameter("useGpsElevation", useGpsElevation);
-        declare_parameter("gpsCovThreshold", 2.0);
-        get_parameter("gpsCovThreshold", gpsCovThreshold);
-        declare_parameter("poseCovThreshold", 25.0);
-        get_parameter("poseCovThreshold", poseCovThreshold);
+        declare_parameter("gps.use_imu_heading_initialization", false);
+        get_parameter("gps.use_imu_heading_initialization", useImuHeadingInitialization);
+        declare_parameter("gps.use_elevation", false);
+        get_parameter("gps.use_elevation", useGpsElevation);
+        declare_parameter("gps.covariance_threshold", 2.0);
+        get_parameter("gps.covariance_threshold", gpsCovThreshold);
+        declare_parameter("gps.pose_covariance_threshold", 25.0);
+        get_parameter("gps.pose_covariance_threshold", poseCovThreshold);
 
-        declare_parameter("savePCD", false);
-        get_parameter("savePCD", savePCD);
-        declare_parameter("generateScDb", true);
-        get_parameter("generateScDb", generateScDb);
-        declare_parameter("savePCDDirectory", "/Downloads/LOAM/");
-        get_parameter("savePCDDirectory", savePCDDirectory);
-        declare_parameter("mappingMode", true);
-        get_parameter("mappingMode", mappingMode);
-        declare_parameter("savePCDResolution", 0.0);
-        get_parameter("savePCDResolution", savePCDResolution);
-        declare_parameter("saveGroundPCDResolution", 0.0);
-        get_parameter("saveGroundPCDResolution", saveGroundPCDResolution);
-        declare_parameter("saveGroundPCD", false);
-        get_parameter("saveGroundPCD", saveGroundPCD);
-        declare_parameter("groundPCDDirectory", "/Downloads/LOAM_ground/");
-        get_parameter("groundPCDDirectory", groundPCDDirectory);
-        declare_parameter("groundPCDDirectoryGlobal", "/Downloads/LOAM_ground_global/");
-        get_parameter("groundPCDDirectoryGlobal", groundPCDDirectoryGlobal);
-        declare_parameter("groundFinalUseOdom", true);
-        get_parameter("groundFinalUseOdom", groundFinalUseOdom);
-        declare_parameter("groundLeafSize", 0.1);
-        get_parameter("groundLeafSize", groundLeafSize);
-        declare_parameter("groundGlobalLeafSize", 0.2);
-        get_parameter("groundGlobalLeafSize", groundGlobalLeafSize);
-        declare_parameter("groundPlaneDistance", 0.12);
-        get_parameter("groundPlaneDistance", groundPlaneDistance);
-        declare_parameter("groundPlaneMaxAngle", 35.0);
-        get_parameter("groundPlaneMaxAngle", groundPlaneMaxAngle);
-        declare_parameter("groundPlaneMinPoints", 80);
-        get_parameter("groundPlaneMinPoints", groundPlaneMinPoints);
-        declare_parameter("groundFlattenZ", false);
-        get_parameter("groundFlattenZ", groundFlattenZ);
-        declare_parameter("groundFlattenValue", 0.0);
-        get_parameter("groundFlattenValue", groundFlattenValue);
-        declare_parameter("alignSavedMapGroundToZero", false);
-        get_parameter("alignSavedMapGroundToZero", alignSavedMapGroundToZero);
-        declare_parameter("savedMapGroundZOffset", 0.0);
-        get_parameter("savedMapGroundZOffset", savedMapGroundZOffset);
-        declare_parameter("groundGridPatchEnable", false);
-        get_parameter("groundGridPatchEnable", groundGridPatchEnable);
-        declare_parameter("groundGridPatchResolution", 0.10);
-        get_parameter("groundGridPatchResolution", groundGridPatchResolution);
-        declare_parameter("groundGridPatchSearchRadius", 0.40);
-        get_parameter("groundGridPatchSearchRadius", groundGridPatchSearchRadius);
-        declare_parameter("groundGridPatchMaxSlopeDeg", 25.0);
-        get_parameter("groundGridPatchMaxSlopeDeg", groundGridPatchMaxSlopeDeg);
-        declare_parameter("groundGridPatchMaxHeightRange", 0.12);
-        get_parameter("groundGridPatchMaxHeightRange", groundGridPatchMaxHeightRange);
-        declare_parameter("groundGridPatchMaxRoughness", 0.05);
-        get_parameter("groundGridPatchMaxRoughness", groundGridPatchMaxRoughness);
-        declare_parameter("groundGridPatchMaxPredictionMargin", 0.08);
-        get_parameter("groundGridPatchMaxPredictionMargin", groundGridPatchMaxPredictionMargin);
-        declare_parameter("groundGridPatchMinInlierRatio", 0.70);
-        get_parameter("groundGridPatchMinInlierRatio", groundGridPatchMinInlierRatio);
-        declare_parameter("groundGridPatchMinNeighborCells", 6);
-        get_parameter("groundGridPatchMinNeighborCells", groundGridPatchMinNeighborCells);
-        declare_parameter("groundGridPatchMinSupportQuadrants", 3);
-        get_parameter("groundGridPatchMinSupportQuadrants", groundGridPatchMinSupportQuadrants);
+        declare_parameter("map_save.enabled", false);
+        get_parameter("map_save.enabled", savePCD);
+        declare_parameter("map_save.generate_scan_context_db", true);
+        get_parameter("map_save.generate_scan_context_db", generateScDb);
+        declare_parameter("map_save.directory", "/Downloads/LOAM/");
+        get_parameter("map_save.directory", savePCDDirectory);
+        declare_parameter("system.mapping_mode", true);
+        get_parameter("system.mapping_mode", mappingMode);
+        declare_parameter("map_save.resolution", 0.0);
+        get_parameter("map_save.resolution", savePCDResolution);
+        declare_parameter("map_save.ground_resolution", 0.0);
+        get_parameter("map_save.ground_resolution", saveGroundPCDResolution);
+        declare_parameter("map_save.save_ground_map", false);
+        get_parameter("map_save.save_ground_map", saveGroundPCD);
+        declare_parameter("map_save.ground_directory", "/Downloads/LOAM_ground/");
+        get_parameter("map_save.ground_directory", groundPCDDirectory);
+        declare_parameter("map_save.ground_global_directory", "/Downloads/LOAM_ground_global/");
+        get_parameter("map_save.ground_global_directory", groundPCDDirectoryGlobal);
+        declare_parameter("map_save.ground_final_use_odometry", true);
+        get_parameter("map_save.ground_final_use_odometry", groundFinalUseOdom);
+        declare_parameter("ground_segmentation.leaf_size", 0.1);
+        get_parameter("ground_segmentation.leaf_size", groundLeafSize);
+        declare_parameter("map_save.ground_global_leaf_size", 0.2);
+        get_parameter("map_save.ground_global_leaf_size", groundGlobalLeafSize);
+        declare_parameter("ground_segmentation.plane_distance", 0.12);
+        get_parameter("ground_segmentation.plane_distance", groundPlaneDistance);
+        declare_parameter("ground_segmentation.plane_max_angle_deg", 35.0);
+        get_parameter("ground_segmentation.plane_max_angle_deg", groundPlaneMaxAngle);
+        declare_parameter("ground_segmentation.plane_min_points", 80);
+        get_parameter("ground_segmentation.plane_min_points", groundPlaneMinPoints);
+        declare_parameter("ground_segmentation.flatten_z", false);
+        get_parameter("ground_segmentation.flatten_z", groundFlattenZ);
+        declare_parameter("ground_segmentation.flatten_value", 0.0);
+        get_parameter("ground_segmentation.flatten_value", groundFlattenValue);
+        declare_parameter("map_save.align_ground_to_zero", false);
+        get_parameter("map_save.align_ground_to_zero", alignSavedMapGroundToZero);
+        declare_parameter("map_save.ground_z_offset", 0.0);
+        get_parameter("map_save.ground_z_offset", savedMapGroundZOffset);
+        declare_parameter("ground_segmentation.grid_patch.enable", false);
+        get_parameter("ground_segmentation.grid_patch.enable", groundGridPatchEnable);
+        declare_parameter("ground_segmentation.grid_patch.resolution", 0.10);
+        get_parameter("ground_segmentation.grid_patch.resolution", groundGridPatchResolution);
+        declare_parameter("ground_segmentation.grid_patch.search_radius", 0.40);
+        get_parameter("ground_segmentation.grid_patch.search_radius", groundGridPatchSearchRadius);
+        declare_parameter("ground_segmentation.grid_patch.max_slope_deg", 25.0);
+        get_parameter("ground_segmentation.grid_patch.max_slope_deg", groundGridPatchMaxSlopeDeg);
+        declare_parameter("ground_segmentation.grid_patch.max_height_range", 0.12);
+        get_parameter("ground_segmentation.grid_patch.max_height_range", groundGridPatchMaxHeightRange);
+        declare_parameter("ground_segmentation.grid_patch.max_roughness", 0.05);
+        get_parameter("ground_segmentation.grid_patch.max_roughness", groundGridPatchMaxRoughness);
+        declare_parameter("ground_segmentation.grid_patch.max_prediction_margin", 0.08);
+        get_parameter("ground_segmentation.grid_patch.max_prediction_margin", groundGridPatchMaxPredictionMargin);
+        declare_parameter("ground_segmentation.grid_patch.min_inlier_ratio", 0.70);
+        get_parameter("ground_segmentation.grid_patch.min_inlier_ratio", groundGridPatchMinInlierRatio);
+        declare_parameter("ground_segmentation.grid_patch.min_neighbor_cells", 6);
+        get_parameter("ground_segmentation.grid_patch.min_neighbor_cells", groundGridPatchMinNeighborCells);
+        declare_parameter("ground_segmentation.grid_patch.min_support_quadrants", 3);
+        get_parameter("ground_segmentation.grid_patch.min_support_quadrants", groundGridPatchMinSupportQuadrants);
 
         std::string sensorStr;
-        declare_parameter("sensor", "ouster");
-        get_parameter("sensor", sensorStr);
-        declare_parameter("lidar.lidar_sensor_type", sensorStr);
-        get_parameter("lidar.lidar_sensor_type", sensorStr);
+        declare_parameter("lidar.sensor_type", "ouster");
+        get_parameter("lidar.sensor_type", sensorStr);
         if (sensorStr == "velodyne")
         {
             sensor = SensorType::VELODYNE;
@@ -326,134 +315,138 @@ public:
                 "Invalid sensor type (must be either 'velodyne' or 'ouster' or 'livox'): " << sensorStr);
             rclcpp::shutdown();
         }
-        declare_parameter("imuType", 0);
-        get_parameter("imuType", imuType);
-        declare_parameter("N_SCAN", 64);
-        get_parameter("N_SCAN", N_SCAN);
-        declare_parameter("Horizon_SCAN", 512);
-        get_parameter("Horizon_SCAN", Horizon_SCAN);
-        declare_parameter("downsampleRate", 1);
-        get_parameter("downsampleRate", downsampleRate);
-        declare_parameter("lidarMinRange", 5.5);
-        get_parameter("lidarMinRange", lidarMinRange);
-        declare_parameter("lidarMaxRange", 1000.0);
-        get_parameter("lidarMaxRange", lidarMaxRange);
-        declare_parameter("lidar.lidar_scan", N_SCAN);
-        get_parameter("lidar.lidar_scan", N_SCAN);
-        declare_parameter("lidar.lidar_horizon_scan", Horizon_SCAN);
-        get_parameter("lidar.lidar_horizon_scan", Horizon_SCAN);
-        declare_parameter("lidar.lidar_use_min_distance", lidarMinRange);
-        get_parameter("lidar.lidar_use_min_distance", lidarMinRange);
-        declare_parameter("lidar.lidar_use_max_distance", lidarMaxRange);
-        get_parameter("lidar.lidar_use_max_distance", lidarMaxRange);
-        declare_parameter("groundScanStartIndex", 0);
-        get_parameter("groundScanStartIndex", groundScanStartIndex);
-        declare_parameter("groundScanEndIndex", -1);
-        get_parameter("groundScanEndIndex", groundScanEndIndex);
-        declare_parameter("groundAngleThreshold", 10.0);
-        get_parameter("groundAngleThreshold", groundAngleThreshold);
+        declare_parameter("imu.type", 0);
+        get_parameter("imu.type", imuType);
+        declare_parameter("lidar.scan_lines", 64);
+        get_parameter("lidar.scan_lines", N_SCAN);
+        declare_parameter("lidar.horizon_scan", 512);
+        get_parameter("lidar.horizon_scan", Horizon_SCAN);
+        declare_parameter("lidar.downsample_rate", 1);
+        get_parameter("lidar.downsample_rate", downsampleRate);
+        declare_parameter("lidar.min_range", 5.5);
+        get_parameter("lidar.min_range", lidarMinRange);
+        declare_parameter("lidar.max_range", 1000.0);
+        get_parameter("lidar.max_range", lidarMaxRange);
+        declare_parameter("ground_segmentation.scan_start_index", 0);
+        get_parameter("ground_segmentation.scan_start_index", groundScanStartIndex);
+        declare_parameter("ground_segmentation.scan_end_index", -1);
+        get_parameter("ground_segmentation.scan_end_index", groundScanEndIndex);
+        declare_parameter("ground_segmentation.angle_threshold_deg", 10.0);
+        get_parameter("ground_segmentation.angle_threshold_deg", groundAngleThreshold);
 
-        declare_parameter("imuAccNoise", 9e-4);
-        get_parameter("imuAccNoise", imuAccNoise);
-        declare_parameter("imuGyrNoise", 1.6e-4);
-        get_parameter("imuGyrNoise", imuGyrNoise);
-        declare_parameter("imuAccBiasN", 5e-4);
-        get_parameter("imuAccBiasN", imuAccBiasN);
-        declare_parameter("imuGyrBiasN", 7e-5);
-        get_parameter("imuGyrBiasN", imuGyrBiasN);
-        declare_parameter("imuGravity", 9.80511);
-        get_parameter("imuGravity", imuGravity);
-        declare_parameter("imuRPYWeight", 0.01);
-        get_parameter("imuRPYWeight", imuRPYWeight);
+        declare_parameter("imu.acc_noise_std", 9e-4);
+        get_parameter("imu.acc_noise_std", imuAccNoise);
+        declare_parameter("imu.gyro_noise_std", 1.6e-4);
+        get_parameter("imu.gyro_noise_std", imuGyrNoise);
+        declare_parameter("imu.acc_bias_rw_noise_std", 5e-4);
+        get_parameter("imu.acc_bias_rw_noise_std", imuAccBiasN);
+        declare_parameter("imu.gyro_bias_rw_noise_std", 7e-5);
+        get_parameter("imu.gyro_bias_rw_noise_std", imuGyrBiasN);
+        declare_parameter("imu.gravity", 9.80511);
+        get_parameter("imu.gravity", imuGravity);
+        declare_parameter("imu.rpy_weight", 0.01);
+        get_parameter("imu.rpy_weight", imuRPYWeight);
 
-        double ida[] = { 1.0,  0.0,  0.0,
-                         0.0,  1.0,  0.0,
-                         0.0,  0.0,  1.0};
-        std::vector < double > id(ida, std::end(ida));
-        declare_parameter("extrinsicRot", id);
-        get_parameter("extrinsicRot", extRotV);
-        declare_parameter("extrinsicRPY", id);
-        get_parameter("extrinsicRPY", extRPYV);
-        double zea[] = {0.0, 0.0, 0.0};
-        std::vector < double > ze(zea, std::end(zea));
-        declare_parameter("extrinsicTrans", ze);
-        get_parameter("extrinsicTrans", extTransV);
+        const std::vector<double> identity = {
+            1.0, 0.0, 0.0,
+            0.0, 1.0, 0.0,
+            0.0, 0.0, 1.0};
+        declare_parameter("calibration.rotation", identity);
+        get_parameter("calibration.rotation", extRotV);
+        declare_parameter("calibration.rpy", identity);
+        get_parameter("calibration.rpy", extRPYV);
+        const std::vector<double> translation = {0.0, 0.0, 0.10};
+        declare_parameter("calibration.translation", translation);
+        get_parameter("calibration.translation", extTransV);
 
-        extRot = Eigen::Map<const Eigen::Matrix<double, -1, -1, Eigen::RowMajor>>(extRotV.data(), 3, 3);
-        extRPY = Eigen::Map<const Eigen::Matrix<double, -1, -1, Eigen::RowMajor>>(extRPYV.data(), 3, 3);
-        extTrans = Eigen::Map<const Eigen::Matrix<double, -1, -1, Eigen::RowMajor>>(extTransV.data(), 3, 1);
-        extQRPY = Eigen::Quaterniond(extRPY);
+        try
+        {
+            const LidarImuCalibration calibration =
+                ParseLidarImuCalibration(extTransV, extRotV, extRPYV);
+            extTrans = calibration.lidar_to_imu.block<3, 1>(0, 3);
+            extRot = calibration.mapping_imu_to_lidar_rotation;
+            extRPY = calibration.mapping_rpy_rotation;
+            extQRPY = Eigen::Quaterniond(extRPY);
+        }
+        catch (const std::exception & error)
+        {
+            RCLCPP_FATAL(
+                get_logger(),
+                "Invalid lidar-IMU calibration parameters: %s",
+                error.what());
+            throw;
+        }
 
-        declare_parameter("edgeThreshold", 1.0);
-        get_parameter("edgeThreshold", edgeThreshold);
-        declare_parameter("surfThreshold", 0.1);
-        get_parameter("surfThreshold", surfThreshold);
-        declare_parameter("edgeFeatureMinValidNum", 10);
-        get_parameter("edgeFeatureMinValidNum", edgeFeatureMinValidNum);
-        declare_parameter("surfFeatureMinValidNum", 100);
-        get_parameter("surfFeatureMinValidNum", surfFeatureMinValidNum);
+        declare_parameter("feature_extraction.edge_threshold", 1.0);
+        get_parameter("feature_extraction.edge_threshold", edgeThreshold);
+        declare_parameter("feature_extraction.surface_threshold", 0.1);
+        get_parameter("feature_extraction.surface_threshold", surfThreshold);
+        declare_parameter("feature_extraction.min_edge_features", 10);
+        get_parameter("feature_extraction.min_edge_features", edgeFeatureMinValidNum);
+        declare_parameter("feature_extraction.min_surface_features", 100);
+        get_parameter("feature_extraction.min_surface_features", surfFeatureMinValidNum);
 
-        declare_parameter("odometrySurfLeafSize", 0.4);
-        get_parameter("odometrySurfLeafSize", odometrySurfLeafSize);
-        declare_parameter("mappingCornerLeafSize", 0.2);
-        get_parameter("mappingCornerLeafSize", mappingCornerLeafSize);
-        declare_parameter("mappingSurfLeafSize", 0.4);
-        get_parameter("mappingSurfLeafSize", mappingSurfLeafSize);
-        declare_parameter("dynamicKeyframeFilterEnable", true);
-        get_parameter("dynamicKeyframeFilterEnable", dynamicKeyframeFilterEnable);
-        declare_parameter("dynamicSurfKnnMaxDist", 1.0);
-        get_parameter("dynamicSurfKnnMaxDist", dynamicSurfKnnMaxDist);
-        declare_parameter("dynamicSurfPlaneMaxDist", 0.3);
-        get_parameter("dynamicSurfPlaneMaxDist", dynamicSurfPlaneMaxDist);
+        declare_parameter("voxel_filter.odometry_surface_leaf_size", 0.4);
+        get_parameter("voxel_filter.odometry_surface_leaf_size", odometrySurfLeafSize);
+        declare_parameter("voxel_filter.mapping_corner_leaf_size", 0.2);
+        get_parameter("voxel_filter.mapping_corner_leaf_size", mappingCornerLeafSize);
+        declare_parameter("voxel_filter.mapping_surface_leaf_size", 0.4);
+        get_parameter("voxel_filter.mapping_surface_leaf_size", mappingSurfLeafSize);
+        declare_parameter("dynamic_filter.enable", true);
+        get_parameter("dynamic_filter.enable", dynamicKeyframeFilterEnable);
+        declare_parameter("dynamic_filter.surface_knn_max_distance", 1.0);
+        get_parameter("dynamic_filter.surface_knn_max_distance", dynamicSurfKnnMaxDist);
+        declare_parameter("dynamic_filter.surface_plane_max_distance", 0.3);
+        get_parameter("dynamic_filter.surface_plane_max_distance", dynamicSurfPlaneMaxDist);
 
-        declare_parameter("globalStaticMapFilterEnable", false);
-        get_parameter("globalStaticMapFilterEnable", globalStaticMapFilterEnable);
-        declare_parameter("globalStaticVoxelSize", 0.4);
-        get_parameter("globalStaticVoxelSize", globalStaticVoxelSize);
-        declare_parameter("globalStaticMinKF", 3);
-        get_parameter("globalStaticMinKF", globalStaticMinKF);
-        declare_parameter("globalStaticFilterCorners", true);
-        get_parameter("globalStaticFilterCorners", globalStaticFilterCorners);
+        declare_parameter("static_map_filter.enable", false);
+        get_parameter("static_map_filter.enable", globalStaticMapFilterEnable);
+        declare_parameter("static_map_filter.voxel_size", 0.4);
+        get_parameter("static_map_filter.voxel_size", globalStaticVoxelSize);
+        declare_parameter("static_map_filter.min_keyframes", 3);
+        get_parameter("static_map_filter.min_keyframes", globalStaticMinKF);
+        declare_parameter("static_map_filter.filter_corners", true);
+        get_parameter("static_map_filter.filter_corners", globalStaticFilterCorners);
 
-        declare_parameter("z_tollerance", 1000.0);
-        get_parameter("z_tollerance", z_tollerance);
-        declare_parameter("rotation_tollerance", 1000.0);
-        get_parameter("rotation_tollerance", rotation_tollerance);
+        declare_parameter("motion_constraint.z_tolerance", 1000.0);
+        get_parameter("motion_constraint.z_tolerance", z_tollerance);
+        declare_parameter("motion_constraint.rotation_tolerance", 1000.0);
+        get_parameter("motion_constraint.rotation_tolerance", rotation_tollerance);
 
-        declare_parameter("numberOfCores", 4);
-        get_parameter("numberOfCores", numberOfCores);
-        declare_parameter("mappingProcessInterval", 0.15);
-        get_parameter("mappingProcessInterval", mappingProcessInterval);
+        declare_parameter("system.number_of_cores", 4);
+        get_parameter("system.number_of_cores", numberOfCores);
+        declare_parameter("system.mapping_process_interval", 0.15);
+        get_parameter("system.mapping_process_interval", mappingProcessInterval);
 
-        declare_parameter("surroundingkeyframeAddingDistThreshold", 1.0);
-        get_parameter("surroundingkeyframeAddingDistThreshold", surroundingkeyframeAddingDistThreshold);
-        declare_parameter("surroundingkeyframeAddingAngleThreshold", 0.2);
-        get_parameter("surroundingkeyframeAddingAngleThreshold", surroundingkeyframeAddingAngleThreshold);
-        declare_parameter("surroundingKeyframeDensity", 2.0);
-        get_parameter("surroundingKeyframeDensity", surroundingKeyframeDensity);
-        declare_parameter("surroundingKeyframeSearchRadius", 50.0);
-        get_parameter("surroundingKeyframeSearchRadius", surroundingKeyframeSearchRadius);
+        declare_parameter("local_map.keyframe_distance_threshold", 1.0);
+        get_parameter("local_map.keyframe_distance_threshold", surroundingkeyframeAddingDistThreshold);
+        declare_parameter("local_map.keyframe_angle_threshold", 0.2);
+        get_parameter("local_map.keyframe_angle_threshold", surroundingkeyframeAddingAngleThreshold);
+        declare_parameter("local_map.keyframe_density", 2.0);
+        get_parameter("local_map.keyframe_density", surroundingKeyframeDensity);
+        declare_parameter("local_map.search_radius", 50.0);
+        get_parameter("local_map.search_radius", surroundingKeyframeSearchRadius);
 
-        declare_parameter("loopClosureEnableFlag", true);
-        get_parameter("loopClosureEnableFlag", loopClosureEnableFlag);
-        declare_parameter("loopClosureFrequency", 1.0);
-        get_parameter("loopClosureFrequency", loopClosureFrequency);
-        declare_parameter("surroundingKeyframeSize", 50);
-        get_parameter("surroundingKeyframeSize", surroundingKeyframeSize);
-        declare_parameter("historyKeyframeSearchRadius", 15.0);
-        get_parameter("historyKeyframeSearchRadius", historyKeyframeSearchRadius);
-        declare_parameter("historyKeyframeSearchTimeDiff", 30.0);
-        get_parameter("historyKeyframeSearchTimeDiff", historyKeyframeSearchTimeDiff);
-        declare_parameter("historyKeyframeSearchNum", 25);
-        get_parameter("historyKeyframeSearchNum", historyKeyframeSearchNum);
-        declare_parameter("historyKeyframeFitnessScore", 0.3);
-        get_parameter("historyKeyframeFitnessScore", historyKeyframeFitnessScore);
-        declare_parameter("globalMapVisualizationSearchRadius", 1000.0);
-        get_parameter("globalMapVisualizationSearchRadius", globalMapVisualizationSearchRadius);
-        declare_parameter("globalMapVisualizationPoseDensity", 10.0);
-        get_parameter("globalMapVisualizationPoseDensity", globalMapVisualizationPoseDensity);
-        declare_parameter("globalMapVisualizationLeafSize", 1.0);
-        get_parameter("globalMapVisualizationLeafSize", globalMapVisualizationLeafSize);
+        declare_parameter("loop_closure.enable", true);
+        get_parameter("loop_closure.enable", loopClosureEnableFlag);
+        declare_parameter("loop_closure.frequency", 1.0);
+        get_parameter("loop_closure.frequency", loopClosureFrequency);
+        declare_parameter("loop_closure.surrounding_keyframe_size", 50);
+        get_parameter("loop_closure.surrounding_keyframe_size", surroundingKeyframeSize);
+        declare_parameter("loop_closure.history_search_radius", 15.0);
+        get_parameter("loop_closure.history_search_radius", historyKeyframeSearchRadius);
+        declare_parameter("loop_closure.history_search_time_difference", 30.0);
+        get_parameter("loop_closure.history_search_time_difference", historyKeyframeSearchTimeDiff);
+        declare_parameter("loop_closure.history_search_count", 25);
+        get_parameter("loop_closure.history_search_count", historyKeyframeSearchNum);
+        declare_parameter("loop_closure.fitness_threshold", 0.3);
+        get_parameter("loop_closure.fitness_threshold", historyKeyframeFitnessScore);
+        declare_parameter("visualization.global_map_search_radius", 1000.0);
+        get_parameter("visualization.global_map_search_radius", globalMapVisualizationSearchRadius);
+        declare_parameter("visualization.global_map_pose_density", 10.0);
+        get_parameter("visualization.global_map_pose_density", globalMapVisualizationPoseDensity);
+        declare_parameter("visualization.global_map_leaf_size", 1.0);
+        get_parameter("visualization.global_map_leaf_size", globalMapVisualizationLeafSize);
 
         usleep(100);
     }

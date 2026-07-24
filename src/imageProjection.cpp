@@ -329,10 +329,14 @@ public:
             ParamServer("lio_sam_imageProjection", options), deskewFlag(0),
             firstFrameProcessed(0)
     {
-        declare_parameter("segmentation_only_mode", false);
-        get_parameter("segmentation_only_mode", segmentationOnlyMode_);
-        declare_parameter("nonGroundCloudTopic", "lio_sam/deskew/cloud_nonground");
-        get_parameter("nonGroundCloudTopic", nonGroundCloudTopic_);
+        declare_parameter("ground_segmentation.only_mode", false);
+        get_parameter("ground_segmentation.only_mode", segmentationOnlyMode_);
+        declare_parameter(
+            "sensor_topic.non_ground_cloud_topic",
+            "lio_sam/deskew/cloud_nonground");
+        get_parameter(
+            "sensor_topic.non_ground_cloud_topic",
+            nonGroundCloudTopic_);
 
         callbackGroupLidar = create_callback_group(
             rclcpp::CallbackGroupType::MutuallyExclusive);
