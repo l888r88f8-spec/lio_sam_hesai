@@ -9,141 +9,257 @@
 #include <utility>
 #include <vector>
 
-namespace {
+namespace
+{
 
-const std::array<std::string, 7> kParameterFiles = {
-    "include/lio_sam/utility.hpp",
-    "src/imageProjection.cpp",
-    "src/slam/system.cpp",
-    "config/mapping.yaml",
-    "config/relocalization.yaml",
-    "launch/mapping.launch.py",
-    "launch/localization_with_nonground.launch.py",
+const std::array<std::string, 8> kParameterFiles = {
+  "include/lio_sam/utility.hpp",
+  "src/imageProjection.cpp",
+  "src/slam/system.cpp",
+  "config/mapping.yaml",
+  "config/relocalization.yaml",
+  "launch/mapping.launch.py",
+  "launch/localization.launch.py",
+  "launch/localization_with_nonground.launch.py",
 };
 
-const std::vector<std::string> kLegacyParameterNames = {
-    "pointCloudTopic",
-    "imuTopic",
-    "odomTopic",
-    "gpsTopic",
-    "nonGroundCloudTopic",
-    "mapFrame",
-    "odometryFrame",
-    "baselinkFrame",
-    "lidarFrame",
-    "mappingMode",
-    "numberOfCores",
-    "mappingProcessInterval",
-    "useImuHeadingInitialization",
-    "useGpsElevation",
-    "gpsCovThreshold",
-    "poseCovThreshold",
-    "sensor",
-    "lidar.lidar_sensor_type",
-    "N_SCAN",
-    "lidar.lidar_scan",
-    "Horizon_SCAN",
-    "lidar.lidar_horizon_scan",
-    "downsampleRate",
-    "lidarMinRange",
-    "lidar.lidar_use_min_distance",
-    "lidarMaxRange",
-    "lidar.lidar_use_max_distance",
-    "lidar.lidar_point_jump_span",
-    "lidar.lidar_point_time_scale",
-    "lidar.lidar_rotation_noise_std",
-    "lidar.lidar_position_noise_std",
-    "lidar.lidar_lower_angle",
-    "lidar.lidar_vertical_resolution",
-    "imuType",
-    "imuAccNoise",
-    "imuGyrNoise",
-    "imuAccBiasN",
-    "imu.acc_rw_noise_std",
-    "imuGyrBiasN",
-    "imu.gyro_rw_noise_std",
-    "imuGravity",
-    "gravity",
-    "imuRPYWeight",
-    "extrinsicTrans",
-    "extrinsicRot",
-    "extrinsicRPY",
-    "calibration.lidar_to_imu",
-    "savePCD",
-    "generateScDb",
-    "savePCDDirectory",
-    "savePCDResolution",
-    "saveGroundPCD",
-    "saveGroundPCDResolution",
-    "groundPCDDirectory",
-    "groundPCDDirectoryGlobal",
-    "groundFinalUseOdom",
-    "groundGlobalLeafSize",
-    "alignSavedMapGroundToZero",
-    "savedMapGroundZOffset",
-    "segmentation_only_mode",
-    "groundLeafSize",
-    "groundScanStartIndex",
-    "groundScanEndIndex",
-    "groundAngleThreshold",
-    "groundPlaneDistance",
-    "groundPlaneMaxAngle",
-    "groundPlaneMinPoints",
-    "groundFlattenZ",
-    "groundFlattenValue",
-    "groundGridPatchEnable",
-    "groundGridPatchResolution",
-    "groundGridPatchSearchRadius",
-    "groundGridPatchMaxSlopeDeg",
-    "groundGridPatchMaxHeightRange",
-    "groundGridPatchMaxRoughness",
-    "groundGridPatchMaxPredictionMargin",
-    "groundGridPatchMinInlierRatio",
-    "groundGridPatchMinNeighborCells",
-    "groundGridPatchMinSupportQuadrants",
-    "edgeThreshold",
-    "surfThreshold",
-    "edgeFeatureMinValidNum",
-    "surfFeatureMinValidNum",
-    "odometrySurfLeafSize",
-    "mappingCornerLeafSize",
-    "mappingSurfLeafSize",
-    "dynamicKeyframeFilterEnable",
-    "dynamicSurfKnnMaxDist",
-    "dynamicSurfPlaneMaxDist",
-    "globalStaticMapFilterEnable",
-    "globalStaticVoxelSize",
-    "globalStaticMinKF",
-    "globalStaticFilterCorners",
-    "z_tollerance",
-    "rotation_tollerance",
-    "surroundingkeyframeAddingDistThreshold",
-    "surroundingkeyframeAddingAngleThreshold",
-    "surroundingKeyframeDensity",
-    "surroundingKeyframeSearchRadius",
-    "loopClosureEnableFlag",
-    "loopClosureFrequency",
-    "surroundingKeyframeSize",
-    "historyKeyframeSearchRadius",
-    "historyKeyframeSearchTimeDiff",
-    "historyKeyframeSearchNum",
-    "historyKeyframeFitnessScore",
-    "loopclosure.candidate_local_map_left_range",
-    "loopclosure.candidate_local_map_right_range",
-    "loopclosure.loopclosure_local_map_left_range",
-    "loopclosure.near_neighbor_distance_threshold",
-    "loopclosure.registration_converge_threshold",
-    "loopclosure.skip_near_keyframe_threshold",
-    "loopclosure.skip_near_loopclosure_threshold",
-    "globalMapVisualizationSearchRadius",
-    "globalMapVisualizationPoseDensity",
-    "globalMapVisualizationLeafSize",
-    "system.enable_loopclosure",
-    "system.enable_visualize_global_map",
-    "system.global_map_visualization_resolution",
+constexpr unsigned kMappingReader = 1U << 0;
+constexpr unsigned kRelocalizationReader = 1U << 1;
+constexpr unsigned kMappingYaml = 1U << 2;
+constexpr unsigned kRelocalizationYaml = 1U << 3;
+constexpr unsigned kRelocalizationLaunch = 1U << 4;
+
+constexpr unsigned kMappingSurfaces = kMappingReader | kMappingYaml;
+constexpr unsigned kSharedSurfaces =
+  kMappingReader | kRelocalizationReader | kMappingYaml |
+  kRelocalizationYaml;
+constexpr unsigned kSharedYaml = kMappingYaml | kRelocalizationYaml;
+constexpr unsigned kRelocalizationSurfaces =
+  kRelocalizationReader | kRelocalizationYaml;
+constexpr unsigned kGroundSegmentationSurfaces =
+  kMappingReader | kMappingYaml | kRelocalizationYaml;
+
+struct ParameterContract
+{
+  std::string legacy;
+  std::string canonical;
+  unsigned surfaces;
 };
 
-std::string ReadProjectFile(const std::string& relative_path) {
+const std::vector<ParameterContract> kParameterContracts = {
+  {"pointCloudTopic", "sensor_topic.lidar_topic", kSharedSurfaces},
+  {"imuTopic", "sensor_topic.imu_topic", kSharedSurfaces},
+  {"odomTopic", "sensor_topic.odom_topic", kMappingSurfaces},
+  {"gpsTopic", "sensor_topic.gps_topic", kMappingSurfaces},
+  {"nonGroundCloudTopic", "sensor_topic.non_ground_cloud_topic",
+    kGroundSegmentationSurfaces},
+  {"mapFrame", "frames.map", kSharedSurfaces},
+  {"odometryFrame", "frames.odometry", kMappingSurfaces},
+  {"baselinkFrame", "frames.base_link", kSharedSurfaces},
+  {"lidarFrame", "frames.lidar", kSharedSurfaces},
+  {"mappingMode", "system.mapping_mode",
+    kMappingSurfaces | kRelocalizationYaml},
+  {"numberOfCores", "system.number_of_cores", kMappingSurfaces},
+  {"mappingProcessInterval", "system.mapping_process_interval",
+    kMappingSurfaces},
+  {"useImuHeadingInitialization", "gps.use_imu_heading_initialization",
+    kMappingSurfaces},
+  {"useGpsElevation", "gps.use_elevation", kMappingSurfaces},
+  {"gpsCovThreshold", "gps.covariance_threshold", kMappingSurfaces},
+  {"poseCovThreshold", "gps.pose_covariance_threshold", kMappingSurfaces},
+  {"sensor", "lidar.sensor_type", kSharedSurfaces},
+  {"lidar.lidar_sensor_type", "lidar.sensor_type",
+    kRelocalizationSurfaces},
+  {"N_SCAN", "lidar.scan_lines", kSharedSurfaces},
+  {"lidar.lidar_scan", "lidar.scan_lines", kRelocalizationSurfaces},
+  {"Horizon_SCAN", "lidar.horizon_scan", kSharedSurfaces},
+  {"lidar.lidar_horizon_scan", "lidar.horizon_scan",
+    kRelocalizationSurfaces},
+  {"downsampleRate", "lidar.downsample_rate", kMappingSurfaces},
+  {"lidarMinRange", "lidar.min_range", kSharedSurfaces},
+  {"lidar.lidar_use_min_distance", "lidar.min_range",
+    kRelocalizationSurfaces},
+  {"lidarMaxRange", "lidar.max_range", kSharedSurfaces},
+  {"lidar.lidar_use_max_distance", "lidar.max_range",
+    kRelocalizationSurfaces},
+  {"lidar.lidar_point_jump_span", "lidar.point_jump_span",
+    kRelocalizationSurfaces},
+  {"lidar.lidar_point_time_scale", "lidar.point_time_scale",
+    kRelocalizationSurfaces},
+  {"lidar.lidar_rotation_noise_std", "lidar.rotation_noise_std",
+    kRelocalizationSurfaces},
+  {"lidar.lidar_position_noise_std", "lidar.position_noise_std",
+    kRelocalizationSurfaces},
+  {"lidar.lidar_lower_angle", "lidar.lower_angle_deg",
+    kRelocalizationSurfaces},
+  {"lidar.lidar_vertical_resolution", "lidar.vertical_resolution_deg",
+    kRelocalizationSurfaces},
+  {"imuType", "imu.type", kMappingSurfaces},
+  {"imuAccNoise", "imu.acc_noise_std", kSharedSurfaces},
+  {"imuGyrNoise", "imu.gyro_noise_std", kSharedSurfaces},
+  {"imuAccBiasN", "imu.acc_bias_rw_noise_std", kSharedSurfaces},
+  {"imu.acc_rw_noise_std", "imu.acc_bias_rw_noise_std",
+    kRelocalizationSurfaces},
+  {"imuGyrBiasN", "imu.gyro_bias_rw_noise_std", kSharedSurfaces},
+  {"imu.gyro_rw_noise_std", "imu.gyro_bias_rw_noise_std",
+    kRelocalizationSurfaces},
+  {"imuGravity", "imu.gravity", kSharedSurfaces},
+  {"gravity", "imu.gravity", kRelocalizationSurfaces},
+  {"imuRPYWeight", "imu.rpy_weight", kMappingSurfaces},
+  {"extrinsicTrans", "calibration.translation", kSharedSurfaces},
+  {"extrinsicRot", "calibration.rotation", kSharedSurfaces},
+  {"extrinsicRPY", "calibration.rpy", kSharedSurfaces},
+  {"calibration.lidar_to_imu", "calibration.translation",
+    kRelocalizationSurfaces},
+  {"savePCD", "map_save.enabled", kMappingSurfaces},
+  {"generateScDb", "map_save.generate_scan_context_db", kMappingSurfaces},
+  {"savePCDDirectory", "map_save.directory", kMappingSurfaces},
+  {"savePCDResolution", "map_save.resolution", kMappingSurfaces},
+  {"saveGroundPCD", "map_save.save_ground_map", kMappingSurfaces},
+  {"saveGroundPCDResolution", "map_save.ground_resolution",
+    kMappingSurfaces},
+  {"groundPCDDirectory", "map_save.ground_directory", kMappingSurfaces},
+  {"groundPCDDirectoryGlobal", "map_save.ground_global_directory",
+    kMappingSurfaces},
+  {"groundFinalUseOdom", "map_save.ground_final_use_odometry",
+    kMappingSurfaces},
+  {"groundGlobalLeafSize", "map_save.ground_global_leaf_size",
+    kMappingSurfaces},
+  {"alignSavedMapGroundToZero", "map_save.align_ground_to_zero",
+    kMappingSurfaces},
+  {"savedMapGroundZOffset", "map_save.ground_z_offset", kMappingSurfaces},
+  {"segmentation_only_mode", "ground_segmentation.only_mode",
+    kGroundSegmentationSurfaces | kRelocalizationLaunch},
+  {"groundLeafSize", "ground_segmentation.leaf_size",
+    kGroundSegmentationSurfaces},
+  {"groundScanStartIndex", "ground_segmentation.scan_start_index",
+    kGroundSegmentationSurfaces},
+  {"groundScanEndIndex", "ground_segmentation.scan_end_index",
+    kGroundSegmentationSurfaces},
+  {"groundAngleThreshold", "ground_segmentation.angle_threshold_deg",
+    kGroundSegmentationSurfaces},
+  {"groundPlaneDistance", "ground_segmentation.plane_distance",
+    kGroundSegmentationSurfaces},
+  {"groundPlaneMaxAngle", "ground_segmentation.plane_max_angle_deg",
+    kGroundSegmentationSurfaces},
+  {"groundPlaneMinPoints", "ground_segmentation.plane_min_points",
+    kGroundSegmentationSurfaces},
+  {"groundFlattenZ", "ground_segmentation.flatten_z",
+    kGroundSegmentationSurfaces},
+  {"groundFlattenValue", "ground_segmentation.flatten_value",
+    kGroundSegmentationSurfaces},
+  {"groundGridPatchEnable", "ground_segmentation.grid_patch.enable",
+    kGroundSegmentationSurfaces},
+  {"groundGridPatchResolution", "ground_segmentation.grid_patch.resolution",
+    kGroundSegmentationSurfaces},
+  {"groundGridPatchSearchRadius",
+    "ground_segmentation.grid_patch.search_radius",
+    kGroundSegmentationSurfaces},
+  {"groundGridPatchMaxSlopeDeg",
+    "ground_segmentation.grid_patch.max_slope_deg",
+    kGroundSegmentationSurfaces},
+  {"groundGridPatchMaxHeightRange",
+    "ground_segmentation.grid_patch.max_height_range",
+    kGroundSegmentationSurfaces},
+  {"groundGridPatchMaxRoughness",
+    "ground_segmentation.grid_patch.max_roughness",
+    kGroundSegmentationSurfaces},
+  {"groundGridPatchMaxPredictionMargin",
+    "ground_segmentation.grid_patch.max_prediction_margin",
+    kGroundSegmentationSurfaces},
+  {"groundGridPatchMinInlierRatio",
+    "ground_segmentation.grid_patch.min_inlier_ratio",
+    kGroundSegmentationSurfaces},
+  {"groundGridPatchMinNeighborCells",
+    "ground_segmentation.grid_patch.min_neighbor_cells",
+    kGroundSegmentationSurfaces},
+  {"groundGridPatchMinSupportQuadrants",
+    "ground_segmentation.grid_patch.min_support_quadrants",
+    kGroundSegmentationSurfaces},
+  {"edgeThreshold", "feature_extraction.edge_threshold", kMappingSurfaces},
+  {"surfThreshold", "feature_extraction.surface_threshold",
+    kMappingSurfaces},
+  {"edgeFeatureMinValidNum", "feature_extraction.min_edge_features",
+    kMappingSurfaces},
+  {"surfFeatureMinValidNum", "feature_extraction.min_surface_features",
+    kMappingSurfaces},
+  {"odometrySurfLeafSize", "voxel_filter.odometry_surface_leaf_size",
+    kMappingSurfaces},
+  {"mappingCornerLeafSize", "voxel_filter.mapping_corner_leaf_size",
+    kMappingSurfaces},
+  {"mappingSurfLeafSize", "voxel_filter.mapping_surface_leaf_size",
+    kMappingSurfaces},
+  {"dynamicKeyframeFilterEnable", "dynamic_filter.enable",
+    kMappingSurfaces},
+  {"dynamicSurfKnnMaxDist", "dynamic_filter.surface_knn_max_distance",
+    kMappingSurfaces},
+  {"dynamicSurfPlaneMaxDist", "dynamic_filter.surface_plane_max_distance",
+    kMappingSurfaces},
+  {"globalStaticMapFilterEnable", "static_map_filter.enable",
+    kMappingSurfaces},
+  {"globalStaticVoxelSize", "static_map_filter.voxel_size",
+    kMappingSurfaces},
+  {"globalStaticMinKF", "static_map_filter.min_keyframes",
+    kMappingSurfaces},
+  {"globalStaticFilterCorners", "static_map_filter.filter_corners",
+    kMappingSurfaces},
+  {"z_tollerance", "motion_constraint.z_tolerance", kMappingSurfaces},
+  {"rotation_tollerance", "motion_constraint.rotation_tolerance",
+    kMappingSurfaces},
+  {"surroundingkeyframeAddingDistThreshold",
+    "local_map.keyframe_distance_threshold", kMappingSurfaces},
+  {"surroundingkeyframeAddingAngleThreshold",
+    "local_map.keyframe_angle_threshold", kMappingSurfaces},
+  {"surroundingKeyframeDensity", "local_map.keyframe_density",
+    kMappingSurfaces},
+  {"surroundingKeyframeSearchRadius", "local_map.search_radius",
+    kMappingSurfaces},
+  {"loopClosureEnableFlag", "loop_closure.enable", kSharedSurfaces},
+  {"system.enable_loopclosure", "loop_closure.enable",
+    kRelocalizationSurfaces},
+  {"loopClosureFrequency", "loop_closure.frequency", kMappingSurfaces},
+  {"surroundingKeyframeSize", "loop_closure.surrounding_keyframe_size",
+    kMappingSurfaces},
+  {"historyKeyframeSearchRadius", "loop_closure.history_search_radius",
+    kMappingSurfaces},
+  {"historyKeyframeSearchTimeDiff",
+    "loop_closure.history_search_time_difference", kMappingSurfaces},
+  {"historyKeyframeSearchNum", "loop_closure.history_search_count",
+    kMappingSurfaces},
+  {"historyKeyframeFitnessScore", "loop_closure.fitness_threshold",
+    kMappingSurfaces},
+  {"loopclosure.candidate_local_map_left_range",
+    "loop_closure.candidate_local_map_left_range", kRelocalizationSurfaces},
+  {"loopclosure.candidate_local_map_right_range",
+    "loop_closure.candidate_local_map_right_range", kRelocalizationSurfaces},
+  {"loopclosure.loopclosure_local_map_left_range",
+    "loop_closure.loopclosure_local_map_left_range",
+    kRelocalizationSurfaces},
+  {"loopclosure.near_neighbor_distance_threshold",
+    "loop_closure.near_neighbor_distance_threshold",
+    kRelocalizationSurfaces},
+  {"loopclosure.registration_converge_threshold",
+    "loop_closure.registration_converge_threshold",
+    kRelocalizationSurfaces},
+  {"loopclosure.skip_near_keyframe_threshold",
+    "loop_closure.skip_near_keyframe_threshold", kRelocalizationSurfaces},
+  {"loopclosure.skip_near_loopclosure_threshold",
+    "loop_closure.skip_near_loopclosure_threshold",
+    kRelocalizationSurfaces},
+  {"globalMapVisualizationSearchRadius",
+    "visualization.global_map_search_radius", kMappingSurfaces},
+  {"globalMapVisualizationPoseDensity",
+    "visualization.global_map_pose_density", kMappingSurfaces},
+  {"globalMapVisualizationLeafSize", "visualization.global_map_leaf_size",
+    kMappingSurfaces},
+  {"system.enable_visualize_global_map",
+    "visualization.enable_global_map", kRelocalizationSurfaces},
+  {"system.global_map_visualization_resolution",
+    "visualization.global_map_resolution", kRelocalizationSurfaces},
+};
+
+std::string ReadProjectFile(const std::string & relative_path)
+{
   std::ifstream file(std::string(PROJECT_SOURCE_DIR) + "/" + relative_path);
   EXPECT_TRUE(file.is_open()) << "Could not open " << relative_path;
   std::ostringstream buffer;
@@ -151,22 +267,128 @@ std::string ReadProjectFile(const std::string& relative_path) {
   return buffer.str();
 }
 
-bool HasQuotedString(const std::string& text, const std::string& value) {
+std::string StripCppComments(const std::string & text)
+{
+  enum class State { kCode, kLineComment, kBlockComment, kString, kCharacter };
+  State state = State::kCode;
+  std::string result;
+  result.reserve(text.size());
+
+  for (std::size_t i = 0; i < text.size(); ++i) {
+    const char current = text[i];
+    const char next = i + 1 < text.size() ? text[i + 1] : '\0';
+    if (state == State::kLineComment) {
+      if (current == '\n') {
+        result += current;
+        state = State::kCode;
+      }
+      continue;
+    }
+    if (state == State::kBlockComment) {
+      if (current == '\n') {
+        result += current;
+      } else if (current == '*' && next == '/') {
+        ++i;
+        state = State::kCode;
+      }
+      continue;
+    }
+
+    result += current;
+    if (state == State::kString || state == State::kCharacter) {
+      if (current == '\\' && next != '\0') {
+        result += next;
+        ++i;
+        continue;
+      }
+      if ((state == State::kString && current == '"') ||
+        (state == State::kCharacter && current == '\''))
+      {
+        state = State::kCode;
+      }
+      continue;
+    }
+
+    if (current == '"') {
+      state = State::kString;
+    } else if (current == '\'') {
+      state = State::kCharacter;
+    } else if (current == '/' && next == '/') {
+      result.pop_back();
+      ++i;
+      state = State::kLineComment;
+    } else if (current == '/' && next == '*') {
+      result.pop_back();
+      ++i;
+      state = State::kBlockComment;
+    }
+  }
+
+  return result;
+}
+
+std::string StripPythonComments(const std::string & text)
+{
+  enum class State { kCode, kComment, kSingleQuoted, kDoubleQuoted };
+  State state = State::kCode;
+  std::string result;
+  result.reserve(text.size());
+
+  for (std::size_t i = 0; i < text.size(); ++i) {
+    const char current = text[i];
+    if (state == State::kComment) {
+      if (current == '\n') {
+        result += current;
+        state = State::kCode;
+      }
+      continue;
+    }
+
+    result += current;
+    if (state == State::kSingleQuoted || state == State::kDoubleQuoted) {
+      if (current == '\\' && i + 1 < text.size()) {
+        result += text[++i];
+        continue;
+      }
+      if ((state == State::kSingleQuoted && current == '\'') ||
+        (state == State::kDoubleQuoted && current == '"'))
+      {
+        state = State::kCode;
+      }
+      continue;
+    }
+
+    if (current == '#') {
+      result.pop_back();
+      state = State::kComment;
+    } else if (current == '\'') {
+      state = State::kSingleQuoted;
+    } else if (current == '"') {
+      state = State::kDoubleQuoted;
+    }
+  }
+
+  return result;
+}
+
+bool HasQuotedString(const std::string & text, const std::string & value)
+{
   return text.find("\"" + value + "\"") != std::string::npos ||
          text.find("'" + value + "'") != std::string::npos;
 }
 
-std::set<std::string> ReadCppParameterNames(
-    const std::string& relative_path) {
-  const std::string text = ReadProjectFile(relative_path);
+std::set<std::string> ReadCppParameterNamesFromText(
+  const std::string & source_text)
+{
+  const std::string text = StripCppComments(source_text);
   const std::array<std::string, 3> parameter_functions = {
-      "declare_parameter",
-      "get_parameter",
-      "util::param",
+    "declare_parameter",
+    "get_parameter",
+    "util::param",
   };
   std::set<std::string> parameter_names;
 
-  for (const auto& function : parameter_functions) {
+  for (const auto & function : parameter_functions) {
     std::size_t search_from = 0;
     while (true) {
       const std::size_t call = text.find(function, search_from);
@@ -177,11 +399,12 @@ std::set<std::string> ReadCppParameterNames(
       const std::size_t statement_end = text.find(';', call + function.size());
       const std::size_t quote = text.find('"', open);
       if (open != std::string::npos && quote != std::string::npos &&
-          (statement_end == std::string::npos || quote < statement_end)) {
+        (statement_end == std::string::npos || quote < statement_end))
+      {
         const std::size_t quote_end = text.find('"', quote + 1);
         if (quote_end != std::string::npos) {
           parameter_names.insert(
-              text.substr(quote + 1, quote_end - quote - 1));
+            text.substr(quote + 1, quote_end - quote - 1));
         }
       }
       search_from = call + function.size();
@@ -191,64 +414,77 @@ std::set<std::string> ReadCppParameterNames(
   return parameter_names;
 }
 
-void ExpectCppParameters(
-    const std::string& relative_path,
-    const std::vector<std::string>& parameter_names) {
-  const std::set<std::string> actual_names =
-      ReadCppParameterNames(relative_path);
-  for (const auto& parameter_name : parameter_names) {
-    EXPECT_TRUE(actual_names.find(parameter_name) != actual_names.end())
-        << parameter_name << " is missing from " << relative_path;
-  }
+std::set<std::string> ReadCppParameterNames(
+  const std::string & relative_path)
+{
+  return ReadCppParameterNamesFromText(ReadProjectFile(relative_path));
 }
 
-void ExpectNoLegacyCppParameters(
-    const std::vector<std::string>& relative_paths) {
-  for (const auto& relative_path : relative_paths) {
-    const std::set<std::string> parameter_names =
-        ReadCppParameterNames(relative_path);
-    for (const auto& legacy_name : kLegacyParameterNames) {
-      EXPECT_TRUE(parameter_names.find(legacy_name) == parameter_names.end())
-          << "legacy external parameter " << legacy_name
-          << " is still present in " << relative_path;
+std::set<std::string> CanonicalNamesForSurface(unsigned surface)
+{
+  std::set<std::string> names;
+  for (const auto & contract : kParameterContracts) {
+    if ((contract.surfaces & surface) != 0U) {
+      names.insert(contract.canonical);
     }
   }
+  return names;
 }
 
-void ExpectQuotedParameters(
-    const std::string& relative_path,
-    const std::vector<std::string>& parameter_names) {
-  const std::string text = ReadProjectFile(relative_path);
-  for (const auto& parameter_name : parameter_names) {
-    EXPECT_TRUE(HasQuotedString(text, parameter_name))
-        << parameter_name << " is missing from " << relative_path;
+std::set<std::string> LegacyNames()
+{
+  std::set<std::string> names;
+  for (const auto & contract : kParameterContracts) {
+    names.insert(contract.legacy);
+  }
+  return names;
+}
+
+std::set<std::string> Union(
+  const std::set<std::string> & lhs,
+  const std::set<std::string> & rhs)
+{
+  std::set<std::string> result = lhs;
+  result.insert(rhs.begin(), rhs.end());
+  return result;
+}
+
+void ExpectContainsAll(
+  const std::set<std::string> & actual,
+  const std::set<std::string> & expected,
+  const std::string & relative_path)
+{
+  for (const auto & name : expected) {
+    EXPECT_TRUE(actual.find(name) != actual.end())
+      << name << " is missing from " << relative_path;
   }
 }
 
-void ExpectNoLegacyQuotedParameters(
-    const std::vector<std::string>& relative_paths) {
-  for (const auto& relative_path : relative_paths) {
-    const std::string text = ReadProjectFile(relative_path);
-    for (const auto& legacy_name : kLegacyParameterNames) {
-      EXPECT_FALSE(HasQuotedString(text, legacy_name))
-          << "legacy external parameter " << legacy_name
-          << " is still present in " << relative_path;
-    }
-  }
-}
-
-std::set<std::string> ReadYamlParameterPaths(
-    const std::string& relative_path) {
-  std::istringstream stream(ReadProjectFile(relative_path));
-  std::vector<std::pair<std::size_t, std::string>> parents;
+struct YamlParameterSurface
+{
   std::set<std::string> paths;
+  std::set<std::string> raw_keys;
+};
+
+YamlParameterSurface ReadYamlParameterSurfaceFromText(
+  const std::string & text)
+{
+  std::istringstream stream(text);
+  std::vector<std::pair<std::size_t, std::string>> parents;
+  YamlParameterSurface surface;
   std::string line;
   bool inside_parameters = false;
+  std::size_t parameters_indentation = 0;
 
   while (std::getline(stream, line)) {
     const std::size_t first = line.find_first_not_of(' ');
     if (first == std::string::npos || line[first] == '#') {
       continue;
+    }
+
+    if (inside_parameters && first <= parameters_indentation) {
+      inside_parameters = false;
+      parents.clear();
     }
 
     const std::size_t colon = line.find(':', first);
@@ -258,19 +494,22 @@ std::set<std::string> ReadYamlParameterPaths(
 
     const std::string key = line.substr(first, colon - first);
     if (key.empty() ||
-        !(std::isalpha(static_cast<unsigned char>(key.front())) ||
-          key.front() == '_')) {
+      !(std::isalpha(static_cast<unsigned char>(key.front())) ||
+      key.front() == '_'))
+    {
       continue;
     }
     if (key.find_first_not_of(
-            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.") !=
-        std::string::npos) {
+        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.") !=
+      std::string::npos)
+    {
       continue;
     }
 
     if (key == "ros__parameters") {
       parents.clear();
       inside_parameters = true;
+      parameters_indentation = first;
       continue;
     }
     if (!inside_parameters) {
@@ -282,7 +521,7 @@ std::set<std::string> ReadYamlParameterPaths(
     }
 
     std::string path;
-    for (const auto& parent : parents) {
+    for (const auto & parent : parents) {
       if (!path.empty()) {
         path += '.';
       }
@@ -292,7 +531,8 @@ std::set<std::string> ReadYamlParameterPaths(
       path += '.';
     }
     path += key;
-    paths.insert(path);
+    surface.paths.insert(path);
+    surface.raw_keys.insert(key);
 
     std::string value = line.substr(colon + 1);
     const std::size_t comment = value.find('#');
@@ -304,154 +544,168 @@ std::set<std::string> ReadYamlParameterPaths(
     }
   }
 
-  return paths;
+  return surface;
 }
 
-bool HasRawYamlKey(const std::string& relative_path,
-                   const std::string& expected_key) {
-  std::istringstream stream(ReadProjectFile(relative_path));
-  std::string line;
-  while (std::getline(stream, line)) {
-    const std::size_t first = line.find_first_not_of(' ');
-    if (first == std::string::npos || line[first] == '#') {
-      continue;
-    }
-    const std::size_t colon = line.find(':', first);
-    if (colon != std::string::npos &&
-        line.substr(first, colon - first) == expected_key) {
-      return true;
-    }
-  }
-  return false;
+YamlParameterSurface ReadYamlParameterSurface(
+  const std::string & relative_path)
+{
+  return ReadYamlParameterSurfaceFromText(ReadProjectFile(relative_path));
 }
 
-void ExpectYamlParameters(
-    const std::string& relative_path,
-    const std::vector<std::string>& parameter_names) {
-  const std::set<std::string> paths = ReadYamlParameterPaths(relative_path);
-  for (const auto& parameter_name : parameter_names) {
-    EXPECT_TRUE(paths.find(parameter_name) != paths.end())
-        << parameter_name << " is missing from " << relative_path;
-    EXPECT_FALSE(HasRawYamlKey(relative_path, parameter_name))
-        << parameter_name << " must use nested YAML mappings in "
-        << relative_path;
+void ExpectYamlContainsAll(
+  const YamlParameterSurface & actual,
+  const std::set<std::string> & expected,
+  const std::string & relative_path)
+{
+  for (const auto & name : expected) {
+    EXPECT_TRUE(actual.paths.find(name) != actual.paths.end())
+      << name << " is missing from " << relative_path;
+    EXPECT_TRUE(actual.raw_keys.find(name) == actual.raw_keys.end())
+      << name << " must use nested YAML mappings in " << relative_path;
   }
 }
 
-void ExpectNoLegacyYamlParameters(const std::string& relative_path) {
-  const std::set<std::string> paths = ReadYamlParameterPaths(relative_path);
-  for (const auto& legacy_name : kLegacyParameterNames) {
-    bool found = false;
-    for (const auto& path : paths) {
-      const std::size_t last_dot = path.rfind('.');
-      const std::string leaf =
-          last_dot == std::string::npos ? path : path.substr(last_dot + 1);
-      if (path == legacy_name ||
-          (legacy_name.find('.') == std::string::npos &&
-           legacy_name != "gravity" && leaf == legacy_name)) {
-        found = true;
-        break;
-      }
-    }
-    EXPECT_FALSE(found)
-        << "legacy external parameter " << legacy_name
-        << " is still present in " << relative_path;
+bool HasLegacyYamlName(
+  const YamlParameterSurface & surface,
+  const std::string & legacy_name)
+{
+  if (legacy_name == "gravity") {
+    return surface.paths.find(legacy_name) != surface.paths.end();
   }
+  if (legacy_name.find('.') != std::string::npos) {
+    return surface.paths.find(legacy_name) != surface.paths.end() ||
+           surface.raw_keys.find(legacy_name) != surface.raw_keys.end();
+  }
+  return surface.raw_keys.find(legacy_name) != surface.raw_keys.end();
 }
 
 }  // namespace
 
 TEST(UnifiedParameterSchema, MappingReadersUseCanonicalNames) {
-  ExpectCppParameters(
-      "include/lio_sam/utility.hpp",
-      {
-          "sensor_topic.lidar_topic",
-          "lidar.sensor_type",
-          "imu.gravity",
-          "calibration.translation",
-          "calibration.rotation",
-          "calibration.rpy",
-          "map_save.generate_scan_context_db",
-          "map_save.align_ground_to_zero",
-          "map_save.ground_z_offset",
-          "ground_segmentation.grid_patch.max_slope_deg",
-          "loop_closure.enable",
-      });
-  ExpectCppParameters(
-      "src/imageProjection.cpp",
-      {
-          "sensor_topic.non_ground_cloud_topic",
-          "ground_segmentation.only_mode",
-      });
-  ExpectNoLegacyCppParameters(
-      {"include/lio_sam/utility.hpp", "src/imageProjection.cpp"});
+  const std::set<std::string> actual =
+    Union(
+    ReadCppParameterNames("include/lio_sam/utility.hpp"),
+    ReadCppParameterNames("src/imageProjection.cpp"));
+  ExpectContainsAll(
+    actual, CanonicalNamesForSurface(kMappingReader),
+    "mapping C++ readers");
 }
 
 TEST(UnifiedParameterSchema, RelocalizationReaderUsesCanonicalNames) {
-  ExpectCppParameters(
-      "src/slam/system.cpp",
-      {
-          "sensor_topic.lidar_topic",
-          "lidar.sensor_type",
-          "imu.gravity",
-          "calibration.translation",
-          "calibration.rotation",
-          "calibration.rpy",
-          "loop_closure.enable",
-      });
-  ExpectNoLegacyCppParameters({"src/slam/system.cpp"});
+  ExpectContainsAll(
+    ReadCppParameterNames("src/slam/system.cpp"),
+    CanonicalNamesForSurface(kRelocalizationReader),
+    "src/slam/system.cpp");
 }
 
 TEST(UnifiedParameterSchema, MappingYamlUsesCanonicalNames) {
-  ExpectYamlParameters(
-      "config/mapping.yaml",
-      {
-          "sensor_topic.lidar_topic",
-          "lidar.sensor_type",
-          "imu.gravity",
-          "calibration.translation",
-          "map_save.generate_scan_context_db",
-          "map_save.align_ground_to_zero",
-          "map_save.ground_z_offset",
-          "ground_segmentation.grid_patch.max_slope_deg",
-          "loop_closure.enable",
-      });
-  ExpectNoLegacyYamlParameters("config/mapping.yaml");
+  ExpectYamlContainsAll(
+    ReadYamlParameterSurface("config/mapping.yaml"),
+    CanonicalNamesForSurface(kMappingYaml),
+    "config/mapping.yaml");
 }
 
 TEST(UnifiedParameterSchema, RelocalizationYamlUsesCanonicalNames) {
-  ExpectYamlParameters(
-      "config/relocalization.yaml",
-      {
-          "sensor_topic.lidar_topic",
-          "lidar.sensor_type",
-          "imu.gravity",
-          "calibration.translation",
-          "ground_segmentation.grid_patch.max_slope_deg",
-          "loop_closure.enable",
-      });
-  ExpectNoLegacyYamlParameters("config/relocalization.yaml");
+  ExpectYamlContainsAll(
+    ReadYamlParameterSurface("config/relocalization.yaml"),
+    CanonicalNamesForSurface(kRelocalizationYaml),
+    "config/relocalization.yaml");
 }
 
 TEST(UnifiedParameterSchema, LaunchOverridesUseCanonicalNames) {
-  ExpectQuotedParameters(
-      "launch/localization_with_nonground.launch.py",
-      {"ground_segmentation.only_mode"});
-  ExpectNoLegacyQuotedParameters(
-      {"launch/mapping.launch.py",
-       "launch/localization_with_nonground.launch.py"});
+  const std::string launch = StripPythonComments(
+    ReadProjectFile("launch/localization_with_nonground.launch.py"));
+  for (const auto & name :
+    CanonicalNamesForSurface(kRelocalizationLaunch))
+  {
+    EXPECT_TRUE(HasQuotedString(launch, name))
+      << name << " is missing from localization launch overrides";
+  }
 }
 
 TEST(UnifiedParameterSchema, ProjectSurfaceRejectsLegacyExternalNames) {
-  for (const auto& relative_path : kParameterFiles) {
-    if (relative_path.size() >= 5 &&
-        relative_path.substr(relative_path.size() - 5) == ".yaml") {
-      ExpectNoLegacyYamlParameters(relative_path);
-    } else if (relative_path.size() >= 3 &&
-               relative_path.substr(relative_path.size() - 3) == ".py") {
-      ExpectNoLegacyQuotedParameters({relative_path});
-    } else {
-      ExpectNoLegacyCppParameters({relative_path});
+  const std::set<std::string> legacy_names = LegacyNames();
+  for (const auto & relative_path : kParameterFiles) {
+    const bool is_yaml =
+      relative_path.size() >= 5 &&
+      relative_path.substr(relative_path.size() - 5) == ".yaml";
+    const bool is_python =
+      relative_path.size() >= 3 &&
+      relative_path.substr(relative_path.size() - 3) == ".py";
+    if (is_yaml) {
+      const YamlParameterSurface surface =
+        ReadYamlParameterSurface(relative_path);
+      for (const auto & legacy_name : legacy_names) {
+        EXPECT_FALSE(HasLegacyYamlName(surface, legacy_name))
+          << "legacy external parameter " << legacy_name
+          << " is still present in " << relative_path;
+      }
+      continue;
+    }
+    if (is_python) {
+      const std::string text =
+        StripPythonComments(ReadProjectFile(relative_path));
+      for (const auto & legacy_name : legacy_names) {
+        EXPECT_FALSE(HasQuotedString(text, legacy_name))
+          << "legacy external parameter " << legacy_name
+          << " is still present in " << relative_path;
+      }
+      continue;
+    }
+    const std::set<std::string> parameter_names =
+      ReadCppParameterNames(relative_path);
+    for (const auto & legacy_name : legacy_names) {
+      EXPECT_TRUE(
+        parameter_names.find(legacy_name) ==
+        parameter_names.end())
+        << "legacy external parameter " << legacy_name
+        << " is still present in " << relative_path;
     }
   }
+}
+
+TEST(UnifiedParameterSchema, CppScannerIgnoresCommentedParameterNames) {
+  const std::string source =
+    "// declare_parameter(\"sensor_topic.lidar_topic\", \"points\");\n"
+    "/* get_parameter(\"pointCloudTopic\", topic); */\n"
+    "declare_parameter(\"actual.parameter\", true);\n";
+  const std::set<std::string> names =
+    ReadCppParameterNamesFromText(source);
+
+  EXPECT_TRUE(names.find("actual.parameter") != names.end());
+  EXPECT_TRUE(names.find("sensor_topic.lidar_topic") == names.end());
+  EXPECT_TRUE(names.find("pointCloudTopic") == names.end());
+}
+
+TEST(UnifiedParameterSchema, LaunchScannerIgnoresCommentedParameterNames) {
+  const std::string launch =
+    "# \"ground_segmentation.only_mode\"\n"
+    "parameters=[{\"actual.parameter\": True}] "
+    "# \"segmentation_only_mode\"\n";
+  const std::string stripped = StripPythonComments(launch);
+
+  EXPECT_TRUE(HasQuotedString(stripped, "actual.parameter"));
+  EXPECT_FALSE(
+    HasQuotedString(stripped, "ground_segmentation.only_mode"));
+  EXPECT_FALSE(HasQuotedString(stripped, "segmentation_only_mode"));
+}
+
+TEST(UnifiedParameterSchema, YamlScannerStopsOutsideRosParameters) {
+  const std::string yaml =
+    "/node:\n"
+    "  ros__parameters:\n"
+    "    sensor_topic:\n"
+    "      lidar_topic: /points\n"
+    "/outside:\n"
+    "  pointCloudTopic: ignored\n";
+  const YamlParameterSurface surface =
+    ReadYamlParameterSurfaceFromText(yaml);
+
+  EXPECT_TRUE(
+    surface.paths.find("sensor_topic.lidar_topic") !=
+    surface.paths.end());
+  EXPECT_TRUE(
+    surface.raw_keys.find("pointCloudTopic") ==
+    surface.raw_keys.end());
 }
