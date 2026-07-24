@@ -171,8 +171,6 @@ TEST(LidarImuCalibration, DerivesMappingLeverArmsInLidarAxes)
 
   EXPECT_TRUE(calibration.mapping_imu_to_lidar_lever_arm.isApprox(
       Eigen::Vector3d(2.0, -1.0, 3.0)));
-  EXPECT_TRUE(calibration.mapping_lidar_to_imu_lever_arm.isApprox(
-      Eigen::Vector3d(-2.0, 1.0, -3.0)));
 }
 
 TEST(LidarImuCalibration, MappingPreintegrationUsesDerivedLeverArm)
@@ -185,14 +183,42 @@ TEST(LidarImuCalibration, MappingPreintegrationUsesDerivedLeverArm)
   EXPECT_NE(utility.find(
       "extTrans = calibration.mapping_imu_to_lidar_lever_arm;"),
       std::string::npos);
-  EXPECT_NE(preintegration.find(
+  const std::size_t imu2_lidar = preintegration.find(
+      "gtsam::Pose3 imu2Lidar = gtsam::Pose3(");
+  const std::size_t lidar2_imu = preintegration.find(
+      "gtsam::Pose3 lidar2Imu = imu2Lidar.inverse();");
+  ASSERT_NE(imu2_lidar, std::string::npos);
+  ASSERT_NE(lidar2_imu, std::string::npos);
+  ASSERT_LT(imu2_lidar, lidar2_imu);
+  const std::string imu2_lidar_definition = preintegration.substr(
+      imu2_lidar, lidar2_imu - imu2_lidar);
+
+  EXPECT_NE(imu2_lidar_definition.find("gtsam::Rot3(1, 0, 0, 0)"),
+      std::string::npos);
+  EXPECT_NE(imu2_lidar_definition.find(
       "gtsam::Point3(extTrans.x(), extTrans.y(), extTrans.z())"),
       std::string::npos);
-  EXPECT_NE(preintegration.find(
-      "gtsam::Pose3 lidar2Imu = imu2Lidar.inverse();"),
-      std::string::npos);
-  EXPECT_EQ(preintegration.find(
+  EXPECT_EQ(imu2_lidar_definition.find(
       "gtsam::Point3(-extTrans.x(), -extTrans.y(), -extTrans.z())"),
+      std::string::npos);
+
+  const std::string system = ReadProjectFile("src/slam/system.cpp");
+  EXPECT_NE(system.find("ParseLidarImuCalibration("), std::string::npos);
+  EXPECT_NE(system.find(
+      "config.calibration_lidar_to_imu_ = calibration.lidar_to_imu;"),
+      std::string::npos);
+  EXPECT_EQ(system.find(
+      "config.calibration_lidar_to_imu_ = calibration.lidar_to_imu.inverse();"),
+      std::string::npos);
+}
+
+TEST(LidarImuCalibration, PlanDocumentsMappingLeverArmDirection)
+{
+  const std::string plan = ReadProjectFile(
+      "docs/superpowers/plans/2026-07-24-unified-ros-parameters.md");
+
+  EXPECT_NE(plan.find("mapping_imu_to_lidar_lever_arm"), std::string::npos);
+  EXPECT_NE(plan.find("R^{lidar}_{imu} * t^{imu}_{lidar}"),
       std::string::npos);
 }
 

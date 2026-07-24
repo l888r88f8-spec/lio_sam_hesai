@@ -78,6 +78,8 @@ struct LidarImuCalibration {
   Eigen::Matrix4d lidar_to_imu = Eigen::Matrix4d::Identity();
   Eigen::Matrix3d mapping_imu_to_lidar_rotation =
       Eigen::Matrix3d::Identity();
+  Eigen::Vector3d mapping_imu_to_lidar_lever_arm =
+      Eigen::Vector3d::Zero();
   Eigen::Matrix3d mapping_rpy_rotation = Eigen::Matrix3d::Identity();
 };
 
@@ -89,7 +91,9 @@ LidarImuCalibration ParseLidarImuCalibration(
 
 Validate `3/9/9` vector lengths, map both matrices row-major, place the direct
 rotation and translation into `lidar_to_imu`, transpose only the mapping
-acceleration/gyro rotation, and leave the RPY matrix untransposed.
+acceleration/gyro rotation, derive
+`mapping_imu_to_lidar_lever_arm = R^{lidar}_{imu} * t^{imu}_{lidar}`, and
+leave the RPY matrix untransposed.
 
 - [ ] **Step 4: Verify GREEN**
 
@@ -229,11 +233,14 @@ with defaults `[0.0, 0.0, 0.10]`, identity, and identity. Parse through
 `ParseLidarImuCalibration`; assign:
 
 ```cpp
-extTrans = parsed.lidar_to_imu.block<3, 1>(0, 3);
+extTrans = parsed.mapping_imu_to_lidar_lever_arm;
 extRot = parsed.mapping_imu_to_lidar_rotation;
 extRPY = parsed.mapping_rpy_rotation;
 extQRPY = Eigen::Quaterniond(extRPY);
 ```
+
+This binds `extTrans` to the IMU-to-lidar lever arm expressed in lidar axes,
+rather than the canonical direct `lidar_to_imu` translation.
 
 Catch `std::invalid_argument`, log a fatal parameter error, and rethrow so
 startup fails clearly.
