@@ -60,7 +60,9 @@
       data_searcher_buffer_size: 5000                          # IMU缓存长度
 
     calibration:
-      translation: [ 0.0, 0.0, 0.10 ]                         # T_lidar_to_imu
+      # Convention: T^imu_lidar = inverse(T^base_imu) * T^base_lidar.
+      # Relocalization consumes it directly; mapping transposes only rotation.
+      translation: [ 0.0, 0.0, 0.10 ]
       rotation: [ 1.0, 0.0, 0.0,
                   0.0, 1.0, 0.0,
                   0.0, 0.0, 1.0 ]

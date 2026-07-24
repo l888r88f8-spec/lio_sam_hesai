@@ -50,6 +50,8 @@
       rpy_weight: 0.2                                    # IMU姿态先验在优化中的权重
 
     calibration:
+      # Convention: T^imu_lidar = inverse(T^base_imu) * T^base_lidar.
+      # Relocalization consumes it directly; mapping transposes only rotation.
       translation: [ 0.0, 0.0, 0.10 ]                   # 雷达到IMU的平移外参[x, y, z]，需与base_link静态TF一致
       rotation: [ 1.0,  0.0,  0.0,
                   0.0,  1.0,  0.0,

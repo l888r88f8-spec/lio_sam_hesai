@@ -2,8 +2,122 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <array>
+#include <fstream>
+#include <regex>
+#include <sstream>
 #include <stdexcept>
+#include <string>
+#include <utility>
 #include <vector>
+
+namespace
+{
+
+struct StaticTransform
+{
+  Eigen::Vector3d translation;
+  Eigen::Matrix3d rotation;
+};
+
+std::string ReadProjectFile(const std::string & relative_path)
+{
+  std::ifstream file(std::string(PROJECT_SOURCE_DIR) + "/" + relative_path);
+  if (!file.is_open()) {
+    throw std::runtime_error("Could not open " + relative_path);
+  }
+  std::ostringstream buffer;
+  buffer << file.rdbuf();
+  return buffer.str();
+}
+
+StaticTransform ReadStaticTransform(
+  const std::string & launch_text,
+  const std::string & child_frame)
+{
+  const std::regex arguments_pattern(
+    R"regex(arguments\s*=\s*\[([\s\S]*?)\]\s*,)regex");
+  const std::regex quoted_value_pattern(R"regex("([^"]*)")regex");
+
+  for (std::sregex_iterator block(
+      launch_text.begin(), launch_text.end(), arguments_pattern);
+    block != std::sregex_iterator(); ++block)
+  {
+    const std::string arguments = (*block)[1].str();
+    std::vector<std::string> values;
+    for (std::sregex_iterator value(
+        arguments.begin(), arguments.end(), quoted_value_pattern);
+      value != std::sregex_iterator(); ++value)
+    {
+      values.push_back((*value)[1].str());
+    }
+    if (values.size() != 8U ||
+      values[6] != "base_link" || values[7] != child_frame)
+    {
+      continue;
+    }
+
+    const double yaw = std::stod(values[3]);
+    const double pitch = std::stod(values[4]);
+    const double roll = std::stod(values[5]);
+    return {
+      Eigen::Vector3d(
+        std::stod(values[0]), std::stod(values[1]), std::stod(values[2])),
+      (
+        Eigen::AngleAxisd(yaw, Eigen::Vector3d::UnitZ()) *
+        Eigen::AngleAxisd(pitch, Eigen::Vector3d::UnitY()) *
+        Eigen::AngleAxisd(roll, Eigen::Vector3d::UnitX())).toRotationMatrix()
+    };
+  }
+
+  throw std::runtime_error(
+          "Missing base_link -> " + child_frame + " static transform");
+}
+
+Eigen::Vector3d ReadCalibrationTranslation(const std::string & yaml_text)
+{
+  const std::size_t calibration = yaml_text.find("\n    calibration:");
+  if (calibration == std::string::npos) {
+    throw std::runtime_error("Missing calibration YAML group");
+  }
+  const std::size_t translation =
+    yaml_text.find("\n      translation:", calibration);
+  const std::size_t open = yaml_text.find('[', translation);
+  const std::size_t close = yaml_text.find(']', open);
+  if (translation == std::string::npos ||
+    open == std::string::npos || close == std::string::npos)
+  {
+    throw std::runtime_error("Missing calibration.translation YAML value");
+  }
+
+  std::string values = yaml_text.substr(open + 1, close - open - 1);
+  std::replace(values.begin(), values.end(), ',', ' ');
+  std::istringstream stream(values);
+  Eigen::Vector3d result;
+  if (!(stream >> result.x() >> result.y() >> result.z())) {
+    throw std::runtime_error("Invalid calibration.translation YAML value");
+  }
+  double extra = 0.0;
+  if (stream >> extra) {
+    throw std::runtime_error("calibration.translation must have three values");
+  }
+  return result;
+}
+
+std::string ReadPublishStaticTfDefault(const std::string & launch_text)
+{
+  const std::regex default_pattern(
+    R"regex(publish_static_tf_declare\s*=\s*DeclareLaunchArgument\s*\()regex"
+    R"regex(\s*"publish_static_tf"\s*,\s*default_value\s*=\s*"([^"]+)")regex");
+  std::smatch match;
+  if (!std::regex_search(launch_text, match, default_pattern)) {
+    throw std::runtime_error("Missing publish_static_tf launch default");
+  }
+  return match[1].str();
+}
+
+}  // namespace
 
 TEST(LidarImuCalibration, PreservesCanonicalLidarToImuDirection)
 {
@@ -38,6 +152,46 @@ TEST(LidarImuCalibration, PreservesCanonicalLidarToImuDirection)
   EXPECT_TRUE(calibration.mapping_rpy_rotation.isApprox(expected_rpy));
   EXPECT_TRUE(calibration.lidar_to_imu.row(3).isApprox(
       Eigen::RowVector4d(0.0, 0.0, 0.0, 1.0)));
+}
+
+TEST(LidarImuCalibration, LaunchStaticTransformsMatchCanonicalCalibration)
+{
+  const Eigen::Vector3d mapping_translation = ReadCalibrationTranslation(
+    ReadProjectFile("config/mapping.yaml"));
+  const Eigen::Vector3d relocalization_translation = ReadCalibrationTranslation(
+    ReadProjectFile("config/relocalization.yaml"));
+  ASSERT_TRUE(mapping_translation.isApprox(relocalization_translation));
+
+  const std::array<std::pair<std::string, std::string>, 2> launch_files = {{
+    {"launch/localization.launch.py", "true"},
+    {"launch/localization_with_nonground.launch.py", "false"},
+  }};
+  for (const auto & launch_file : launch_files) {
+    const std::string launch_text = ReadProjectFile(launch_file.first);
+    const StaticTransform base_to_lidar =
+      ReadStaticTransform(launch_text, "hesai_lidar");
+    const StaticTransform base_to_imu =
+      ReadStaticTransform(launch_text, "imu_link");
+
+    Eigen::Isometry3d base_lidar = Eigen::Isometry3d::Identity();
+    base_lidar.linear() = base_to_lidar.rotation;
+    base_lidar.translation() = base_to_lidar.translation;
+    Eigen::Isometry3d base_imu = Eigen::Isometry3d::Identity();
+    base_imu.linear() = base_to_imu.rotation;
+    base_imu.translation() = base_to_imu.translation;
+    const Eigen::Isometry3d imu_lidar = base_imu.inverse() * base_lidar;
+
+    EXPECT_TRUE(
+      base_lidar.translation().isApprox(
+        Eigen::Vector3d(0.02, 0.0, 0.32))) << launch_file.first;
+    EXPECT_TRUE(imu_lidar.translation().isApprox(mapping_translation))
+      << launch_file.first;
+    EXPECT_TRUE(imu_lidar.linear().isApprox(Eigen::Matrix3d::Identity()))
+      << launch_file.first;
+    EXPECT_EQ(
+      ReadPublishStaticTfDefault(launch_text), launch_file.second)
+      << launch_file.first;
+  }
 }
 
 TEST(LidarImuCalibration, RejectsInvalidTranslationLength)
