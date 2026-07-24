@@ -233,6 +233,10 @@ if(BUILD_TESTING)
     test/test_relocalization_efficiency_surface.cpp)
   ament_add_gtest(test_bounded_async test/test_bounded_async.cpp)
   target_include_directories(test_bounded_async PRIVATE include)
+  ament_add_gtest(test_lidar_imu_calibration
+    test/test_lidar_imu_calibration.cpp)
+  target_include_directories(test_lidar_imu_calibration PRIVATE include)
+  target_link_libraries(test_lidar_imu_calibration ${LIO_SAM_EIGEN_TARGET})
   ament_add_gtest(test_relocalization_acceptance_policy
     test/test_relocalization_acceptance_policy.cpp)
   target_include_directories(test_relocalization_acceptance_policy PRIVATE include)
