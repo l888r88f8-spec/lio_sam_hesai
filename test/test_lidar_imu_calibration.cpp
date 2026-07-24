@@ -42,28 +42,36 @@ TEST(LidarImuCalibration, PreservesCanonicalLidarToImuDirection)
 
 TEST(LidarImuCalibration, RejectsInvalidTranslationLength)
 {
-  const std::vector<double> invalid_translation = {0.0, 0.0};
+  const std::vector<double> short_translation(2, 0.0);
+  const std::vector<double> long_translation(4, 0.0);
   const std::vector<double> identity = {
       1.0, 0.0, 0.0,
       0.0, 1.0, 0.0,
       0.0, 0.0, 1.0};
 
   EXPECT_THROW(
-      ParseLidarImuCalibration(invalid_translation, identity, identity),
+      ParseLidarImuCalibration(short_translation, identity, identity),
+      std::invalid_argument);
+  EXPECT_THROW(
+      ParseLidarImuCalibration(long_translation, identity, identity),
       std::invalid_argument);
 }
 
 TEST(LidarImuCalibration, RejectsInvalidRotationLength)
 {
   const std::vector<double> translation = {0.0, 0.0, 0.10};
-  const std::vector<double> invalid_rotation(8, 0.0);
+  const std::vector<double> short_rotation(8, 0.0);
+  const std::vector<double> long_rotation(10, 0.0);
   const std::vector<double> identity = {
       1.0, 0.0, 0.0,
       0.0, 1.0, 0.0,
       0.0, 0.0, 1.0};
 
   EXPECT_THROW(
-      ParseLidarImuCalibration(translation, invalid_rotation, identity),
+      ParseLidarImuCalibration(translation, short_rotation, identity),
+      std::invalid_argument);
+  EXPECT_THROW(
+      ParseLidarImuCalibration(translation, long_rotation, identity),
       std::invalid_argument);
 }
 
@@ -74,9 +82,13 @@ TEST(LidarImuCalibration, RejectsInvalidRpyLength)
       1.0, 0.0, 0.0,
       0.0, 1.0, 0.0,
       0.0, 0.0, 1.0};
-  const std::vector<double> invalid_rpy(10, 0.0);
+  const std::vector<double> short_rpy(8, 0.0);
+  const std::vector<double> long_rpy(10, 0.0);
 
   EXPECT_THROW(
-      ParseLidarImuCalibration(translation, identity, invalid_rpy),
+      ParseLidarImuCalibration(translation, identity, short_rpy),
+      std::invalid_argument);
+  EXPECT_THROW(
+      ParseLidarImuCalibration(translation, identity, long_rpy),
       std::invalid_argument);
 }
