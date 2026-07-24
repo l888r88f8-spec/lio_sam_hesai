@@ -7,6 +7,19 @@
 
 namespace {
 
+const std::array<std::string, 10> kGridPatchYamlLeaves = {
+    "enable",
+    "resolution",
+    "search_radius",
+    "max_slope_deg",
+    "max_height_range",
+    "max_roughness",
+    "max_prediction_margin",
+    "min_inlier_ratio",
+    "min_neighbor_cells",
+    "min_support_quadrants",
+};
+
 std::string readProjectFile(const std::string& relative_path)
 {
     std::ifstream file(std::string(PROJECT_SOURCE_DIR) + "/" + relative_path);
@@ -42,7 +55,7 @@ std::size_t findYamlBlockEnd(const std::string& text,
                              std::size_t block_start,
                              std::size_t indentation)
 {
-    std::size_t line_start = text.find('\n', block_start);
+    std::size_t line_start = text.find('\n', block_start + 1);
     while (line_start != std::string::npos && line_start + 1 < text.size())
     {
         ++line_start;
@@ -59,28 +72,80 @@ std::size_t findYamlBlockEnd(const std::string& text,
     return text.size();
 }
 
-void expectPresentInMappingYaml(const std::string& leaf)
+bool hasNestedGridPatchLeaf(const std::string& text, const std::string& leaf)
 {
-    const std::string text = readProjectFile("config/mapping.yaml");
     const std::size_t ground = text.find("\n    ground_segmentation:");
-    ASSERT_NE(ground, std::string::npos)
-        << "ground_segmentation is missing from config/mapping.yaml";
+    if (ground == std::string::npos)
+        return false;
     const std::size_t ground_end = findYamlBlockEnd(text, ground, 4);
     const std::size_t grid_patch = text.find("\n      grid_patch:", ground);
-    ASSERT_NE(grid_patch, std::string::npos)
-        << "ground_segmentation.grid_patch is missing from config/mapping.yaml";
-    ASSERT_LT(grid_patch, ground_end)
-        << "grid_patch is not nested under ground_segmentation";
+    if (grid_patch == std::string::npos || grid_patch >= ground_end)
+        return false;
     const std::size_t grid_patch_end = findYamlBlockEnd(text, grid_patch, 6);
     const std::size_t yaml_leaf =
         text.find("\n        " + leaf + ":", grid_patch);
-    EXPECT_TRUE(yaml_leaf != std::string::npos &&
-                yaml_leaf < grid_patch_end)
+    return yaml_leaf != std::string::npos && yaml_leaf < grid_patch_end;
+}
+
+void expectPresentInMappingYaml(const std::string& leaf)
+{
+    const std::string text = readProjectFile("config/mapping.yaml");
+    EXPECT_TRUE(hasNestedGridPatchLeaf(text, leaf))
         << "ground_segmentation.grid_patch." << leaf
         << " is missing from config/mapping.yaml";
 }
 
 }  // namespace
+
+TEST(GroundPatchParameterSurface, AcceptsCanonicalNestedYamlFixture)
+{
+    const std::string yaml = R"yaml(
+/**:
+  ros__parameters:
+    ground_segmentation:
+      grid_patch:
+        enable: true
+        resolution: 0.10
+        search_radius: 0.40
+        max_slope_deg: 25.0
+        max_height_range: 0.12
+        max_roughness: 0.05
+        max_prediction_margin: 0.08
+        min_inlier_ratio: 0.70
+        min_neighbor_cells: 6
+        min_support_quadrants: 3
+    loop_closure:
+      enable: true
+)yaml";
+
+    for (const auto& leaf : kGridPatchYamlLeaves)
+        EXPECT_TRUE(hasNestedGridPatchLeaf(yaml, leaf)) << leaf;
+}
+
+TEST(GroundPatchParameterSurface, RejectsGridPatchKeysUnderWrongParent)
+{
+    const std::string yaml = R"yaml(
+/**:
+  ros__parameters:
+    ground_segmentation:
+      leaf_size: 0.10
+    unrelated:
+      grid_patch:
+        enable: true
+        resolution: 0.10
+        search_radius: 0.40
+        max_slope_deg: 25.0
+        max_height_range: 0.12
+        max_roughness: 0.05
+        max_prediction_margin: 0.08
+        min_inlier_ratio: 0.70
+        min_neighbor_cells: 6
+        min_support_quadrants: 3
+)yaml";
+
+    for (const auto& leaf : kGridPatchYamlLeaves)
+        EXPECT_FALSE(hasNestedGridPatchLeaf(yaml, leaf)) << leaf;
+}
 
 TEST(GroundPatchParameterSurface, RemovesDeprecatedPatchParameters)
 {
@@ -117,22 +182,9 @@ TEST(GroundPatchParameterSurface, KeepsGroundGridPatchParameters)
         "ground_segmentation.grid_patch.min_neighbor_cells",
         "ground_segmentation.grid_patch.min_support_quadrants",
     };
-    const std::array<std::string, 10> yaml_leaves = {
-        "enable",
-        "resolution",
-        "search_radius",
-        "max_slope_deg",
-        "max_height_range",
-        "max_roughness",
-        "max_prediction_margin",
-        "min_inlier_ratio",
-        "min_neighbor_cells",
-        "min_support_quadrants",
-    };
-
     for (const auto& name : canonical_names)
         expectPresentInParameterSurface(name);
 
-    for (const auto& leaf : yaml_leaves)
+    for (const auto& leaf : kGridPatchYamlLeaves)
         expectPresentInMappingYaml(leaf);
 }
