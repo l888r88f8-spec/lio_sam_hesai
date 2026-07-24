@@ -363,7 +363,7 @@ public:
         {
             const LidarImuCalibration calibration =
                 ParseLidarImuCalibration(extTransV, extRotV, extRPYV);
-            extTrans = calibration.lidar_to_imu.block<3, 1>(0, 3);
+            extTrans = calibration.mapping_imu_to_lidar_lever_arm;
             extRot = calibration.mapping_imu_to_lidar_rotation;
             extRPY = calibration.mapping_rpy_rotation;
             extQRPY = Eigen::Quaterniond(extRPY);

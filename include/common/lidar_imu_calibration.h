@@ -9,6 +9,12 @@ struct LidarImuCalibration {
   Eigen::Matrix4d lidar_to_imu = Eigen::Matrix4d::Identity();
   Eigen::Matrix3d mapping_imu_to_lidar_rotation =
       Eigen::Matrix3d::Identity();
+  // IMU-to-lidar translation expressed in lidar axes for mapping poses.
+  Eigen::Vector3d mapping_imu_to_lidar_lever_arm =
+      Eigen::Vector3d::Zero();
+  // The inverse mapping pose translation, also expressed in lidar axes.
+  Eigen::Vector3d mapping_lidar_to_imu_lever_arm =
+      Eigen::Vector3d::Zero();
   Eigen::Matrix3d mapping_rpy_rotation = Eigen::Matrix3d::Identity();
 };
 
@@ -41,6 +47,10 @@ inline LidarImuCalibration ParseLidarImuCalibration(
   calibration.lidar_to_imu.block<3, 3>(0, 0) = rotation_matrix;
   calibration.lidar_to_imu.block<3, 1>(0, 3) = translation_vector;
   calibration.mapping_imu_to_lidar_rotation = rotation_matrix.transpose();
+  calibration.mapping_imu_to_lidar_lever_arm =
+      calibration.mapping_imu_to_lidar_rotation * translation_vector;
+  calibration.mapping_lidar_to_imu_lever_arm =
+      -calibration.mapping_imu_to_lidar_lever_arm;
   calibration.mapping_rpy_rotation = rpy_matrix;
   return calibration;
 }

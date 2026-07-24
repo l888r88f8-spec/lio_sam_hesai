@@ -154,6 +154,48 @@ TEST(LidarImuCalibration, PreservesCanonicalLidarToImuDirection)
       Eigen::RowVector4d(0.0, 0.0, 0.0, 1.0)));
 }
 
+TEST(LidarImuCalibration, DerivesMappingLeverArmsInLidarAxes)
+{
+  const std::vector<double> translation = {1.0, 2.0, 3.0};
+  const std::vector<double> rotation = {
+      0.0, -1.0, 0.0,
+      1.0,  0.0, 0.0,
+      0.0,  0.0, 1.0};
+  const std::vector<double> identity = {
+      1.0, 0.0, 0.0,
+      0.0, 1.0, 0.0,
+      0.0, 0.0, 1.0};
+
+  const auto calibration =
+      ParseLidarImuCalibration(translation, rotation, identity);
+
+  EXPECT_TRUE(calibration.mapping_imu_to_lidar_lever_arm.isApprox(
+      Eigen::Vector3d(2.0, -1.0, 3.0)));
+  EXPECT_TRUE(calibration.mapping_lidar_to_imu_lever_arm.isApprox(
+      Eigen::Vector3d(-2.0, 1.0, -3.0)));
+}
+
+TEST(LidarImuCalibration, MappingPreintegrationUsesDerivedLeverArm)
+{
+  const std::string utility =
+      ReadProjectFile("include/lio_sam/utility.hpp");
+  const std::string preintegration =
+      ReadProjectFile("src/imuPreintegration.cpp");
+
+  EXPECT_NE(utility.find(
+      "extTrans = calibration.mapping_imu_to_lidar_lever_arm;"),
+      std::string::npos);
+  EXPECT_NE(preintegration.find(
+      "gtsam::Point3(extTrans.x(), extTrans.y(), extTrans.z())"),
+      std::string::npos);
+  EXPECT_NE(preintegration.find(
+      "gtsam::Pose3 lidar2Imu = imu2Lidar.inverse();"),
+      std::string::npos);
+  EXPECT_EQ(preintegration.find(
+      "gtsam::Point3(-extTrans.x(), -extTrans.y(), -extTrans.z())"),
+      std::string::npos);
+}
+
 TEST(LidarImuCalibration, LaunchStaticTransformsMatchCanonicalCalibration)
 {
   const Eigen::Vector3d mapping_translation = ReadCalibrationTranslation(

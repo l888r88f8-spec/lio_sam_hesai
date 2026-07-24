@@ -236,8 +236,12 @@ public:
 
     int key = 1;
 
-    gtsam::Pose3 imu2Lidar = gtsam::Pose3(gtsam::Rot3(1, 0, 0, 0), gtsam::Point3(-extTrans.x(), -extTrans.y(), -extTrans.z()));
-    gtsam::Pose3 lidar2Imu = gtsam::Pose3(gtsam::Rot3(1, 0, 0, 0), gtsam::Point3(extTrans.x(), extTrans.y(), extTrans.z()));
+    // imuConverter already rotates IMU data into lidar axes, so these poses
+    // apply only the lidar-axis lever arm and intentionally keep identity rotation.
+    gtsam::Pose3 imu2Lidar = gtsam::Pose3(
+        gtsam::Rot3(1, 0, 0, 0),
+        gtsam::Point3(extTrans.x(), extTrans.y(), extTrans.z()));
+    gtsam::Pose3 lidar2Imu = imu2Lidar.inverse();
 
     IMUPreintegration(const rclcpp::NodeOptions & options) :
             ParamServer("lio_sam_imu_preintegration", options)

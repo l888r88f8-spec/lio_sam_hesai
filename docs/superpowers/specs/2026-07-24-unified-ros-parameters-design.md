@@ -138,10 +138,14 @@ lidar frame expressed in the IMU frame). Consumers derive as follows:
   `calibration.rotation` in the top-left 3x3 block and `calibration.translation`
   in the top-right 3x1 block. No inversion.
 - Mapping sets `extRot = calibration.rotation.transpose()` (because it needs
-  `R^{lidar}_{imu}`) and `extTrans` from `calibration.translation`. `extRPY`
-  (`extQRPY`) is derived from `calibration.rpy` unchanged, preserving the
-  existing LIO-SAM behavior where the orientation extrinsic may differ from the
-  acc/gyro rotation extrinsic.
+  `R^{lidar}_{imu}`) and derives the IMU-to-lidar lever arm in lidar axes as
+  `extTrans = R^{lidar}_{imu} * calibration.translation`. The mapping
+  preintegration poses use that lever arm with identity rotation: `imuConverter`
+  has already rotated acceleration, gyroscope, and orientation data into lidar
+  axes, so applying the calibration rotation there would rotate them twice.
+  `extRPY` (`extQRPY`) is derived from `calibration.rpy` unchanged, preserving
+  the existing LIO-SAM behavior where the orientation extrinsic may differ from
+  the acc/gyro rotation extrinsic.
 
 Both YAML files carry identical `calibration.translation`/`rotation`/`rpy`
 values. The canonical translation is `[0.0, 0.0, 0.10]` metres, selected from
