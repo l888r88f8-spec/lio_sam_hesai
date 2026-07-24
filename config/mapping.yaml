@@ -2,133 +2,153 @@
   ros__parameters:
     # ros2 service call /lio_sam/save_map lio_sam_hesai/srv/SaveMap "{resolution: 0.01, ground_resolution: 0.05, destination: /map/hesai_sim}"
     # Sub Topics
-    pointCloudTopic: "/lidar_points"            # "/ls/lslidar_point_cloud"# Point cloud data in
-    imuTopic: "/imu"                            # IMU data in
-    # Pub Topics
-    odomTopic: "odometry/imu"                   # IMU pre-preintegration odometry out
-    gpsTopic: "odometry/gps"                    # GPS odometry topic from navsat out
+    sensor_topic:
+      lidar_topic: "/lidar_points"                       # "/ls/lslidar_point_cloud"# Point cloud data in
+      imu_topic: "/imu"                                  # IMU data in
+      # Pub Topics
+      odom_topic: "odometry/imu"                         # IMU pre-preintegration odometry out
+      gps_topic: "odometry/gps"                          # GPS odometry topic from navsat out
+      non_ground_cloud_topic: "lio_sam/cloud_nonground"
 
     # Frames
-    mapFrame: "map"
-    odometryFrame: "odom"
-    baselinkFrame: "base_link"
-    lidarFrame: "hesai_lidar"
-    
-    # GPS 相关参数
-    useImuHeadingInitialization: false           # 使用 GPS 时，是否用 IMU 航向角辅助初始化
-    useGpsElevation: false                       # 是否使用 GPS 高程；高程噪声大时建议关闭
-    gpsCovThreshold: 2.0                         # 接受 GPS 约束的协方差阈值，单位 m^2
-    poseCovThreshold: 25.0                       # 接受 GPS 位姿约束的协方差阈值，单位 m^2
-
-    # 激光雷达参数
-    sensor: HESAI                             # 雷达类型，可选 velodyne ouster LSLIDAR livox HESAI
-    N_SCAN: 16                                   # 雷达线数
-    Horizon_SCAN: 2000                           # 单圈水平方向点数
-    downsampleRate: 1                            # 输入点云按ring的下采样倍率，1表示不降采样
-    lidarMinRange: 0.5                           # 参与建图的最小量测距离，单位米
-    lidarMaxRange: 60.0                          # 参与建图的最大量测距离，单位米
-
-    # IMU参数
-    imuType: 1                                   # IMU类型，0为六轴，1为九轴
-    imuAccNoise: 8.0e-04                         # 加速度测量噪声
-    imuGyrNoise: 1.0e-04                         # 角速度测量噪声
-    imuAccBiasN: 2.0e-3                          # 加速度零偏随机游走噪声
-    imuGyrBiasN: 2.5e-5                          # 角速度零偏随机游走噪声
-    imuGravity: 9.805                            # 重力加速度大小
-    imuRPYWeight: 0.2                            # IMU姿态先验在优化中的权重
-
-    extrinsicTrans: [ 0.0, 0.0, 0.10 ]          # 雷达到IMU的平移外参[x, y, z]，需与base_link静态TF一致
-    extrinsicRot: [ 1.0,  0.0,  0.0,
-                    0.0,  1.0,  0.0,
-                    0.0,  0.0,  1.0 ]            # 雷达到IMU的旋转外参矩阵
-    extrinsicRPY: [ 1.0,  0.0,  0.0,
-                    0.0,  1.0,  0.0,
-                    0.0,  0.0,  1.0 ]            # 用于姿态初始化的RPY外参矩阵
-
-    mappingMode: true                            # true为建图模式，false为定位模式
-
-    # CTRL+C地图与点云导出
-    savePCD: false                               # 程序退出时是否自动保存全局地图点云
-    generateScDb: true                           # 保存地图时生成 Scan Context 重定位数据库
-    savePCDDirectory: "/Downloads/LOAM_hesai/"   # 全局地图导出目录，相对HOME，程序会删除后重建该目录
-    savePCDResolution: 0.1                       # 自动导出全局地图时的下采样分辨率，0表示不额外下采样
-    saveGroundPCDResolution: 0.05                # 自动导出全局地面地图时的下采样分辨率，0表示不额外下采样
-
-    # 地面分割与地面导出
-    nonGroundCloudTopic: "lio_sam/cloud_nonground"
-    segmentation_only_mode: false                # 是否只分割地面
-    saveGroundPCD: true                          # 是否保存全局地面点云，保存路径与全局地图一致
-    groundLeafSize: 0.02                         # 原始点云下采样体素尺寸，越大发布越稀疏
-    groundScanStartIndex: 10                      # 参与地面种子的起始 ring 编号
-    groundScanEndIndex: 15                        # 参与地面种子的结束 ring 编号，设为-1时表示使用全部 ring
-    groundAngleThreshold: 10.0                   # 相邻ring竖直夹角阈值，小于该值的点对可作为地面种子，单位度
-
-    groundGridPatchEnable: true                   # 是否启用局部高程栅格补点
-    groundGridPatchResolution: 0.10              # 高程栅格补点分辨率，单位米
-    groundGridPatchSearchRadius: 0.40            # 空栅格局部平面搜索半径，单位米
-    groundGridPatchMaxSlopeDeg: 25.0             # 允许补点的最大局部坡度，单位度
-    groundGridPatchMaxHeightRange: 0.12          # 单个栅格内允许的最大高度跨度，过大视为粗糙/非连续地面
-    groundGridPatchMaxRoughness: 0.05            # 单个栅格内允许的最大Z粗糙度，单位米
-    groundGridPatchMaxPredictionMargin: 0.08     # 补点预测高度允许超出邻域地面高度范围的余量，单位米
-    groundGridPatchMinInlierRatio: 0.70          # 局部平面拟合内点比例下限
-    groundGridPatchMinNeighborCells: 6           # 候选空格周围最少有效地面栅格数
-    groundGridPatchMinSupportQuadrants: 3        # 候选空格周围最少支撑象限数，用于避免开放边界外扩
-
-    groundPlaneDistance: 0.12                    # 当前帧 局部地面平面拟合的点到平面距离阈值，单位米
-    groundPlaneMaxAngle: 30.0                    # 当前帧 局部地面法向相对竖直方向允许的最大倾角，单位度
-    groundPlaneMinPoints: 80                     # 当前帧 局部地面平面拟合所需的最少种子点数
-
-    groundFlattenZ: false                       # 保存或发布地面点云前是否将高度压平到固定Z；坡道路面需保留真实Z
-    groundFlattenValue: 0.1                      # 启用groundFlattenZ后使用的固定高度值
-    alignSavedMapGroundToZero: false              # 保存地图PCD时整体平移Z，使地面接近map.z=0
-    savedMapGroundZOffset: 0.68                  # 保存地图PCD时叠加的Z偏移，约等于雷达离地高度
-
-    # LOAM特征提取阈值
-    edgeThreshold: 1.0                           # 边缘特征曲率阈值
-    surfThreshold: 0.1                           # 平面特征曲率阈值
-    edgeFeatureMinValidNum: 10                   # 每帧最少有效边缘特征数
-    surfFeatureMinValidNum: 100                  # 每帧最少有效平面特征数
-
-    # 体素滤波参数
-    odometrySurfLeafSize: 0.1                    # 里程计阶段平面特征体素尺寸
-    mappingCornerLeafSize: 0.05                  # 建图阶段边缘特征体素尺寸
-    mappingSurfLeafSize: 0.05                    # 建图阶段平面特征体素尺寸
-
-    # 局部几何一致性滤波
-    dynamicKeyframeFilterEnable: false           # 是否启用局部几何一致性滤波
-    dynamicSurfKnnMaxDist: 1.5                   # 局部地图5NN搜索距离阈值，单位米
-    dynamicSurfPlaneMaxDist: 0.15                # 当前点到局部平面距离阈值，单位米
-
-    # 全局静态地图持久性滤波
-    globalStaticMapFilterEnable: false           # 是否启用多关键帧体素持久性滤波
-    globalStaticVoxelSize: 0.4                   # 持久性滤波体素尺寸，单位米
-    globalStaticMinKF: 3                         # 体素至少被多少个关键帧观测后才保留
-    globalStaticFilterCorners: false             # 是否对边缘点也应用静态持久性滤波
-
-    # 机器人运动约束
-    z_tollerance: 1000.0                         # Z方向允许的最大位移约束，单位米
-    rotation_tollerance: 1000.0                  # 旋转允许的最大变化约束，单位弧度
+    frames:
+      map: "map"
+      odometry: "odom"
+      base_link: "base_link"
+      lidar: "hesai_lidar"
 
     # 计算资源与建图频率
-    numberOfCores: 8                             # 建图优化可使用的CPU核数
-    mappingProcessInterval: 0.01                 # 建图主流程最小处理周期，单位秒
+    system:
+      mapping_mode: true                                 # true为建图模式，false为定位模式
+      number_of_cores: 8                                 # 建图优化可使用的CPU核数
+      mapping_process_interval: 0.01                     # 建图主流程最小处理周期，单位秒
+
+    # GPS 相关参数
+    gps:
+      use_imu_heading_initialization: false              # 使用 GPS 时，是否用 IMU 航向角辅助初始化
+      use_elevation: false                               # 是否使用 GPS 高程；高程噪声大时建议关闭
+      covariance_threshold: 2.0                          # 接受 GPS 约束的协方差阈值，单位 m^2
+      pose_covariance_threshold: 25.0                    # 接受 GPS 位姿约束的协方差阈值，单位 m^2
+
+    # 激光雷达参数
+    lidar:
+      sensor_type: HESAI                                 # 雷达类型，可选 velodyne ouster LSLIDAR livox HESAI
+      scan_lines: 16                                     # 雷达线数
+      horizon_scan: 2000                                 # 单圈水平方向点数
+      downsample_rate: 1                                 # 输入点云按ring的下采样倍率，1表示不降采样
+      min_range: 0.5                                     # 参与建图的最小量测距离，单位米
+      max_range: 60.0                                    # 参与建图的最大量测距离，单位米
+
+    # IMU参数
+    imu:
+      type: 1                                            # IMU类型，0为六轴，1为九轴
+      acc_noise_std: 8.0e-04                             # 加速度测量噪声
+      gyro_noise_std: 1.0e-04                            # 角速度测量噪声
+      acc_bias_rw_noise_std: 2.0e-3                      # 加速度零偏随机游走噪声
+      gyro_bias_rw_noise_std: 2.5e-5                     # 角速度零偏随机游走噪声
+      gravity: 9.805                                     # 重力加速度大小
+      rpy_weight: 0.2                                    # IMU姿态先验在优化中的权重
+
+    calibration:
+      translation: [ 0.0, 0.0, 0.10 ]                   # 雷达到IMU的平移外参[x, y, z]，需与base_link静态TF一致
+      rotation: [ 1.0,  0.0,  0.0,
+                  0.0,  1.0,  0.0,
+                  0.0,  0.0,  1.0 ]                     # 雷达到IMU的旋转外参矩阵
+      rpy: [ 1.0,  0.0,  0.0,
+             0.0,  1.0,  0.0,
+             0.0,  0.0,  1.0 ]                          # 用于姿态初始化的RPY外参矩阵
+
+    # CTRL+C地图与点云导出
+    map_save:
+      enabled: false                                     # 程序退出时是否自动保存全局地图点云
+      generate_scan_context_db: true                     # 保存地图时生成 Scan Context 重定位数据库
+      directory: "/Downloads/LOAM_hesai/"                # 全局地图导出目录，相对HOME，程序会删除后重建该目录
+      resolution: 0.1                                    # 自动导出全局地图时的下采样分辨率，0表示不额外下采样
+      ground_resolution: 0.05                            # 自动导出全局地面地图时的下采样分辨率，0表示不额外下采样
+      save_ground_map: true                              # 是否保存全局地面点云，保存路径与全局地图一致
+      ground_directory: "/Downloads/LOAM_ground/"
+      ground_global_directory: "/Downloads/LOAM_ground_global/"
+      ground_final_use_odometry: true
+      ground_global_leaf_size: 0.2
+      align_ground_to_zero: false                        # 保存地图PCD时整体平移Z，使地面接近map.z=0
+      ground_z_offset: 0.68                              # 保存地图PCD时叠加的Z偏移，约等于雷达离地高度
+
+    # 地面分割与地面导出
+    ground_segmentation:
+      only_mode: false                                   # 是否只分割地面
+      leaf_size: 0.02                                    # 原始点云下采样体素尺寸，越大发布越稀疏
+      scan_start_index: 10                               # 参与地面种子的起始 ring 编号
+      scan_end_index: 15                                 # 参与地面种子的结束 ring 编号，设为-1时表示使用全部 ring
+      angle_threshold_deg: 10.0                          # 相邻ring竖直夹角阈值，小于该值的点对可作为地面种子，单位度
+
+      grid_patch:
+        enable: true                                     # 是否启用局部高程栅格补点
+        resolution: 0.10                                 # 高程栅格补点分辨率，单位米
+        search_radius: 0.40                              # 空栅格局部平面搜索半径，单位米
+        max_slope_deg: 25.0                              # 允许补点的最大局部坡度，单位度
+        max_height_range: 0.12                           # 单个栅格内允许的最大高度跨度，过大视为粗糙/非连续地面
+        max_roughness: 0.05                              # 单个栅格内允许的最大Z粗糙度，单位米
+        max_prediction_margin: 0.08                      # 补点预测高度允许超出邻域地面高度范围的余量，单位米
+        min_inlier_ratio: 0.70                           # 局部平面拟合内点比例下限
+        min_neighbor_cells: 6                            # 候选空格周围最少有效地面栅格数
+        min_support_quadrants: 3                         # 候选空格周围最少支撑象限数，用于避免开放边界外扩
+
+      plane_distance: 0.12                               # 当前帧 局部地面平面拟合的点到平面距离阈值，单位米
+      plane_max_angle_deg: 30.0                          # 当前帧 局部地面法向相对竖直方向允许的最大倾角，单位度
+      plane_min_points: 80                               # 当前帧 局部地面平面拟合所需的最少种子点数
+      flatten_z: false                                   # 保存或发布地面点云前是否将高度压平到固定Z；坡道路面需保留真实Z
+      flatten_value: 0.1                                 # 启用groundFlattenZ后使用的固定高度值
+
+    # LOAM特征提取阈值
+    feature_extraction:
+      edge_threshold: 1.0                                # 边缘特征曲率阈值
+      surface_threshold: 0.1                             # 平面特征曲率阈值
+      min_edge_features: 10                              # 每帧最少有效边缘特征数
+      min_surface_features: 100                          # 每帧最少有效平面特征数
+
+    # 体素滤波参数
+    voxel_filter:
+      odometry_surface_leaf_size: 0.1                    # 里程计阶段平面特征体素尺寸
+      mapping_corner_leaf_size: 0.05                     # 建图阶段边缘特征体素尺寸
+      mapping_surface_leaf_size: 0.05                    # 建图阶段平面特征体素尺寸
+
+    # 局部几何一致性滤波
+    dynamic_filter:
+      enable: false                                      # 是否启用局部几何一致性滤波
+      surface_knn_max_distance: 1.5                      # 局部地图5NN搜索距离阈值，单位米
+      surface_plane_max_distance: 0.15                   # 当前点到局部平面距离阈值，单位米
+
+    # 全局静态地图持久性滤波
+    static_map_filter:
+      enable: false                                      # 是否启用多关键帧体素持久性滤波
+      voxel_size: 0.4                                    # 持久性滤波体素尺寸，单位米
+      min_keyframes: 3                                   # 体素至少被多少个关键帧观测后才保留
+      filter_corners: false                              # 是否对边缘点也应用静态持久性滤波
+
+    # 机器人运动约束
+    motion_constraint:
+      z_tolerance: 1000.0                                # Z方向允许的最大位移约束，单位米
+      rotation_tolerance: 1000.0                         # 旋转允许的最大变化约束，单位弧度
 
     # 局部子地图构建
-    surroundingkeyframeAddingDistThreshold: 1.0  # 新增关键帧的平移阈值，单位米
-    surroundingkeyframeAddingAngleThreshold: 0.2 # 新增关键帧的旋转阈值，单位弧度
-    surroundingKeyframeDensity: 0.2              # 周围关键帧位姿下采样间隔，单位米
-    surroundingKeyframeSearchRadius: 20.0        # 扫描到地图优化时局部子地图搜索半径，单位米
+    local_map:
+      keyframe_distance_threshold: 1.0                   # 新增关键帧的平移阈值，单位米
+      keyframe_angle_threshold: 0.2                      # 新增关键帧的旋转阈值，单位弧度
+      keyframe_density: 0.2                              # 周围关键帧位姿下采样间隔，单位米
+      search_radius: 20.0                                # 扫描到地图优化时局部子地图搜索半径，单位米
 
     # 回环检测参数
-    loopClosureEnableFlag: true                  # 是否启用回环检测与回环约束
-    loopClosureFrequency: 1.0                    # 回环检测频率，单位Hz
-    surroundingKeyframeSize: 25                  # 回环局部子地图包含的邻近关键帧数量
-    historyKeyframeSearchRadius: 15.0            # 历史关键帧搜索半径，单位米
-    historyKeyframeSearchTimeDiff: 30.0          # 参与回环候选的最小时间间隔，单位秒
-    historyKeyframeSearchNum: 25                 # 构建回环历史子地图时融合的关键帧数量
-    historyKeyframeFitnessScore: 0.25             # ICP回环匹配得分阈值，越小要求越严格
+    loop_closure:
+      enable: true                                       # 是否启用回环检测与回环约束
+      frequency: 1.0                                     # 回环检测频率，单位Hz
+      surrounding_keyframe_size: 25                      # 回环局部子地图包含的邻近关键帧数量
+      history_search_radius: 15.0                        # 历史关键帧搜索半径，单位米
+      history_search_time_difference: 30.0               # 参与回环候选的最小时间间隔，单位秒
+      history_search_count: 25                           # 构建回环历史子地图时融合的关键帧数量
+      fitness_threshold: 0.25                            # ICP回环匹配得分阈值，越小要求越严格
 
     # 全局地图可视化
-    globalMapVisualizationSearchRadius: 2000.0   # RViz全局地图显示半径，单位米
-    globalMapVisualizationPoseDensity: 1.5       # 可视化时关键帧位姿下采样间隔，单位米
-    globalMapVisualizationLeafSize: 0.3          # 可视化全局点云下采样体素尺寸，单位米
+    visualization:
+      global_map_search_radius: 2000.0                   # RViz全局地图显示半径，单位米
+      global_map_pose_density: 1.5                       # 可视化时关键帧位姿下采样间隔，单位米
+      global_map_leaf_size: 0.3                          # 可视化全局点云下采样体素尺寸，单位米

@@ -1,93 +1,122 @@
 /**:
   ros__parameters:
-    mappingMode: false                                      # false=重定位
+    system:
+      mapping_mode: false                                      # false=重定位
 
     sensor_topic:
-      lidar_topic: "/lidar_points"                         # 原始点云
-      imu_topic: "/imu"                                    # IMU数据
+      lidar_topic: "/lidar_points"                             # 原始点云
+      imu_topic: "/imu"                                        # IMU数据
+      non_ground_cloud_topic: "lio_sam/cloud_nonground"        # 非地面点云话题
 
     frames:
-      map: "map"                                           # 全局地图
-      base_link: "base_link"                               # 车体坐标
-      imu: "imu_link"                                      # IMU坐标
-      lidar: "hesai_lidar"                                 # 雷达坐标
+      map: "map"                                               # 全局地图
+      base_link: "base_link"                                   # 车体坐标
+      imu: "imu_link"                                          # IMU坐标
+      lidar: "hesai_lidar"                                     # 雷达坐标
 
     output:
-      mapping_odom_topic: "lio_sam/localization/odometry"  # 全局定位里程计
+      mapping_odom_topic: "lio_sam/localization/odometry"      # 全局定位里程计
 
     localization:
-      map_path: "/home/robot/map/hesai_sim2/GlobalMap.pcd"  # 全局地图
-      enable_ground_height_constraint: true                        # 约束base高度
-      base_link_ground_height: 0.275                               # base离地/m
-      ground_search_radius: 5.0                                    # 地面搜索半径/m
-      ground_z_percentile: 0.20                                    # 地面z分位
-      ground_min_points: 20                                        # 最少地图点
-      auto_relocalization: true                                    # 无需 RViz 初始位姿的自动重定位
-      sc_db_path: ""                                               # 空值表示与 GlobalMap.pcd 同目录
-      sc_top_n: 8                                                  # Scan Context 检索候选数
-      sc_fitness_thres: 1.0                                        # 精配准 fitness 阈值
-      sc_consistency_frames: 3                                     # 连续一致帧数
-      sc_consistency_trans_thres: 0.5                              # 一致性平移阈值/m
-      sc_consistency_yaw_thres: 0.1                                # 一致性航向阈值/rad
-      sc_ringkey_max_dist: 5.0                                     # ring-key 粗筛门限(越大越宽松),精配准兜底
-      sc_accept_fitness: 0.3                                       # 单帧fitness低于此值直接接受,跳过多帧一致性
-      ground_map_path: ""                                          # 空=与map_path同目录/GroundMap.pcd;地面高度约束专用
+      map_path: "/home/robot/map/hesai_sim2/GlobalMap.pcd"      # 全局地图
+      auto_relocalization: true                                # 无需 RViz 初始位姿的自动重定位
+      sc_db_path: ""                                           # 空值表示与 GlobalMap.pcd 同目录
+      sc_top_n: 6                                              # Scan Context 检索候选数
+      sc_fitness_thres: 1.0                                    # 精配准 fitness 阈值
+      sc_consistency_frames: 3                                 # 连续一致帧数
+      sc_consistency_trans_thres: 0.5                          # 一致性平移阈值/m
+      sc_consistency_yaw_thres: 0.1                            # 一致性航向阈值/rad
+      sc_ringkey_max_dist: 5.0                                 # ring-key 粗筛门限(越大越宽松),精配准兜底
+      sc_accept_fitness: 0.3                                   # 单帧fitness低于此值直接接受,跳过多帧一致性
+      enable_ground_height_constraint: true                    # 约束base高度
+      base_link_ground_height: 0.275                           # base离地/m
+      ground_search_radius: 5.0                                # 地面搜索半径/m
+      ground_z_percentile: 0.20                                # 地面z分位
+      ground_min_points: 20                                    # 最少地图点
+      ground_map_path: ""                                      # 空=与map_path同目录 地面高度约束
 
     lidar:
-      lidar_sensor_type: Hesai                            # 雷达型号
-      lidar_point_jump_span: 1                            # 点跳步长
-      lidar_point_time_scale: 1.0                         # 点time缩放
-      lidar_use_min_distance: 0.5                         # 最小距离/m
-      lidar_use_max_distance: 60.0                        # 最大距离/m
-      lidar_rotation_noise_std: 0.01                      # 旋转噪声
-      lidar_position_noise_std: 0.02                      # 平移噪声
-      lidar_scan: 16                                      # 线数
-      lidar_lower_angle: 15.0                             # 下边界角/deg
-      lidar_horizon_scan: 1000                            # 水平点数
-      lidar_vertical_resolution: 2.0                      # 垂直分辨率/deg
+      sensor_type: Hesai                                       # 雷达型号
+      point_jump_span: 1                                       # 点跳步长
+      point_time_scale: 1.0                                    # 点time缩放
+      min_range: 0.5                                           # 最小距离/m
+      max_range: 60.0                                          # 最大距离/m
+      rotation_noise_std: 0.01                                 # 旋转噪声
+      position_noise_std: 0.02                                 # 平移噪声
+      scan_lines: 16                                           # 线数
+      lower_angle_deg: 15.0                                    # 下边界角/deg
+      horizon_scan: 1000                                       # 水平点数
+      vertical_resolution_deg: 2.0                             # 垂直分辨率/deg
 
     imu:
-      init_acc_bias: 0.0                                  # 加计初始零偏
-      init_gyro_bias: 0.0                                 # 陀螺初始零偏
-      acc_noise_std: 0.1                                  # 加计噪声
-      gyro_noise_std: 0.01                                # 陀螺噪声
-      acc_rw_noise_std: 1.0e-5                            # 加计随机游走
-      gyro_rw_noise_std: 1.0e-5                           # 陀螺随机游走
-      has_orientation: true                               # 使用IMU姿态
-      data_searcher_buffer_size: 5000                     # IMU缓存长度
-
-    gravity: 9.805                                        # 重力/m/s^2
+      init_acc_bias: 0.0                                       # 加计初始零偏
+      init_gyro_bias: 0.0                                      # 陀螺初始零偏
+      acc_noise_std: 0.1                                       # 加计噪声
+      gyro_noise_std: 0.01                                     # 陀螺噪声
+      acc_bias_rw_noise_std: 1.0e-5                            # 加计随机游走
+      gyro_bias_rw_noise_std: 1.0e-5                           # 陀螺随机游走
+      gravity: 9.805                                           # 重力/m/s^2
+      has_orientation: true                                    # 使用IMU姿态
+      data_searcher_buffer_size: 5000                          # IMU缓存长度
 
     calibration:
-      lidar_to_imu:                                      # T_lidar_to_imu
-        [
-          1.0, 0.0, 0.0, 0.0,
-          0.0, 1.0, 0.0, 0.0,
-          0.0, 0.0, 1.0, 0.0,
-          0.0, 0.0, 0.0, 1.0,
-        ]
+      translation: [ 0.0, 0.0, 0.10 ]                         # T_lidar_to_imu
+      rotation: [ 1.0, 0.0, 0.0,
+                  0.0, 1.0, 0.0,
+                  0.0, 0.0, 1.0 ]
+      rpy: [ 1.0, 0.0, 0.0,
+             0.0, 1.0, 0.0,
+             0.0, 0.0, 1.0 ]
 
     frontend:
-      fusion_opti_iters: 30                              # 融合优化次数
-      fusion_method: TightCouplingOptimization           # 融合方式
+      fusion_opti_iters: 30                                    # 融合优化次数
+      fusion_method: TightCouplingOptimization                 # 融合方式
 
-      registration_and_searcher_mode: PointToPlane_IVOX  # 匹配方式
+      registration_and_searcher_mode: PointToPlane_IVOX        # 匹配方式
       feature:
-        planar_voxel_filter_size: 0.25                   # 平面体素/m
+        planar_voxel_filter_size: 0.25                         # 平面体素/m
       registration:
-        optimization_iter_num: 10                        # 匹配迭代次数
-        point_to_planar_thres: 0.1                       # 点面阈值/m
-        position_converge_thres: 0.01                    # 平移收敛阈值
-        rotation_converge_thres: 0.01                    # 旋转收敛阈值
+        optimization_iter_num: 10                              # 匹配迭代次数
+        point_to_planar_thres: 0.1                             # 点面阈值/m
+        position_converge_thres: 0.01                          # 平移收敛阈值
+        rotation_converge_thres: 0.01                          # 旋转收敛阈值
 
-    segmentation_only_mode: true                         # 仅分割模式
-    nonGroundCloudTopic: "lio_sam/cloud_nonground"       # 非地面点云话题
+    ground_segmentation:
+      only_mode: true                                          # 仅分割模式
+      leaf_size: 0.1                                           # 地面体素/m
+      scan_start_index: 0                                      # 起始ring
+      scan_end_index: 15                                       # 结束ring
+      angle_threshold_deg: 15.0                                # 地面角度阈值/deg
+      plane_distance: 0.15                                     # 平面距离阈值/m
+      plane_max_angle_deg: 30.0                                # 法向角阈值/deg
+      plane_min_points: 80                                     # 最少地面点
+      flatten_z: false                                         # 压平地面
+      flatten_value: 0.0
 
-    groundLeafSize: 0.1                                  # 地面体素/m
-    groundScanStartIndex: 0                              # 起始ring
-    groundScanEndIndex: 15                               # 结束ring
-    groundAngleThreshold: 15.0                           # 地面角度阈值/deg
-    groundPlaneDistance: 0.15                            # 平面距离阈值/m
-    groundPlaneMaxAngle: 30.0                            # 法向角阈值/deg
-    groundPlaneMinPoints: 80                             # 最少地面点
-    groundFlattenZ: false                                # 压平地面
+      # 保留重定位此前默认关闭的局部高程栅格补点行为
+      grid_patch:
+        enable: false
+        resolution: 0.10
+        search_radius: 0.40
+        max_slope_deg: 25.0
+        max_height_range: 0.12
+        max_roughness: 0.05
+        max_prediction_margin: 0.08
+        min_inlier_ratio: 0.70
+        min_neighbor_cells: 6
+        min_support_quadrants: 3
+
+    # 重定位默认关闭回环；其余值仅在启用时生效
+    loop_closure:
+      enable: false
+      registration_converge_threshold: 1.5
+      skip_near_loopclosure_threshold: 100
+      skip_near_keyframe_threshold: 100
+      candidate_local_map_left_range: 20
+      candidate_local_map_right_range: 20
+      loopclosure_local_map_left_range: 20
+      near_neighbor_distance_threshold: 10.0
+
+    visualization:
+      enable_global_map: false
+      global_map_resolution: 0.7
