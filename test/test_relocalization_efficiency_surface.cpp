@@ -62,3 +62,10 @@ TEST(RelocalizationEfficiencySurface, ExposesDedicatedGroundMap) {
   ExpectToken("include/slam/localization.h", "ground_map_xy_cloud_ptr_");
   ExpectToken("include/slam/localization.h", "ground_map_xy_kdtree_");
 }
+
+TEST(RelocalizationEfficiencySurface, CandidateLocalMapUsesFiftyMeterExtent) {
+  ExpectToken("src/slam/localization.cpp",
+              "constexpr double kLocalMapHalfExtent = 50.0;");
+  ExpectNoToken("src/slam/localization.cpp",
+                "constexpr double kLocalMapHalfExtent = 100.0;");
+}

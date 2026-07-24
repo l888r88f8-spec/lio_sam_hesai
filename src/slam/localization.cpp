@@ -955,7 +955,7 @@ PCLPointCloudXYZI::Ptr Localization::LoadCandidateLocalMap(
     return nullptr;
   }
 
-  constexpr double kLocalMapHalfExtent = 100.0;
+  constexpr double kLocalMapHalfExtent = 50.0;
   const Vec3d position = pose.block<3, 1>(0, 3);
   PCLPointXYZI query_point;
   query_point.x = static_cast<float>(position.x());
