@@ -69,3 +69,39 @@ TEST(RelocalizationEfficiencySurface, CandidateLocalMapUsesFiftyMeterExtent) {
   ExpectNoToken("src/slam/localization.cpp",
                 "constexpr double kLocalMapHalfExtent = 100.0;");
 }
+
+TEST(RelocalizationEfficiencySurface,
+     EvaluatesCandidatesSeriallyWithEarlyExit) {
+  const std::string localization =
+      ReadProjectFile("src/slam/localization.cpp");
+  EXPECT_EQ(localization.find("RunBoundedAsync("), std::string::npos);
+
+  const std::size_t ordered_loop = localization.find(
+      "for (std::size_t candidate_index = 0;");
+  ASSERT_NE(ordered_loop, std::string::npos);
+
+  const std::size_t isolated_preparation = localization.find(
+      "try {\n      Timer preparation_timer;", ordered_loop);
+  const std::size_t lazy_local_map =
+      localization.find("LoadCandidateLocalMap(", isolated_preparation);
+  const std::size_t serial_match =
+      localization.find("matcher->Match(", lazy_local_map);
+  const std::size_t early_accept = localization.find(
+      "ShouldEarlyAcceptRelocalization(", serial_match);
+  const std::size_t fitness_stop = localization.find(
+      "stop_reason = \"fitness\";", early_accept);
+  const std::size_t isolated_catch =
+      localization.find("} catch (const std::exception& error)", fitness_stop);
+  const std::size_t candidate_summary = localization.find(
+      "LOG(INFO) << \"Auto relocalization prepared \"", isolated_catch);
+
+  ASSERT_NE(isolated_preparation, std::string::npos);
+  ASSERT_NE(lazy_local_map, std::string::npos);
+  ASSERT_NE(serial_match, std::string::npos);
+  ASSERT_NE(early_accept, std::string::npos);
+  ASSERT_NE(fitness_stop, std::string::npos);
+  ASSERT_NE(isolated_catch, std::string::npos);
+  EXPECT_NE(candidate_summary, std::string::npos);
+  EXPECT_NE(localization.find("candidate_index + 1U", ordered_loop),
+            std::string::npos);
+}

@@ -48,8 +48,8 @@ private:
 
     void InitMatcher();
 
-    // Builds a fresh matcher without modifying matcher_. Parallel candidate
-    // evaluation requires one independent matcher per task.
+    // Builds a fresh matcher without modifying matcher_. Automatic
+    // relocalization uses a fresh instance for each ordered candidate.
     [[nodiscard]] std::shared_ptr<RegistrationInterface> CreateMatcher() const;
 
     void SetLidarPoseInformation();

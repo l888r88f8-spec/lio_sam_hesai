@@ -15,7 +15,6 @@
 
 #include <g2o/core/sparse_optimizer.h>
 
-#include "common/bounded_async.h"
 #include "optimization/g2o/accel_bias_rw_edge.h"
 #include "optimization/g2o/gyro_bias_rw_edge.h"
 #include "optimization/g2o/g2o_optimizer_header.h"
@@ -708,110 +707,130 @@ std::optional<Mat4d> Localization::TryAutoRelocalize(
     }
   }
 
-  struct CandidateTask {
-    Mat4d init_match_pose = Mat4d::Identity();
-    PCLPointCloudXYZI::Ptr local_map;
-  };
+  const double accept_fitness = std::max(
+      0.0, ConfigParameters::Instance().localization_sc_accept_fitness_);
+  const PointcloudClusterPtr source_cloud = curr_cloud_cluster_ptr_;
+  std::optional<Mat4d> best_pose;
+  float best_fitness = std::numeric_limits<float>::infinity();
+  double total_preparation_ms = 0.0;
+  double total_registration_ms = 0.0;
+  std::size_t prepared_count = 0U;
+  std::size_t evaluated_count = 0U;
+  const char* stop_reason = "exhausted";
 
-  Timer preparation_timer;
-  std::vector<CandidateTask> tasks;
-  tasks.reserve(candidates.size());
-  for (const auto& candidate : candidates) {
-    const double lidar_yaw =
-        std::atan2(candidate.pose(1, 0), candidate.pose(0, 0)) +
-        candidate.yaw_shift;
-    const Mat3d nominal_map_lidar_rotation =
-        Eigen::AngleAxisd(lidar_yaw, Vec3d::UnitZ()).toRotationMatrix();
-    const Mat3d nominal_map_imu_rotation =
-        nominal_map_lidar_rotation * imu_to_lidar_rotation;
-    const double imu_yaw = std::atan2(
-        nominal_map_imu_rotation(1, 0), nominal_map_imu_rotation(0, 0));
-    const Mat3d map_imu_rotation =
-        (Eigen::AngleAxisd(imu_yaw, Vec3d::UnitZ()) *
-         Eigen::AngleAxisd(pitch, Vec3d::UnitY()) *
-         Eigen::AngleAxisd(roll, Vec3d::UnitX()))
-            .toRotationMatrix();
-
-    Mat4d candidate_lidar_pose = candidate.pose;
-    candidate_lidar_pose.block<3, 3>(0, 0) =
-        map_imu_rotation * lidar_to_imu_rotation;
-
-    if (ConfigParameters::Instance().localization_enable_ground_height_constraint_) {
-      if (const auto ground_z = EstimateMapGroundZ(candidate_lidar_pose);
-          ground_z.has_value()) {
-        // System's cached transform maps base_link coordinates into the
-        // lidar frame, so map->base is map->lidar * base->lidar.
-        const Vec3d base_to_lidar_translation =
-            base_to_lidar.value().block<3, 1>(0, 3);
-        candidate_lidar_pose(2, 3) =
-            ground_z.value() + ConfigParameters::Instance()
-                                   .localization_base_link_ground_height_ -
-            (candidate_lidar_pose.block<3, 3>(0, 0) *
-             base_to_lidar_translation)
-                .z();
+  for (std::size_t candidate_index = 0;
+       candidate_index < candidates.size(); ++candidate_index) {
+    if (candidate_index > 0U) {
+      std::lock_guard<std::mutex> lg(mutex_init_pose_optional_);
+      if (init_pose_optional_.has_value()) {
+        LOG(INFO) << "Stop automatic relocalization candidate evaluation "
+                     "because a manual initial pose is pending.";
+        stop_reason = "manual_pose";
+        break;
       }
     }
 
-    auto local_map = LoadCandidateLocalMap(candidate_lidar_pose);
-    if (!local_map || local_map->empty()) {
-      continue;
-    }
+    const auto& candidate = candidates[candidate_index];
+    const char* stage = "preparation";
+    try {
+      Timer preparation_timer;
+      const double lidar_yaw =
+          std::atan2(candidate.pose(1, 0), candidate.pose(0, 0)) +
+          candidate.yaw_shift;
+      const Mat3d nominal_map_lidar_rotation =
+          Eigen::AngleAxisd(lidar_yaw, Vec3d::UnitZ()).toRotationMatrix();
+      const Mat3d nominal_map_imu_rotation =
+          nominal_map_lidar_rotation * imu_to_lidar_rotation;
+      const double imu_yaw = std::atan2(
+          nominal_map_imu_rotation(1, 0), nominal_map_imu_rotation(0, 0));
+      const Mat3d map_imu_rotation =
+          (Eigen::AngleAxisd(imu_yaw, Vec3d::UnitZ()) *
+           Eigen::AngleAxisd(pitch, Vec3d::UnitY()) *
+           Eigen::AngleAxisd(roll, Vec3d::UnitX()))
+              .toRotationMatrix();
 
-    CandidateTask task;
-    task.init_match_pose = candidate_lidar_pose * imu_to_lidar;
-    task.local_map = std::move(local_map);
-    tasks.push_back(std::move(task));
-  }
-  const double preparation_ms = preparation_timer.End();
+      Mat4d candidate_lidar_pose = candidate.pose;
+      candidate_lidar_pose.block<3, 3>(0, 0) =
+          map_imu_rotation * lidar_to_imu_rotation;
 
-  struct MatchResult {
-    bool ok = false;
-    Mat4d pose = Mat4d::Identity();
-    float fitness = std::numeric_limits<float>::infinity();
-  };
-
-  const std::size_t worker_count =
-      AutomaticAsyncWorkerCount(tasks.size());
-  const PointcloudClusterPtr source_cloud = curr_cloud_cluster_ptr_;
-  Timer registration_timer;
-  const auto results = RunBoundedAsync(
-      tasks.size(), worker_count, [&](std::size_t index) {
-        MatchResult result;
-        try {
-          auto matcher = CreateMatcher();
-          matcher->AddCloudToLocalMap({*tasks[index].local_map});
-          Mat4d match_pose = tasks[index].init_match_pose;
-          if (!matcher->Match(source_cloud, match_pose)) {
-            return result;
-          }
-          result.fitness = matcher->GetFitnessScore(2.0F);
-          result.pose = match_pose;
-          result.ok = true;
-        } catch (const std::exception& error) {
-          LOG(WARNING) << "Auto relocalization candidate " << index
-                       << " threw during fine registration: " << error.what();
-        } catch (...) {
-          LOG(WARNING) << "Auto relocalization candidate " << index
-                       << " threw an unknown exception during fine registration.";
+      if (ConfigParameters::Instance()
+              .localization_enable_ground_height_constraint_) {
+        if (const auto ground_z = EstimateMapGroundZ(candidate_lidar_pose);
+            ground_z.has_value()) {
+          // System's cached transform maps base_link coordinates into the
+          // lidar frame, so map->base is map->lidar * base->lidar.
+          const Vec3d base_to_lidar_translation =
+              base_to_lidar.value().block<3, 1>(0, 3);
+          candidate_lidar_pose(2, 3) =
+              ground_z.value() + ConfigParameters::Instance()
+                                     .localization_base_link_ground_height_ -
+              (candidate_lidar_pose.block<3, 3>(0, 0) *
+               base_to_lidar_translation)
+                  .z();
         }
-        return result;
-      });
-  const double registration_ms = registration_timer.End();
-  LOG(INFO) << "Auto relocalization prepared " << tasks.size()
-            << " candidates in " << preparation_ms << " ms and evaluated them "
-            << "with " << worker_count << " workers in " << registration_ms
-            << " ms.";
+      }
 
-  std::optional<Mat4d> best_pose;
-  float best_fitness = std::numeric_limits<float>::infinity();
-  for (const auto& result : results) {
-    if (result.ok && std::isfinite(result.fitness) &&
-        result.fitness < fitness_threshold &&
-        result.fitness < best_fitness) {
-      best_fitness = result.fitness;
-      best_pose = result.pose;
+      auto local_map = LoadCandidateLocalMap(candidate_lidar_pose);
+      const double preparation_ms = preparation_timer.End();
+      total_preparation_ms += preparation_ms;
+      if (!local_map || local_map->empty()) {
+        LOG(INFO) << "Auto relocalization candidate " << candidate_index + 1U
+                  << "/" << candidates.size() << " (score="
+                  << candidate.score << ") prepared in " << preparation_ms
+                  << " ms, registered in 0 ms, fitness="
+                  << std::numeric_limits<float>::infinity()
+                  << " (empty local map).";
+        continue;
+      }
+      ++prepared_count;
+
+      stage = "fine registration";
+      float fitness = std::numeric_limits<float>::infinity();
+      Mat4d match_pose = candidate_lidar_pose * imu_to_lidar;
+      Timer registration_timer;
+      ++evaluated_count;
+      auto matcher = CreateMatcher();
+      matcher->AddCloudToLocalMap({*local_map});
+      const bool match_ok = matcher->Match(source_cloud, match_pose);
+      if (match_ok) {
+        fitness = matcher->GetFitnessScore(2.0F);
+      }
+      const double registration_ms = registration_timer.End();
+      total_registration_ms += registration_ms;
+
+      LOG(INFO) << "Auto relocalization candidate " << candidate_index + 1U
+                << "/" << candidates.size() << " (score=" << candidate.score
+                << ") prepared in " << preparation_ms
+                << " ms, registered in " << registration_ms
+                << " ms, fitness=" << fitness << ".";
+
+      const bool qualifies =
+          match_ok && std::isfinite(fitness) && fitness < fitness_threshold;
+      if (qualifies && fitness < best_fitness) {
+        best_fitness = fitness;
+        best_pose = match_pose;
+      }
+      if (qualifies &&
+          ShouldEarlyAcceptRelocalization(fitness, accept_fitness)) {
+        stop_reason = "fitness";
+        break;
+      }
+    } catch (const std::exception& error) {
+      LOG(WARNING) << "Auto relocalization candidate "
+                   << candidate_index + 1U << " threw during " << stage
+                   << ": " << error.what();
+    } catch (...) {
+      LOG(WARNING) << "Auto relocalization candidate "
+                   << candidate_index + 1U << " threw an unknown exception "
+                   << "during " << stage << ".";
     }
   }
+
+  LOG(INFO) << "Auto relocalization prepared " << prepared_count
+            << " candidates in " << total_preparation_ms
+            << " ms and evaluated " << evaluated_count << " serially in "
+            << total_registration_ms << " ms (stop_reason=" << stop_reason
+            << ").";
 
   if (best_pose.has_value()) {
     LOG(INFO) << "Auto relocalization candidate accepted with fitness "
