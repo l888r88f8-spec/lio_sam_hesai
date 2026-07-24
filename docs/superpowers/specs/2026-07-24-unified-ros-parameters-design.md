@@ -63,7 +63,7 @@ contract changes.
 | `mapFrame`, `frames.map` | `frames.map` |
 | `odometryFrame` | `frames.odometry` |
 | `baselinkFrame`, `frames.base_link` | `frames.base_link` |
-| `frames.imu` | `frames.imu` |
+| `frames.imu` | `frames.imu` (relocalization only — see note) |
 | `lidarFrame`, `frames.lidar` | `frames.lidar` |
 
 ### System, GPS, and lidar
@@ -99,7 +99,7 @@ contract changes.
 | `imuGyrNoise`, `imu.gyro_noise_std` | `imu.gyro_noise_std` |
 | `imuAccBiasN`, `imu.acc_rw_noise_std` | `imu.acc_bias_rw_noise_std` |
 | `imuGyrBiasN`, `imu.gyro_rw_noise_std` | `imu.gyro_bias_rw_noise_std` |
-| `imuGravity`, `gravity` | `imu.gravity` |
+| `imuGravity`, `gravity` | `imu.gravity` (dual reader — see note) |
 | `imuRPYWeight` | `imu.rpy_weight` |
 | `imu.has_orientation` | `imu.has_orientation` |
 | `imu.init_acc_bias` | `imu.init_acc_bias` |
@@ -114,6 +114,40 @@ contract changes.
 `calibration.rpy` contain row-major 3x3 matrices. The relocalization system
 constructs its 4x4 lidar-to-IMU transform from `translation` and `rotation`, so
 mapping and localization no longer maintain two independent representations.
+
+#### Direction convention (must be honored — verified against current code)
+
+The two subsystems currently store the extrinsic in **opposite directions**, so
+the canonical schema must fix one direction and require each consumer to derive
+what it needs:
+
+- Mapping (`utility.hpp`) uses `extRot` as `R^{lidar}_{imu}` — it rotates an
+  IMU-frame vector into the lidar frame (`acc = extRot * acc`,
+  `utility.hpp:470`).
+- Relocalization (`system.cpp`) uses `calibration.lidar_to_imu` as the 4x4
+  `T^{imu}_{lidar}` — it maps lidar-frame coordinates into the IMU frame
+  (verified via `MapImuPoseToMapLidarPose = map_imu * calibration_lidar_to_imu_`,
+  `localization.cpp:95-98`). Its rotation block is therefore `R^{imu}_{lidar}`,
+  the transpose of mapping's `extRot`.
+
+**Canonical definition:** `calibration.rotation` and `calibration.translation`
+are defined as the lidar-to-IMU transform `T^{imu}_{lidar}` (i.e. the pose of the
+lidar frame expressed in the IMU frame). Consumers derive as follows:
+
+- Relocalization builds its 4x4 `calibration_lidar_to_imu_` directly by placing
+  `calibration.rotation` in the top-left 3x3 block and `calibration.translation`
+  in the top-right 3x1 block. No inversion.
+- Mapping sets `extRot = calibration.rotation.transpose()` (because it needs
+  `R^{lidar}_{imu}`) and `extTrans` from `calibration.translation`. `extRPY`
+  (`extQRPY`) is derived from `calibration.rpy` unchanged, preserving the
+  existing LIO-SAM behavior where the orientation extrinsic may differ from the
+  acc/gyro rotation extrinsic.
+
+Both YAML files carry identical `calibration.translation`/`rotation`/`rpy`
+values. The canonical translation is `[0.0, 0.0, 0.10]` metres, selected from
+the existing mapping calibration. The default identity rotation leaves both
+consumers' rotations unchanged; the transpose only matters for a non-identity
+mounting.
 
 ### Map export and ground processing
 
@@ -184,7 +218,7 @@ Grid-patch keys move below `ground_segmentation.grid_patch`:
 | `surroundingkeyframeAddingAngleThreshold` | `local_map.keyframe_angle_threshold` |
 | `surroundingKeyframeDensity` | `local_map.keyframe_density` |
 | `surroundingKeyframeSearchRadius` | `local_map.search_radius` |
-| `loopClosureEnableFlag`, `system.enable_loopclosure` | `loop_closure.enable` |
+| `loopClosureEnableFlag`, `system.enable_loopclosure` | `loop_closure.enable` (dual reader — see note) |
 | `loopClosureFrequency` | `loop_closure.frequency` |
 | `surroundingKeyframeSize` | `loop_closure.surrounding_keyframe_size` |
 | `historyKeyframeSearchRadius` | `loop_closure.history_search_radius` |
@@ -201,6 +235,45 @@ Grid-patch keys move below `ground_segmentation.grid_patch`:
 Existing `localization.*`, `frontend.*`, and `output.*` leaves that are already
 snake_case remain unchanged unless explicitly mapped above. Existing
 `system.keyframe_delta_*` and `system.tile_map_grid_size` also remain unchanged.
+
+### Dual-reader parameters (two nodes, two edit sites)
+
+Several canonical names unify a legacy pair where **each name is currently read
+by a different node**. Consolidating them means both C++ read sites must be
+retargeted to the canonical name, and both YAML files that a given node loads
+must carry the canonical key. These are not single-reader renames:
+
+| Canonical name | Mapping reader (legacy) | Relocalization reader (legacy) |
+|---|---|---|
+| `loop_closure.enable` | `loopClosureEnableFlag` (`utility.hpp:437`) | `system.enable_loopclosure` (`system.cpp:245`) |
+| `imu.gravity` | `imuGravity` (`utility.hpp:364`, default 9.80511) | `gravity` (`system.cpp:171`, top-level) |
+
+For `imu.gravity`, note the relocalization value is currently a **top-level**
+`gravity` key in `relocalization.yaml`; migrating it into the `imu` group is a
+structural move, not just a rename. Preserve each node's existing default
+(mapping 9.80511, relocalization 9.805) unless the user unifies them.
+
+### Single-node parameters that look shared
+
+Some canonical names appear in the "Common" tables but are in fact read by only
+one node today. Do not add a mirror reader to the other node during migration:
+
+- `frames.imu` is read only by relocalization (`system.cpp:90`); mapping
+  (`utility.hpp`) never declares an IMU frame. The "Scope" requirement to touch
+  every `utility.hpp` declaration does not imply adding one here.
+
+### Frontend group boundary (relocalization only)
+
+The `frontend.*` group is already snake_case and is intentionally **excluded
+from renaming** in this migration, but it is the single largest parameter group
+(~30 leaves: `frontend.fusion_*`, `frontend.feature.*`,
+`frontend.registration.*`, `frontend.registration_and_searcher_mode`). Because
+the stated goal is "one unified schema," this group's boundary is declared here
+explicitly: it is owned by relocalization (`system.cpp`), it is not part of the
+camelCase cutover, and no mapping node reads it. Listing every leaf is out of
+scope; the group is normalized by assertion, not by enumeration. A future change
+may fold it into the shared schema, but this migration leaves it byte-for-byte
+unchanged.
 
 ## YAML Rules
 
@@ -231,3 +304,11 @@ undefined behavior.
 4. Launch-smoke mapping and relocalization configurations long enough to catch
    undeclared, wrong-type, and missing-parameter errors.
 5. Confirm `ros2 param list` exposes only canonical project parameters.
+6. Dual-reader retargeting: assert both `loop_closure.enable` read sites
+   (`utility.hpp`, `system.cpp`) and both `imu.gravity` read sites resolve to
+   the canonical name, and that neither node still declares its legacy key.
+7. Calibration direction: with a deliberately non-identity
+   `calibration.rotation`, assert mapping's `extRot` equals the transpose of the
+   rotation block relocalization loads into `calibration_lidar_to_imu_`. This
+   guards the imu↔lidar direction convention that identity defaults would
+   otherwise hide.
