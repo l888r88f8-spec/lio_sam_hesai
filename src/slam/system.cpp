@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "common/constant_variable.h"
+#include "common/lidar_imu_calibration.h"
 #include "common/math_function.h"
 #include "common/ros_utility.h"
 #include "lidar/lidar_model.h"
@@ -130,26 +131,26 @@ void System::InitConfigParameters() {
               config.localization_ground_map_path_);
 
   // lidar config parameters
-  util::param(this, "lidar.lidar_sensor_type", config.lidar_sensor_type_,
+  util::param(this, "lidar.sensor_type", config.lidar_sensor_type_,
               StringEmpty);
-  util::param(this, "lidar.lidar_point_jump_span",
+  util::param(this, "lidar.point_jump_span",
               config.lidar_point_jump_span_, IntNaN);
-  util::param(this, "lidar.lidar_scan", config.lidar_scan_, IntNaN);
-  util::param(this, "lidar.lidar_lower_angle", config.lidar_lower_angle_,
+  util::param(this, "lidar.scan_lines", config.lidar_scan_, IntNaN);
+  util::param(this, "lidar.lower_angle_deg", config.lidar_lower_angle_,
               DoubleNaN);
-  util::param(this, "lidar.lidar_horizon_scan", config.lidar_horizon_scan_,
+  util::param(this, "lidar.horizon_scan", config.lidar_horizon_scan_,
               IntNaN);
-  util::param(this, "lidar.lidar_vertical_resolution",
+  util::param(this, "lidar.vertical_resolution_deg",
               config.lidar_vertical_resolution_, DoubleNaN);
-  util::param(this, "lidar.lidar_use_min_distance", config.lidar_use_min_dist_,
+  util::param(this, "lidar.min_range", config.lidar_use_min_dist_,
               FloatNaN);
-  util::param(this, "lidar.lidar_use_max_distance", config.lidar_use_max_dist_,
+  util::param(this, "lidar.max_range", config.lidar_use_max_dist_,
               FloatNaN);
-  util::param(this, "lidar.lidar_point_time_scale",
+  util::param(this, "lidar.point_time_scale",
               config.lidar_point_time_scale_, DoubleNaN);
-  util::param(this, "lidar.lidar_rotation_noise_std",
+  util::param(this, "lidar.rotation_noise_std",
               config.lidar_rotation_noise_std_, DoubleNaN);
-  util::param(this, "lidar.lidar_position_noise_std",
+  util::param(this, "lidar.position_noise_std",
               config.lidar_position_noise_std_, DoubleNaN);
 
   // imu config parameters
@@ -160,24 +161,39 @@ void System::InitConfigParameters() {
   util::param(this, "imu.acc_noise_std", config.imu_acc_noise_std_, DoubleNaN);
   util::param(this, "imu.gyro_noise_std", config.imu_gyro_noise_std_,
               DoubleNaN);
-  util::param(this, "imu.acc_rw_noise_std", config.imu_acc_rw_noise_std_,
+  util::param(this, "imu.acc_bias_rw_noise_std", config.imu_acc_rw_noise_std_,
               DoubleNaN);
-  util::param(this, "imu.gyro_rw_noise_std", config.imu_gyro_rw_noise_std_,
+  util::param(this, "imu.gyro_bias_rw_noise_std", config.imu_gyro_rw_noise_std_,
               DoubleNaN);
   util::param(this, "imu.data_searcher_buffer_size",
               config.imu_data_searcher_buffer_size_, IntNaN);
 
   // gravity
-  util::param(this, "gravity", config.gravity_norm, DoubleNaN);
+  util::param(this, "imu.gravity", config.gravity_norm, DoubleNaN);
 
   // calibration parameters
-  std::vector<double> lidar_to_imu = {1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
-                                      0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0};
-  util::param_vector(this, "calibration.lidar_to_imu", lidar_to_imu,
-                     lidar_to_imu);
-  config.calibration_lidar_to_imu_ =
-      Eigen::Map<Eigen::Matrix<double, 4, 4, Eigen::RowMajor>>(
-          lidar_to_imu.data());
+  std::vector<double> translation = {0.0, 0.0, 0.10};
+  const std::vector<double> identity = {
+      1.0, 0.0, 0.0,
+      0.0, 1.0, 0.0,
+      0.0, 0.0, 1.0};
+  std::vector<double> rotation = identity;
+  std::vector<double> rpy = identity;
+  util::param_vector(this, "calibration.translation", translation,
+                     translation);
+  util::param_vector(this, "calibration.rotation", rotation, rotation);
+  util::param_vector(this, "calibration.rpy", rpy, rpy);
+
+  try {
+    const LidarImuCalibration calibration =
+        ParseLidarImuCalibration(translation, rotation, rpy);
+    config.calibration_lidar_to_imu_ = calibration.lidar_to_imu;
+  } catch (const std::exception& error) {
+    RCLCPP_FATAL(get_logger(),
+                 "Invalid lidar-IMU calibration parameters: %s",
+                 error.what());
+    throw;
+  }
 
   // frontend config parameters
   util::param(this, "frontend.registration_and_searcher_mode",
@@ -242,11 +258,11 @@ void System::InitConfigParameters() {
               config.system_keyframe_delta_dist_, DoubleNaN);
   util::param(this, "system.keyframe_delta_rotation",
               config.system_keyframe_delta_rotation_, DoubleNaN);
-  util::param(this, "system.enable_loopclosure",
+  util::param(this, "loop_closure.enable",
               config.system_enable_loopclosure_, false);
-  util::param(this, "system.enable_visualize_global_map",
+  util::param(this, "visualization.enable_global_map",
               config.system_enable_visualize_global_map_, false);
-  util::param(this, "system.global_map_visualization_resolution",
+  util::param(this, "visualization.global_map_resolution",
               config.system_global_map_visualization_resolution_, FloatNaN);
 
   // split map
@@ -254,19 +270,19 @@ void System::InitConfigParameters() {
               DoubleNaN);
 
   // loopclosure config parameters
-  util::param(this, "loopclosure.skip_near_loopclosure_threshold",
+  util::param(this, "loop_closure.skip_near_loopclosure_threshold",
               config.lc_skip_near_loopclosure_threshold_, IntNaN);
-  util::param(this, "loopclosure.skip_near_keyframe_threshold",
+  util::param(this, "loop_closure.skip_near_keyframe_threshold",
               config.lc_skip_near_keyframe_threshold_, IntNaN);
-  util::param(this, "loopclosure.candidate_local_map_left_range",
+  util::param(this, "loop_closure.candidate_local_map_left_range",
               config.lc_candidate_local_map_left_range_, IntNaN);
-  util::param(this, "loopclosure.candidate_local_map_right_range",
+  util::param(this, "loop_closure.candidate_local_map_right_range",
               config.lc_candidate_local_map_right_range_, IntNaN);
-  util::param(this, "loopclosure.loopclosure_local_map_left_range",
+  util::param(this, "loop_closure.loopclosure_local_map_left_range",
               config.lc_loopclosure_local_map_left_range_, IntNaN);
-  util::param(this, "loopclosure.near_neighbor_distance_threshold",
+  util::param(this, "loop_closure.near_neighbor_distance_threshold",
               config.lc_near_neighbor_distance_threshold_, DoubleNaN);
-  util::param(this, "loopclosure.registration_converge_threshold",
+  util::param(this, "loop_closure.registration_converge_threshold",
               config.lc_registration_converge_threshold_, FloatNaN);
 }
 
