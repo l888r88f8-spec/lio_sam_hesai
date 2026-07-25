@@ -51,7 +51,7 @@
 
     calibration:
       # Convention: T^imu_lidar = inverse(T^base_imu) * T^base_lidar.
-      # Relocalization consumes it directly; mapping transposes only rotation.
+      # Relocalization consumes it directly; mapping transposes rotation and expresses the lever arm in lidar axes.
       translation: [ 0.0, 0.0, 0.10 ]                   # 雷达到IMU的平移外参[x, y, z]，需与base_link静态TF一致
       rotation: [ 1.0,  0.0,  0.0,
                   0.0,  1.0,  0.0,
