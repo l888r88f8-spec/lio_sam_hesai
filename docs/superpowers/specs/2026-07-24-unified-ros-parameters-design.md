@@ -28,9 +28,9 @@ contract changes.
 | Group | Responsibility |
 |---|---|
 | `system` | operating mode, CPU count, processing cadence, global switches |
-| `sensor_topic` | lidar, IMU, odometry, GPS, and non-ground topics |
+| `sensor_topic` | lidar, IMU, odometry, and GPS sensor-facing topics |
 | `frames` | map, odometry, base, IMU, and lidar frame IDs |
-| `output` | relocalization output topics |
+| `output_topic` | mapping and relocalization output topics |
 | `gps` | GPS initialization and covariance gates |
 | `lidar` | model, scan geometry, range gates, sampling, timing, noise |
 | `imu` | type, orientation use, biases, noise, random walk, gravity, weighting |
@@ -59,7 +59,8 @@ contract changes.
 | `imuTopic`, `sensor_topic.imu_topic` | `sensor_topic.imu_topic` |
 | `odomTopic` | `sensor_topic.odom_topic` |
 | `gpsTopic` | `sensor_topic.gps_topic` |
-| `nonGroundCloudTopic` | `sensor_topic.non_ground_cloud_topic` |
+| `nonGroundCloudTopic`, `sensor_topic.non_ground_cloud_topic` | `output_topic.non_ground_cloud_topic` |
+| `output.mapping_odom_topic` | `output_topic.mapping_odom_topic` |
 | `mapFrame`, `frames.map` | `frames.map` |
 | `odometryFrame` | `frames.odometry` |
 | `baselinkFrame`, `frames.base_link` | `frames.base_link` |
@@ -236,8 +237,8 @@ Grid-patch keys move below `ground_segmentation.grid_patch`:
 | `system.enable_visualize_global_map` | `visualization.enable_global_map` |
 | `system.global_map_visualization_resolution` | `visualization.global_map_resolution` |
 
-Existing `localization.*`, `frontend.*`, and `output.*` leaves that are already
-snake_case remain unchanged unless explicitly mapped above. Existing
+Existing `localization.*` and `frontend.*` leaves that are already snake_case
+remain unchanged unless explicitly mapped above. Existing
 `system.keyframe_delta_*` and `system.tile_map_grid_size` also remain unchanged.
 
 ### Dual-reader parameters (two nodes, two edit sites)
