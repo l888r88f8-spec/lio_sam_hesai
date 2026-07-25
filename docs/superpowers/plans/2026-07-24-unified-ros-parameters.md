@@ -265,8 +265,12 @@ with:
 
 ```cpp
 ground_segmentation.only_mode
-sensor_topic.non_ground_cloud_topic
+output_topic.non_ground_cloud_topic
+output_topic.mapping_odom_topic
 ```
+
+Also rename `output.mapping_odom_topic` to
+`output_topic.mapping_odom_topic`.
 
 Change the launch override dictionary key to
 `"ground_segmentation.only_mode": True`.

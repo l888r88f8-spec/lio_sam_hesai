@@ -6,7 +6,6 @@
     sensor_topic:
       lidar_topic: "/lidar_points"                             # 原始点云
       imu_topic: "/imu"                                        # IMU数据
-      non_ground_cloud_topic: "lio_sam/cloud_nonground"        # 非地面点云话题
 
     frames:
       map: "map"                                               # 全局地图
@@ -14,8 +13,9 @@
       imu: "imu_link"                                          # IMU坐标
       lidar: "hesai_lidar"                                     # 雷达坐标
 
-    output:
+    output_topic:
       mapping_odom_topic: "lio_sam/localization/odometry"      # 全局定位里程计
+      non_ground_cloud_topic: "lio_sam/cloud_nonground"        # 非地面点云话题
 
     localization:
       map_path: "/home/robot/map/hesai_sim2/GlobalMap.pcd"      # 全局地图

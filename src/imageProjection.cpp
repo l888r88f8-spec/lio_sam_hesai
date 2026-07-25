@@ -332,10 +332,10 @@ public:
         declare_parameter("ground_segmentation.only_mode", false);
         get_parameter("ground_segmentation.only_mode", segmentationOnlyMode_);
         declare_parameter(
-            "sensor_topic.non_ground_cloud_topic",
+            "output_topic.non_ground_cloud_topic",
             "lio_sam/deskew/cloud_nonground");
         get_parameter(
-            "sensor_topic.non_ground_cloud_topic",
+            "output_topic.non_ground_cloud_topic",
             nonGroundCloudTopic_);
 
         callbackGroupLidar = create_callback_group(

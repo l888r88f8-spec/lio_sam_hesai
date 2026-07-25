@@ -92,7 +92,7 @@ void System::InitConfigParameters() {
   util::param(this, "frames.lidar", config.lidar_frame_, config.lidar_frame_);
 
   // output topics
-  util::param(this, "output.mapping_odom_topic", config.mapping_odom_topic_,
+  util::param(this, "output_topic.mapping_odom_topic", config.mapping_odom_topic_,
               config.mapping_odom_topic_);
 
   // localization map path
