@@ -266,11 +266,7 @@ with:
 ```cpp
 ground_segmentation.only_mode
 output_topic.non_ground_cloud_topic
-output_topic.mapping_odom_topic
 ```
-
-Also rename `output.mapping_odom_topic` to
-`output_topic.mapping_odom_topic`.
 
 Change the launch override dictionary key to
 `"ground_segmentation.only_mode": True`.
@@ -315,9 +311,13 @@ loop_closure.enable
 visualization.enable_global_map
 visualization.global_map_resolution
 loop_closure.*
+output_topic.mapping_odom_topic
 ```
 
-Keep the already canonical `localization.*`, `frontend.*`, `output.*`,
+Also rename `output.mapping_odom_topic` to
+`output_topic.mapping_odom_topic`.
+
+Keep the already canonical `localization.*`, `frontend.*`, `output_topic.*`,
 `system.keyframe_delta_*`, and `system.tile_map_grid_size` names unchanged.
 
 - [ ] **Step 2: Replace 4x4 calibration parameter loading**
