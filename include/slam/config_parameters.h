@@ -136,6 +136,21 @@ public:
     double localization_sc_ringkey_max_dist_{5.0};
     double localization_sc_accept_fitness_{0.3};
     std::string localization_ground_map_path_{};
+
+    // localization health
+    bool health_enable_{true};
+    int health_degrade_enter_frames_{3};
+    int health_recover_frames_{5};
+    int health_lost_enter_frames_{10};
+    double health_degraded_fitness_thres_{0.5};
+    double health_lost_fitness_thres_{1.0};
+    double health_nominal_lidar_rate_hz_{10.0};
+    double health_nominal_imu_rate_hz_{100.0};
+    double health_lidar_stall_timeout_{0.5};
+    double health_imu_stall_timeout_{0.1};
+    double health_result_timeout_{1.0};
+    double health_base_covariance_{0.05};
+    double health_max_covariance_scale_{100.0};
 };
 
 #endif //FUNNY_LIDAR_SLAM_CONFIG_PARAMETERS_H

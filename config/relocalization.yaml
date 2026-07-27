@@ -35,6 +35,21 @@
       ground_min_points: 20                                    # 最少地图点
       ground_map_path: ""                                      # 空=与map_path同目录 地面高度约束
 
+    localization_health:
+      enable: true                                              # 启用定位健康状态评估
+      degrade_enter_frames: 3                                   # 进入降级状态所需连续帧数
+      recover_frames: 5                                         # 从降级恢复所需连续正常帧数
+      lost_enter_frames: 10                                     # 进入丢失状态所需连续异常帧数
+      degraded_fitness_thres: 0.5                               # 降级fitness阈值
+      lost_fitness_thres: 1.0                                   # 丢失fitness阈值
+      nominal_lidar_rate_hz: 10.0                               # 标称雷达频率/Hz
+      nominal_imu_rate_hz: 100.0                                # 标称IMU频率/Hz
+      lidar_stall_timeout: 0.5                                  # 雷达数据停滞超时/s
+      imu_stall_timeout: 0.1                                    # IMU数据停滞超时/s
+      result_timeout: 1.0                                       # 定位结果停滞超时/s
+      base_covariance: 0.05                                     # 健康时基础协方差
+      max_covariance_scale: 100.0                               # 最大协方差放大倍率
+
     lidar:
       sensor_type: Hesai                                       # 雷达型号
       point_jump_span: 1                                       # 点跳步长

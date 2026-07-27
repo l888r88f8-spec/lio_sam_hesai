@@ -130,6 +130,33 @@ void System::InitConfigParameters() {
               config.localization_ground_map_path_,
               config.localization_ground_map_path_);
 
+  // localization health parameters
+  util::param(this, "localization_health.enable", config.health_enable_, true);
+  util::param(this, "localization_health.degrade_enter_frames",
+              config.health_degrade_enter_frames_, 3);
+  util::param(this, "localization_health.recover_frames",
+              config.health_recover_frames_, 5);
+  util::param(this, "localization_health.lost_enter_frames",
+              config.health_lost_enter_frames_, 10);
+  util::param(this, "localization_health.degraded_fitness_thres",
+              config.health_degraded_fitness_thres_, 0.5);
+  util::param(this, "localization_health.lost_fitness_thres",
+              config.health_lost_fitness_thres_, 1.0);
+  util::param(this, "localization_health.nominal_lidar_rate_hz",
+              config.health_nominal_lidar_rate_hz_, 10.0);
+  util::param(this, "localization_health.nominal_imu_rate_hz",
+              config.health_nominal_imu_rate_hz_, 100.0);
+  util::param(this, "localization_health.lidar_stall_timeout",
+              config.health_lidar_stall_timeout_, 0.5);
+  util::param(this, "localization_health.imu_stall_timeout",
+              config.health_imu_stall_timeout_, 0.1);
+  util::param(this, "localization_health.result_timeout",
+              config.health_result_timeout_, 1.0);
+  util::param(this, "localization_health.base_covariance",
+              config.health_base_covariance_, 0.05);
+  util::param(this, "localization_health.max_covariance_scale",
+              config.health_max_covariance_scale_, 100.0);
+
   // lidar config parameters
   util::param(this, "lidar.sensor_type", config.lidar_sensor_type_,
               StringEmpty);

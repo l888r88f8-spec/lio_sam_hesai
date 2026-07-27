@@ -16,9 +16,10 @@ std::string ReadProjectFile(const std::string & relative_path)
   return buffer.str();
 }
 
+template<std::size_t FileCount, std::size_t TokenCount>
 void ExpectTokens(
-  const std::array<std::string, 3> & files,
-  const std::array<std::string, 7> & tokens)
+  const std::array<std::string, FileCount> & files,
+  const std::array<std::string, TokenCount> & tokens)
 {
   for (const auto & token : tokens) {
     for (const auto & file : files) {
@@ -77,6 +78,19 @@ void ExpectMappingYamlParameter(const std::string & leaf)
     << "map_save." << leaf << " is missing from config/mapping.yaml";
 }
 
+void ExpectLocalizationHealthYamlParameter(const std::string & leaf)
+{
+  const std::string text = ReadProjectFile("config/relocalization.yaml");
+  const std::size_t health = text.find("\n    localization_health:");
+  ASSERT_NE(health, std::string::npos)
+    << "localization_health is missing from config/relocalization.yaml";
+  const std::size_t health_end = FindYamlBlockEnd(text, health, 4);
+  const std::size_t yaml_leaf = text.find("\n      " + leaf + ":", health);
+  EXPECT_TRUE(yaml_leaf != std::string::npos && yaml_leaf < health_end)
+    << "localization_health." << leaf
+    << " is missing from config/relocalization.yaml";
+}
+
 }  // namespace
 
 TEST(AutoRelocalizationParameterSurface, ExposesAllRuntimeParameters) {
@@ -131,5 +145,34 @@ TEST(AutoRelocalizationParameterSurface, ExposesMappingDatabaseExport) {
 
   for (const auto & token : tokens) {
     ExpectToken("src/mapOptimization.cpp", token);
+  }
+}
+
+TEST(AutoRelocalizationParameterSurface, ExposesLocalizationHealthParameters) {
+  struct HealthParameter {
+    std::string leaf;
+    std::string member;
+  };
+  const std::array<HealthParameter, 13> parameters = {{
+    {"enable", "health_enable_"},
+    {"degrade_enter_frames", "health_degrade_enter_frames_"},
+    {"recover_frames", "health_recover_frames_"},
+    {"lost_enter_frames", "health_lost_enter_frames_"},
+    {"degraded_fitness_thres", "health_degraded_fitness_thres_"},
+    {"lost_fitness_thres", "health_lost_fitness_thres_"},
+    {"nominal_lidar_rate_hz", "health_nominal_lidar_rate_hz_"},
+    {"nominal_imu_rate_hz", "health_nominal_imu_rate_hz_"},
+    {"lidar_stall_timeout", "health_lidar_stall_timeout_"},
+    {"imu_stall_timeout", "health_imu_stall_timeout_"},
+    {"result_timeout", "health_result_timeout_"},
+    {"base_covariance", "health_base_covariance_"},
+    {"max_covariance_scale", "health_max_covariance_scale_"},
+  }};
+
+  for (const auto & parameter : parameters) {
+    ExpectToken("include/slam/config_parameters.h", parameter.member);
+    ExpectQuotedParameter(
+      "src/slam/system.cpp", "localization_health." + parameter.leaf);
+    ExpectLocalizationHealthYamlParameter(parameter.leaf);
   }
 }
