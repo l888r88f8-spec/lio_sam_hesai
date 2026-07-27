@@ -4,6 +4,7 @@
 
 #include "common/data_type.h"
 
+#include <limits>
 #include <memory>
 
 struct DataBase {
@@ -66,6 +67,13 @@ struct LocalizationResult : DataBase {
     Mat4d odom_pose = Mat4d::Identity();
     bool has_map_ground_z = false;
     double map_ground_z = 0.0;
+
+    // Health observability defaults protect legacy result paths that do not
+    // populate these fields.
+    float reg_fitness = std::numeric_limits<float>::infinity();
+    int consistency_hit = 0;
+    int consistency_required = 0;
+    bool is_tracking = false;
 };
 
 #endif //FUNNY_LIDAR_SLAM_SENSOR_DATA_TYPE_H

@@ -205,6 +205,8 @@ void Localization::InitPreintegration() {
 bool Localization::Init() {
   Mat4d init_pose;
   bool has_manual_init_pose = false;
+  int result_consistency_hit = 0;
+  int result_consistency_required = 0;
   {
     std::lock_guard<std::mutex> lg(mutex_init_pose_optional_);
     if (init_pose_optional_.has_value()) {
@@ -288,6 +290,8 @@ bool Localization::Init() {
       }
 
       init_pose = auto_pose.value();
+      result_consistency_hit = consistency_hit_count_;
+      result_consistency_required = required_frames;
       consistency_ref_pose_.reset();
       consistency_hit_count_ = 0;
     }
@@ -348,6 +352,10 @@ bool Localization::Init() {
   init_result.timestamp_ = curr_time_us_;
   init_result.map_pose = MapImuPoseToMapLidarPose(init_pose);
   init_result.odom_pose = last_odom_state_.Pose();
+  init_result.reg_fitness = fitness_score;
+  init_result.consistency_hit = result_consistency_hit;
+  init_result.consistency_required = result_consistency_required;
+  init_result.is_tracking = false;
   if (ConfigParameters::Instance().localization_enable_ground_height_constraint_) {
     if (const auto map_ground_z = EstimateMapGroundZ(init_result.map_pose);
         map_ground_z.has_value()) {
@@ -561,6 +569,10 @@ void Localization::Run() {
     result.timestamp_ = curr_time_us_;
     result.map_pose = MapImuPoseToMapLidarPose(curr_pose);
     result.odom_pose = predict_odom_state.Pose();
+    result.reg_fitness = matcher_->GetFitnessScore(2.0F);
+    result.consistency_hit = 0;
+    result.consistency_required = 0;
+    result.is_tracking = true;
     if (ConfigParameters::Instance().localization_enable_ground_height_constraint_) {
       if (const auto map_ground_z = EstimateMapGroundZ(result.map_pose);
           map_ground_z.has_value()) {
