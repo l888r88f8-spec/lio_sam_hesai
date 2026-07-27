@@ -159,7 +159,7 @@ TEST(AutoRelocalizationParameterSurface, ExposesLocalizationHealthParameters) {
     std::string leaf;
     std::string member;
   };
-  const std::array<HealthParameter, 13> parameters = {{
+  const std::array<HealthParameter, 14> parameters = {{
     {"enable", "health_enable_"},
     {"degrade_enter_frames", "health_degrade_enter_frames_"},
     {"recover_frames", "health_recover_frames_"},
@@ -168,6 +168,7 @@ TEST(AutoRelocalizationParameterSurface, ExposesLocalizationHealthParameters) {
     {"lost_fitness_thres", "health_lost_fitness_thres_"},
     {"nominal_lidar_rate_hz", "health_nominal_lidar_rate_hz_"},
     {"nominal_imu_rate_hz", "health_nominal_imu_rate_hz_"},
+    {"min_rate_ratio", "health_min_rate_ratio_"},
     {"lidar_stall_timeout", "health_lidar_stall_timeout_"},
     {"imu_stall_timeout", "health_imu_stall_timeout_"},
     {"result_timeout", "health_result_timeout_"},
@@ -198,7 +199,7 @@ TEST(SystemIntegration, WiresLocalizationHealthObservability) {
     ExpectToken("include/slam/system.h", token);
   }
 
-  const std::array<std::string, 27> source_tokens = {
+  const std::array<std::string, 28> source_tokens = {
     "RecordLidar",
     "RecordImu",
     "has_new_result",
@@ -226,6 +227,7 @@ TEST(SystemIntegration, WiresLocalizationHealthObservability) {
     "mapping_odom.pose.covariance[35]",
     "current_health_covariance_scale_",
     "PublishLocalizationHealth",
+    "state_config.min_stream_rate_ratio = config.health_min_rate_ratio_",
   };
   for (const auto & token : source_tokens) {
     ExpectToken("src/slam/system.cpp", token);

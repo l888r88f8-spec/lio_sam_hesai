@@ -102,6 +102,7 @@ System::System(const rclcpp::NodeOptions& options)
   state_config.lost_fitness_thres = config.health_lost_fitness_thres_;
   state_config.nominal_lidar_rate_hz = config.health_nominal_lidar_rate_hz_;
   state_config.nominal_imu_rate_hz = config.health_nominal_imu_rate_hz_;
+  state_config.min_stream_rate_ratio = config.health_min_rate_ratio_;
   state_config.result_timeout_us = SecondsToMicroseconds(
       config.health_result_timeout_, "localization_health.result_timeout");
   state_config.base_covariance = config.health_base_covariance_;
@@ -237,6 +238,8 @@ void System::InitConfigParameters() {
               config.health_nominal_lidar_rate_hz_, 10.0);
   util::param(this, "localization_health.nominal_imu_rate_hz",
               config.health_nominal_imu_rate_hz_, 100.0);
+  util::param(this, "localization_health.min_rate_ratio",
+              config.health_min_rate_ratio_, 0.5);
   util::param(this, "localization_health.lidar_stall_timeout",
               config.health_lidar_stall_timeout_, 0.5);
   util::param(this, "localization_health.imu_stall_timeout",

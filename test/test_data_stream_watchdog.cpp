@@ -91,6 +91,25 @@ TEST(DataStreamWatchdog, LatchesJumpUntilEvaluateAfterNormalSample) {
   EXPECT_FALSE(watchdog.Evaluate(1100000U).timestamp_jump);
 }
 
+TEST(DataStreamWatchdog, StartsNewRateWindowAtForwardJumpTimestamp) {
+  auto config = localization_health::DataStreamWatchdog::Config{};
+  config.min_samples = 4U;
+  localization_health::DataStreamWatchdog watchdog(config);
+  watchdog.RecordLidar(0U);
+  watchdog.RecordLidar(100000U);
+  watchdog.RecordLidar(200000U);
+
+  watchdog.RecordLidar(1000000U);
+  watchdog.RecordLidar(1100000U);
+  watchdog.RecordLidar(1200000U);
+  watchdog.RecordLidar(1300000U);
+
+  const auto health = watchdog.Evaluate(1300000U);
+  EXPECT_TRUE(health.timestamp_jump);
+  EXPECT_DOUBLE_EQ(health.lidar_rate_hz, 10.0);
+  EXPECT_FALSE(watchdog.Evaluate(1300000U).timestamp_jump);
+}
+
 TEST(DataStreamWatchdog, LatchesRollbackUntilEvaluateAfterNormalSample) {
   localization_health::DataStreamWatchdog watchdog(
       localization_health::DataStreamWatchdog::Config{});

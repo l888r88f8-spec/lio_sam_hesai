@@ -82,6 +82,12 @@ void DataStreamWatchdog::Record(Channel& channel, std::uint64_t stamp_us,
         config_.jump_period_multiplier *
             static_cast<double>(nominal_period_us)) {
       channel.pending_jump = true;
+      channel.stamps.clear();
+      channel.last_stamp = stamp_us;
+      channel.last_arrival_us = arrival_us;
+      channel.has_last = true;
+      channel.stamps.push_back(stamp_us);
+      return;
     }
   }
 

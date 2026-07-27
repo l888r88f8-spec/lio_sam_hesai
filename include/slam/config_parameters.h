@@ -146,6 +146,7 @@ public:
     double health_lost_fitness_thres_{1.0};
     double health_nominal_lidar_rate_hz_{10.0};
     double health_nominal_imu_rate_hz_{100.0};
+    double health_min_rate_ratio_{0.5};
     double health_lidar_stall_timeout_{0.5};
     double health_imu_stall_timeout_{0.1};
     double health_result_timeout_{1.0};

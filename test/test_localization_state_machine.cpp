@@ -416,6 +416,41 @@ TEST(LocalizationStateMachine, ImuStallRequiresDegradeHysteresis) {
   EXPECT_EQ(machine.Update(input).state, LocalizationState::kDegraded);
 }
 
+TEST(LocalizationStateMachine,
+     LowKnownRatesRequireNewStreamObservationsToDegrade) {
+  auto machine = MakeTrackingMachine();
+  auto low_rate = HealthyTrackingInput();
+  low_rate.stream.lidar_rate_hz = 3.0;
+  low_rate.stream.imu_rate_hz = 30.0;
+
+  EXPECT_EQ(machine.Update(low_rate).state, LocalizationState::kTracking);
+
+  low_rate.has_new_result = false;
+  low_rate.has_new_stream_observation = false;
+  EXPECT_EQ(machine.Update(low_rate).state, LocalizationState::kTracking);
+
+  low_rate.has_new_stream_observation = true;
+  const auto report = machine.Update(low_rate);
+  EXPECT_EQ(report.state, LocalizationState::kDegraded);
+  EXPECT_EQ(report.level, HealthLevel::kWarn);
+  EXPECT_GT(report.covariance_scale, 1.0);
+}
+
+TEST(LocalizationStateMachine, LowRateDegradedStateRecoversOnNewResults) {
+  auto machine = MakeTrackingMachine();
+  auto low_rate = HealthyTrackingInput();
+  low_rate.stream.lidar_rate_hz = 3.0;
+  low_rate.stream.imu_rate_hz = 30.0;
+  machine.Update(low_rate);
+  ASSERT_EQ(machine.Update(low_rate).state, LocalizationState::kDegraded);
+
+  auto recovered = HealthyTrackingInput();
+  recovered.has_new_stream_observation = false;
+  EXPECT_EQ(machine.Update(recovered).state, LocalizationState::kDegraded);
+  EXPECT_EQ(machine.Update(recovered).state, LocalizationState::kDegraded);
+  EXPECT_EQ(machine.Update(recovered).state, LocalizationState::kTracking);
+}
+
 TEST(LocalizationStateMachine, TimestampJumpRequiresDegradeHysteresis) {
   auto machine = MakeTrackingMachine();
   auto input = HealthyTrackingInput();
@@ -518,6 +553,16 @@ TEST(LocalizationStateMachine, RejectsInvalidConfiguration) {
 
   config = LocalizationStateMachine::Config{};
   config.nominal_lidar_rate_hz = std::numeric_limits<double>::infinity();
+  EXPECT_THROW(LocalizationStateMachine machine(config), std::invalid_argument);
+
+  config = LocalizationStateMachine::Config{};
+  config.min_stream_rate_ratio = 0.0;
+  EXPECT_THROW(LocalizationStateMachine machine(config), std::invalid_argument);
+
+  config.min_stream_rate_ratio = 1.1;
+  EXPECT_THROW(LocalizationStateMachine machine(config), std::invalid_argument);
+
+  config.min_stream_rate_ratio = std::numeric_limits<double>::infinity();
   EXPECT_THROW(LocalizationStateMachine machine(config), std::invalid_argument);
 
   config = LocalizationStateMachine::Config{};

@@ -26,6 +26,8 @@ LocalizationStateMachine::LocalizationStateMachine(const Config& config)
       config_.degraded_fitness_thres >= config_.lost_fitness_thres ||
       !IsPositiveFinite(config_.nominal_lidar_rate_hz) ||
       !IsPositiveFinite(config_.nominal_imu_rate_hz) ||
+      !IsPositiveFinite(config_.min_stream_rate_ratio) ||
+      config_.min_stream_rate_ratio > 1.0 ||
       config_.result_timeout_us == 0U ||
       !IsPositiveFinite(config_.base_covariance) ||
       !IsPositiveFinite(config_.max_covariance_scale) ||
@@ -197,7 +199,12 @@ bool LocalizationStateMachine::IsFitnessBad(float fitness,
 bool LocalizationStateMachine::IsStreamWarn(
     const HealthInputs& input) const {
   return input.stream.imu_stalled || input.stream.timestamp_jump ||
-         !input.stream.timestamp_monotonic;
+         !input.stream.timestamp_monotonic ||
+         (input.stream.rates_known &&
+          (input.stream.lidar_rate_hz / config_.nominal_lidar_rate_hz <
+               config_.min_stream_rate_ratio ||
+           input.stream.imu_rate_hz / config_.nominal_imu_rate_hz <
+               config_.min_stream_rate_ratio));
 }
 
 bool LocalizationStateMachine::IsHardFailure(

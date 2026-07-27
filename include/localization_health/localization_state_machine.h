@@ -17,6 +17,7 @@ class LocalizationStateMachine {
     double lost_fitness_thres = 1.0;
     double nominal_lidar_rate_hz = 10.0;
     double nominal_imu_rate_hz = 100.0;
+    double min_stream_rate_ratio = 0.5;
     std::uint64_t result_timeout_us = 1000000U;
     double base_covariance = 0.05;
     double max_covariance_scale = 100.0;

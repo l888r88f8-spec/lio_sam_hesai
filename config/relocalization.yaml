@@ -44,6 +44,7 @@
       lost_fitness_thres: 1.0                                   # 丢失fitness阈值
       nominal_lidar_rate_hz: 10.0                               # 标称雷达频率/Hz
       nominal_imu_rate_hz: 100.0                                # 标称IMU频率/Hz
+      min_rate_ratio: 0.5                                       # 最低可接受数据频率/标称频率
       lidar_stall_timeout: 0.5                                  # 雷达数据停滞超时/s
       imu_stall_timeout: 0.1                                    # IMU数据停滞超时/s
       result_timeout: 1.0                                       # 定位结果停滞超时/s
