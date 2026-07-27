@@ -237,6 +237,10 @@ if(BUILD_TESTING)
   target_include_directories(test_bounded_async PRIVATE include)
   ament_add_gtest(test_data_stream_watchdog test/test_data_stream_watchdog.cpp src/localization_health/data_stream_watchdog.cpp)
   target_include_directories(test_data_stream_watchdog PRIVATE include)
+  ament_add_gtest(test_localization_state_machine
+    test/test_localization_state_machine.cpp
+    src/localization_health/localization_state_machine.cpp)
+  target_include_directories(test_localization_state_machine PRIVATE include)
   ament_add_gtest(test_lidar_imu_calibration
     test/test_lidar_imu_calibration.cpp)
   target_include_directories(test_lidar_imu_calibration PRIVATE include)

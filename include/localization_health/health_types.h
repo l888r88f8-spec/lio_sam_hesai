@@ -35,6 +35,9 @@ struct HealthInputs {
   bool map_ready = false;
   bool has_init = false;
   bool is_tracking = false;
+  // Only new observations advance frame-based hysteresis counters.
+  bool has_new_result = false;
+  bool has_new_stream_observation = false;
   float reg_fitness = 0.0f;
   int consistency_hit = 0;
   int consistency_required = 0;
