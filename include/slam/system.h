@@ -9,7 +9,9 @@
 #include <atomic>
 #include <condition_variable>
 #include <deque>
+#include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <nav_msgs/msg/odometry.hpp>
@@ -23,6 +25,8 @@
 #include "common/sensor_data_type.h"
 #include "imu/imu_data_searcher.h"
 #include "lidar/pointcloud_cluster.h"
+#include "localization_health/data_stream_watchdog.h"
+#include "localization_health/localization_state_machine.h"
 
 class PreProcessing;
 class Localization;
@@ -53,6 +57,7 @@ class System : public rclcpp::Node {
   void InitConfigParameters();
 
   void PublishLocalizationPath();
+  void PublishLocalizationHealth();
   void PublishTF(const Mat4d& map_base_pose, TimeStampUs timestamp);
 
   void LidarMsgCallBack(
@@ -61,7 +66,7 @@ class System : public rclcpp::Node {
       const geometry_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr& msg);
   void ImuMsgCallBack(const sensor_msgs::msg::Imu::ConstSharedPtr& imu_ptr);
 
-  bool ProcessLocalizationResultCache();
+  bool ProcessLocalizationResultCache(bool& had_new_result);
   void ApplyLocalizationZOffset(PCLPointCloudXYZI& cloud) const;
 
   static bool InitIMU(const IMUData& imu_data, Vec3d& init_mean_acc);
@@ -85,6 +90,8 @@ class System : public rclcpp::Node {
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr
       localization_current_lidar_cloud_pub_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr localization_odom_pub_;
+  rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr
+      diagnostics_pub_;
 
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
@@ -98,6 +105,10 @@ class System : public rclcpp::Node {
 
   // localization
   std::shared_ptr<Localization> localization_ptr_ = nullptr;
+  std::unique_ptr<localization_health::DataStreamWatchdog>
+      data_stream_watchdog_;
+  std::unique_ptr<localization_health::LocalizationStateMachine>
+      localization_state_machine_;
 
   std::shared_ptr<std::thread> pre_processing_thread_ptr_ = nullptr;
   std::shared_ptr<std::thread> localization_thread_ptr_ = nullptr;
@@ -116,6 +127,7 @@ class System : public rclcpp::Node {
   std::mutex mutex_raw_cloud_deque_;
   std::mutex mutex_cloud_cluster_deque_;
   std::mutex mutex_localization_results_deque_;
+  std::mutex mutex_health_result_;
   std::mutex mutex_base_to_lidar_transform_;
 
   // deque
@@ -131,6 +143,16 @@ class System : public rclcpp::Node {
   bool has_base_to_lidar_ = false;
   double last_localization_z_offset_ = 0.0;
   bool has_localization_z_offset_ = false;
+
+  TimeStampUs last_health_result_stamp_ = 0U;
+  TimeStampUs last_health_result_arrival_steady_us_ = 0U;
+  float last_health_result_fitness_ = std::numeric_limits<float>::infinity();
+  int last_health_consistency_hit_ = 0;
+  int last_health_consistency_required_ = 0;
+  bool last_health_result_is_tracking_ = false;
+  bool has_health_result_ = false;
+  bool has_new_health_result_ = false;
+  double current_health_covariance_scale_ = 1.0;
 };
 
 #endif  // FUNNY_LIDAR_SLAM_SYSTEM_H

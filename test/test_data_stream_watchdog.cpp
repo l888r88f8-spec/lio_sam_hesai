@@ -47,6 +47,15 @@ TEST(DataStreamWatchdog, MarksLidarStalledOnlyAfterTimeout) {
   EXPECT_TRUE(watchdog.Evaluate(1500001U).lidar_stalled);
 }
 
+TEST(DataStreamWatchdog, UsesArrivalTimeForStallWhenSensorStampIsInFuture) {
+  localization_health::DataStreamWatchdog watchdog(
+      localization_health::DataStreamWatchdog::Config{});
+  watchdog.RecordLidar(100000000U, 1000000U);
+
+  EXPECT_FALSE(watchdog.Evaluate(1500000U).lidar_stalled);
+  EXPECT_TRUE(watchdog.Evaluate(1500001U).lidar_stalled);
+}
+
 TEST(DataStreamWatchdog, RecoversMonotonicStateAfterNormalSampleFollowingRollback) {
   localization_health::DataStreamWatchdog watchdog(
       localization_health::DataStreamWatchdog::Config{});
@@ -69,6 +78,48 @@ TEST(DataStreamWatchdog, ClearsTimestampJumpAfterNormalNominalInterval) {
 
   watchdog.RecordLidar(1100000U);
   EXPECT_FALSE(watchdog.Evaluate(1100000U).timestamp_jump);
+}
+
+TEST(DataStreamWatchdog, LatchesJumpUntilEvaluateAfterNormalSample) {
+  localization_health::DataStreamWatchdog watchdog(
+      localization_health::DataStreamWatchdog::Config{});
+  watchdog.RecordLidar(0U);
+  watchdog.RecordLidar(1000000U);
+  watchdog.RecordLidar(1100000U);
+
+  EXPECT_TRUE(watchdog.Evaluate(1100000U).timestamp_jump);
+  EXPECT_FALSE(watchdog.Evaluate(1100000U).timestamp_jump);
+}
+
+TEST(DataStreamWatchdog, LatchesRollbackUntilEvaluateAfterNormalSample) {
+  localization_health::DataStreamWatchdog watchdog(
+      localization_health::DataStreamWatchdog::Config{});
+  watchdog.RecordLidar(100000U);
+  watchdog.RecordLidar(10000U);
+  watchdog.RecordLidar(110000U);
+
+  EXPECT_FALSE(watchdog.Evaluate(110000U).timestamp_monotonic);
+  EXPECT_TRUE(watchdog.Evaluate(110000U).timestamp_monotonic);
+}
+
+TEST(DataStreamWatchdog, ConsumesObservationAndAnomalyInSameSnapshot) {
+  localization_health::DataStreamWatchdog watchdog(
+      localization_health::DataStreamWatchdog::Config{});
+  watchdog.RecordLidar(0U);
+  watchdog.RecordLidar(1000000U);
+
+  const auto anomaly = watchdog.Evaluate(1000000U);
+  EXPECT_TRUE(anomaly.has_new_observation);
+  EXPECT_TRUE(anomaly.timestamp_jump);
+
+  const auto consumed = watchdog.Evaluate(1000000U);
+  EXPECT_FALSE(consumed.has_new_observation);
+  EXPECT_FALSE(consumed.timestamp_jump);
+
+  watchdog.RecordLidar(1100000U);
+  const auto normal = watchdog.Evaluate(1100000U);
+  EXPECT_TRUE(normal.has_new_observation);
+  EXPECT_FALSE(normal.timestamp_jump);
 }
 
 TEST(DataStreamWatchdog, RejectsInvalidConfiguration) {

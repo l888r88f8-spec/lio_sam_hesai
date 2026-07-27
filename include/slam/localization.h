@@ -36,6 +36,8 @@ public:
 
     void Run();
 
+    [[nodiscard]] bool IsMapReady() const { return map_ready_.load(); }
+
 private:
     bool Init();
 
@@ -121,6 +123,7 @@ private:
     TimeStampUs curr_time_us_ = 0u;
 
     std::atomic_bool has_init_{false};
+    std::atomic_bool map_ready_{false};
 
     std::mutex mutex_lidar_cloud_;
     std::mutex mutex_global_map_cloud_;

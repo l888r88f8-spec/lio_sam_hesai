@@ -28,6 +28,8 @@ struct StreamHealth {
   bool timestamp_monotonic = true;
   bool timestamp_jump = false;
   bool rates_known = false;
+  // Snapshotted and consumed with pending anomalies under the watchdog mutex.
+  bool has_new_observation = false;
 };
 
 struct HealthInputs {

@@ -7,6 +7,7 @@
 #include <Eigen/Geometry>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <exception>
 #include <fstream>
@@ -31,6 +32,12 @@
 #include "slam/split_map.h"
 
 namespace {
+
+std::uint64_t SteadyNowMicroseconds() {
+  const auto elapsed = std::chrono::steady_clock::now().time_since_epoch();
+  return static_cast<std::uint64_t>(
+      std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count());
+}
 
 bool HasPclField(const pcl::PCLPointCloud2& cloud,
                  const std::string& field_name) {
@@ -373,6 +380,7 @@ bool Localization::Init() {
 void Localization::Run() {
   LOG(INFO) << "\033[1;32m----> Localization Started.\033[0m";
 
+  map_ready_.store(false);
   {
     std::lock_guard<std::mutex> lg(mutex_global_map_cloud_);
     std::string global_map_path =
@@ -396,9 +404,11 @@ void Localization::Run() {
       }
       global_map_xy_kdtree_.reset(new pcl::KdTreeFLANN<PCLPointXYZI>());
       global_map_xy_kdtree_->setInputCloud(global_map_xy_cloud_ptr_);
+      map_ready_.store(true);
     } else {
       global_map_xy_cloud_ptr_.reset();
       global_map_xy_kdtree_.reset();
+      map_ready_.store(false);
     }
 
     std::string ground_map_path =
@@ -1316,13 +1326,17 @@ std::optional<double> Localization::EstimateMapGroundZ(
 }
 
 void Localization::CacheResultToSystem(const LocalizationResult& result) const {
+  LocalizationResult queued_result = result;
+  queued_result.health_arrival_steady_us = SteadyNowMicroseconds();
+
   std::lock_guard<std::mutex> lg(
       system_ptr_->mutex_localization_results_deque_);
   while (system_ptr_->localization_results_deque_.size() >=
          System::kMaxLocalizationResultQueueSize) {
     system_ptr_->localization_results_deque_.pop_front();
   }
-  system_ptr_->localization_results_deque_.emplace_back(result);
+  system_ptr_->localization_results_deque_.emplace_back(
+      std::move(queued_result));
 }
 
 void Localization::UpdateCurrentLidarCloud(

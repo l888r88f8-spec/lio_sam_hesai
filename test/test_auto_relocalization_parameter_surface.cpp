@@ -35,6 +35,12 @@ void ExpectToken(const std::string & file, const std::string & token)
     << token << " is missing from " << file;
 }
 
+void ExpectNoToken(const std::string & file, const std::string & token)
+{
+  EXPECT_EQ(ReadProjectFile(file).find(token), std::string::npos)
+    << token << " must not appear in " << file;
+}
+
 void ExpectQuotedParameter(
   const std::string & file,
   const std::string & parameter_name)
@@ -175,4 +181,78 @@ TEST(AutoRelocalizationParameterSurface, ExposesLocalizationHealthParameters) {
       "src/slam/system.cpp", "localization_health." + parameter.leaf);
     ExpectLocalizationHealthYamlParameter(parameter.leaf);
   }
+}
+
+TEST(SystemIntegration, WiresLocalizationHealthObservability) {
+  const std::array<std::string, 8> header_tokens = {
+    "diagnostic_msgs/msg/diagnostic_array.hpp",
+    "localization_health/data_stream_watchdog.h",
+    "localization_health/localization_state_machine.h",
+    "diagnostics_pub_",
+    "data_stream_watchdog_",
+    "localization_state_machine_",
+    "has_new_health_result_",
+    "last_health_result_arrival_steady_us_",
+  };
+  for (const auto & token : header_tokens) {
+    ExpectToken("include/slam/system.h", token);
+  }
+
+  const std::array<std::string, 27> source_tokens = {
+    "RecordLidar",
+    "RecordImu",
+    "has_new_result",
+    "has_new_stream_observation",
+    "inputs.stream.has_new_observation",
+    "std::chrono::steady_clock",
+    "data_stream_watchdog_->Evaluate(steady_now_us)",
+    "localization_results.swap(localization_results_deque_)",
+    "for (const auto& health_result : localization_results)",
+    "\"/diagnostics\"",
+    "\"health_score\"",
+    "\"s_fitness\"",
+    "\"s_stream\"",
+    "\"s_consistency\"",
+    "\"lidar_rate_hz\"",
+    "\"imu_rate_hz\"",
+    "\"covariance_scale\"",
+    "status.name = \"lio_sam_hesai: localization\"",
+    "status.hardware_id = \"lio_sam_hesai_relocalization\"",
+    "mapping_odom.pose.covariance[0]",
+    "mapping_odom.pose.covariance[7]",
+    "mapping_odom.pose.covariance[14]",
+    "mapping_odom.pose.covariance[21]",
+    "mapping_odom.pose.covariance[28]",
+    "mapping_odom.pose.covariance[35]",
+    "current_health_covariance_scale_",
+    "PublishLocalizationHealth",
+  };
+  for (const auto & token : source_tokens) {
+    ExpectToken("src/slam/system.cpp", token);
+  }
+  ExpectToken(
+    "include/common/sensor_data_type.h", "health_arrival_steady_us");
+  ExpectToken(
+    "src/slam/localization.cpp",
+    "queued_result.health_arrival_steady_us = SteadyNowMicroseconds()");
+  ExpectToken(
+    "src/slam/system.cpp", "health_result.health_arrival_steady_us");
+  ExpectNoToken(
+    "include/slam/system.h",
+    "std::atomic_bool has_new_stream_observation_");
+  ExpectNoToken(
+    "src/slam/system.cpp", "has_new_stream_observation_.");
+
+  const std::array<std::string, 4> cmake_tokens = {
+    "find_package(diagnostic_msgs REQUIRED)",
+    "src/localization_health/data_stream_watchdog.cpp",
+    "src/localization_health/localization_state_machine.cpp",
+    "diagnostic_msgs",
+  };
+  for (const auto & token : cmake_tokens) {
+    ExpectToken("CMakeLists.txt", token);
+  }
+
+  ExpectToken("package.xml", "<build_depend>diagnostic_msgs</build_depend>");
+  ExpectToken("package.xml", "<exec_depend>diagnostic_msgs</exec_depend>");
 }

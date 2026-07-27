@@ -4,6 +4,11 @@
 #include <pcl_conversions/pcl_conversions.h>
 #include <tf2_eigen/tf2_eigen.hpp>
 
+#include <chrono>
+#include <cmath>
+#include <limits>
+#include <stdexcept>
+#include <string>
 #include <thread>
 #include <utility>
 
@@ -16,9 +21,95 @@
 #include "slam/localization.h"
 #include "slam/preprocessing.h"
 
+namespace {
+
+constexpr long double kMicrosecondsPerSecond = 1000000.0L;
+
+std::uint64_t SecondsToMicroseconds(double seconds,
+                                    const std::string& parameter_name) {
+  if (!std::isfinite(seconds) || seconds <= 0.0) {
+    throw std::invalid_argument(parameter_name +
+                                " must be finite and greater than zero");
+  }
+
+  const long double microseconds =
+      static_cast<long double>(seconds) * kMicrosecondsPerSecond;
+  if (microseconds < 1.0L ||
+      microseconds >
+          static_cast<long double>(std::numeric_limits<std::uint64_t>::max())) {
+    throw std::invalid_argument(parameter_name +
+                                " cannot be represented in microseconds");
+  }
+  return static_cast<std::uint64_t>(microseconds);
+}
+
+std::uint64_t RateToPeriodMicroseconds(double rate_hz,
+                                       const std::string& parameter_name) {
+  if (!std::isfinite(rate_hz) || rate_hz <= 0.0) {
+    throw std::invalid_argument(parameter_name +
+                                " must be finite and greater than zero");
+  }
+
+  const long double period_us =
+      kMicrosecondsPerSecond / static_cast<long double>(rate_hz);
+  if (period_us < 1.0L ||
+      period_us >
+          static_cast<long double>(std::numeric_limits<std::uint64_t>::max())) {
+    throw std::invalid_argument(parameter_name +
+                                " produces an unrepresentable period");
+  }
+  return static_cast<std::uint64_t>(period_us);
+}
+
+const char* BoolString(bool value) { return value ? "true" : "false"; }
+
+std::uint64_t SteadyNowMicroseconds() {
+  const auto elapsed = std::chrono::steady_clock::now().time_since_epoch();
+  return static_cast<std::uint64_t>(
+      std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count());
+}
+
+}  // namespace
+
 System::System(const rclcpp::NodeOptions& options)
     : Node("lio_sam_hesai_relocalization", options) {
   InitConfigParameters();
+
+  const auto& config = ConfigParameters::Instance();
+  localization_health::DataStreamWatchdog::Config watchdog_config;
+  watchdog_config.lidar_stall_timeout_us = SecondsToMicroseconds(
+      config.health_lidar_stall_timeout_,
+      "localization_health.lidar_stall_timeout");
+  watchdog_config.imu_stall_timeout_us = SecondsToMicroseconds(
+      config.health_imu_stall_timeout_,
+      "localization_health.imu_stall_timeout");
+  watchdog_config.nominal_lidar_period_us = RateToPeriodMicroseconds(
+      config.health_nominal_lidar_rate_hz_,
+      "localization_health.nominal_lidar_rate_hz");
+  watchdog_config.nominal_imu_period_us = RateToPeriodMicroseconds(
+      config.health_nominal_imu_rate_hz_,
+      "localization_health.nominal_imu_rate_hz");
+  data_stream_watchdog_ =
+      std::make_unique<localization_health::DataStreamWatchdog>(
+          watchdog_config);
+
+  localization_health::LocalizationStateMachine::Config state_config;
+  state_config.degrade_enter_frames = config.health_degrade_enter_frames_;
+  state_config.recover_frames = config.health_recover_frames_;
+  state_config.lost_enter_frames = config.health_lost_enter_frames_;
+  state_config.degraded_fitness_thres =
+      config.health_degraded_fitness_thres_;
+  state_config.lost_fitness_thres = config.health_lost_fitness_thres_;
+  state_config.nominal_lidar_rate_hz = config.health_nominal_lidar_rate_hz_;
+  state_config.nominal_imu_rate_hz = config.health_nominal_imu_rate_hz_;
+  state_config.result_timeout_us = SecondsToMicroseconds(
+      config.health_result_timeout_, "localization_health.result_timeout");
+  state_config.base_covariance = config.health_base_covariance_;
+  state_config.max_covariance_scale = config.health_max_covariance_scale_;
+  localization_state_machine_ =
+      std::make_unique<localization_health::LocalizationStateMachine>(
+          state_config);
+
   InitLidarModel();
   InitPublisher();
   InitSubscriber();
@@ -324,6 +415,9 @@ void System::InitPublisher() {
 
   localization_odom_pub_ = create_publisher<nav_msgs::msg::Odometry>(
       ConfigParameters::Instance().mapping_odom_topic_, 5);
+  diagnostics_pub_ =
+      create_publisher<diagnostic_msgs::msg::DiagnosticArray>("/diagnostics",
+                                                              10);
 }
 
 void System::InitSubscriber() {
@@ -361,6 +455,9 @@ void System::InitSubscriber() {
 
 void System::LidarMsgCallBack(
     const sensor_msgs::msg::PointCloud2::ConstSharedPtr& cloud_ros_ptr) {
+  data_stream_watchdog_->RecordLidar(RosTimeToUs(cloud_ros_ptr->header),
+                                     SteadyNowMicroseconds());
+
   if (!has_imu_init_.load()) {
     return;
   }
@@ -404,6 +501,8 @@ void System::ImuMsgCallBack(
 
   IMUData imu_data;
   imu_data.timestamp_ = RosTimeToUs(imu_ptr->header);
+  data_stream_watchdog_->RecordImu(imu_data.timestamp_,
+                                   SteadyNowMicroseconds());
   imu_data.angular_velocity_ = RosVec3dToEigen(imu_ptr->angular_velocity);
   imu_data.linear_acceleration_ = RosVec3dToEigen(imu_ptr->linear_acceleration);
 
@@ -556,7 +655,8 @@ std::optional<Mat4d> System::GetBaseToLidarTransform() {
 
 void System::Run() {
   // publish localization path and odometry
-  if (ProcessLocalizationResultCache()) {
+  bool had_new_result = false;
+  if (ProcessLocalizationResultCache(had_new_result)) {
     PublishLocalizationPath();
 
     auto current_lidar_cloud = localization_ptr_->GetCurrentLidarCloudMap();
@@ -564,6 +664,9 @@ void System::Run() {
     PublishRosCloud(localization_current_lidar_cloud_pub_,
                     current_lidar_cloud.makeShared(),
                     ConfigParameters::Instance().map_frame_);
+  }
+  if (!had_new_result) {
+    PublishLocalizationHealth();
   }
 
   // publish global cloud map
@@ -581,8 +684,9 @@ void System::Run() {
   }
 }
 
-bool System::ProcessLocalizationResultCache() {
-  LocalizationResult result;
+bool System::ProcessLocalizationResultCache(bool& had_new_result) {
+  had_new_result = false;
+  decltype(localization_results_deque_) localization_results;
 
   {
     std::lock_guard<std::mutex> lg(mutex_localization_results_deque_);
@@ -591,9 +695,29 @@ bool System::ProcessLocalizationResultCache() {
       return false;
     }
 
-    result = localization_results_deque_.back();
-    localization_results_deque_.clear();
+    localization_results.swap(localization_results_deque_);
   }
+  had_new_result = true;
+
+  for (const auto& health_result : localization_results) {
+    {
+      std::lock_guard<std::mutex> lock(mutex_health_result_);
+      last_health_result_stamp_ = health_result.timestamp_;
+      last_health_result_arrival_steady_us_ =
+          health_result.health_arrival_steady_us == 0U
+              ? SteadyNowMicroseconds()
+              : health_result.health_arrival_steady_us;
+      last_health_result_fitness_ = health_result.reg_fitness;
+      last_health_consistency_hit_ = health_result.consistency_hit;
+      last_health_consistency_required_ = health_result.consistency_required;
+      last_health_result_is_tracking_ = health_result.is_tracking;
+      has_health_result_ = true;
+      has_new_health_result_ = true;
+    }
+    PublishLocalizationHealth();
+  }
+
+  const LocalizationResult& result = localization_results.back();
 
   const rclcpp::Time stamp(result.timestamp_ * 1000ULL);
 
@@ -657,9 +781,108 @@ bool System::ProcessLocalizationResultCache() {
   mapping_odom.pose.pose.orientation.y = q.y();
   mapping_odom.pose.pose.orientation.z = q.z();
   mapping_odom.pose.pose.orientation.w = q.w();
+  if (ConfigParameters::Instance().health_enable_) {
+    mapping_odom.pose.covariance.fill(0.0);
+    const double covariance =
+        ConfigParameters::Instance().health_base_covariance_ *
+        current_health_covariance_scale_;
+    mapping_odom.pose.covariance[0] = covariance;
+    mapping_odom.pose.covariance[7] = covariance;
+    mapping_odom.pose.covariance[14] = covariance;
+    mapping_odom.pose.covariance[21] = covariance;
+    mapping_odom.pose.covariance[28] = covariance;
+    mapping_odom.pose.covariance[35] = covariance;
+  }
   localization_odom_pub_->publish(mapping_odom);
 
   return true;
+}
+
+void System::PublishLocalizationHealth() {
+  const auto& config = ConfigParameters::Instance();
+  if (!config.health_enable_ || !data_stream_watchdog_ ||
+      !localization_state_machine_ || !diagnostics_pub_) {
+    return;
+  }
+
+  const std::uint64_t steady_now_us = SteadyNowMicroseconds();
+
+  localization_health::HealthInputs inputs;
+  inputs.has_imu_init = has_imu_init_.load();
+  inputs.map_ready = localization_ptr_ && localization_ptr_->IsMapReady();
+  inputs.now_us = steady_now_us;
+  {
+    std::lock_guard<std::mutex> lock(mutex_health_result_);
+    inputs.has_init = has_health_result_;
+    inputs.is_tracking = last_health_result_is_tracking_;
+    inputs.has_new_result = has_new_health_result_;
+    inputs.reg_fitness = last_health_result_fitness_;
+    inputs.consistency_hit = last_health_consistency_hit_;
+    inputs.consistency_required = last_health_consistency_required_;
+    if (has_health_result_ &&
+        steady_now_us > last_health_result_arrival_steady_us_) {
+      inputs.last_result_age_us =
+          steady_now_us - last_health_result_arrival_steady_us_;
+    }
+    has_new_health_result_ = false;
+  }
+  inputs.stream = data_stream_watchdog_->Evaluate(steady_now_us);
+  inputs.has_new_stream_observation = inputs.stream.has_new_observation;
+
+  const localization_health::HealthReport report =
+      localization_state_machine_->Update(inputs);
+  current_health_covariance_scale_ = report.covariance_scale;
+
+  diagnostic_msgs::msg::DiagnosticArray diagnostics;
+  diagnostics.header.stamp = get_clock()->now();
+  diagnostic_msgs::msg::DiagnosticStatus status;
+  status.name = "lio_sam_hesai: localization";
+  status.hardware_id = "lio_sam_hesai_relocalization";
+  switch (report.level) {
+    case localization_health::HealthLevel::kOk:
+      status.level = diagnostic_msgs::msg::DiagnosticStatus::OK;
+      break;
+    case localization_health::HealthLevel::kWarn:
+      status.level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
+      break;
+    case localization_health::HealthLevel::kError:
+      status.level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
+      break;
+  }
+  status.message = report.reason;
+
+  const auto add_value = [&status](const std::string& key,
+                                   const std::string& value) {
+    diagnostic_msgs::msg::KeyValue item;
+    item.key = key;
+    item.value = value;
+    status.values.emplace_back(std::move(item));
+  };
+  add_value("health_score", std::to_string(report.health_score));
+  add_value("s_fitness", std::to_string(report.s_fitness));
+  add_value("s_stream", std::to_string(report.s_stream));
+  add_value("s_consistency", std::to_string(report.s_consistency));
+  add_value("lidar_rate_hz", std::to_string(inputs.stream.lidar_rate_hz));
+  add_value("imu_rate_hz", std::to_string(inputs.stream.imu_rate_hz));
+  add_value("covariance_scale", std::to_string(report.covariance_scale));
+  add_value("reg_fitness", std::to_string(inputs.reg_fitness));
+  add_value("last_result_age_us", std::to_string(inputs.last_result_age_us));
+  add_value("has_imu_init", BoolString(inputs.has_imu_init));
+  add_value("has_init", BoolString(inputs.has_init));
+  add_value("consistency_hit", std::to_string(inputs.consistency_hit));
+  add_value("consistency_required",
+            std::to_string(inputs.consistency_required));
+  add_value("reason", report.reason);
+  add_value("is_tracking", BoolString(inputs.is_tracking));
+  add_value("map_ready", BoolString(inputs.map_ready));
+  add_value("rates_known", BoolString(inputs.stream.rates_known));
+  add_value("lidar_stalled", BoolString(inputs.stream.lidar_stalled));
+  add_value("imu_stalled", BoolString(inputs.stream.imu_stalled));
+  add_value("timestamp_monotonic",
+            BoolString(inputs.stream.timestamp_monotonic));
+  add_value("timestamp_jump", BoolString(inputs.stream.timestamp_jump));
+  diagnostics.status.emplace_back(std::move(status));
+  diagnostics_pub_->publish(diagnostics);
 }
 
 void System::ApplyLocalizationZOffset(PCLPointCloudXYZI& cloud) const {

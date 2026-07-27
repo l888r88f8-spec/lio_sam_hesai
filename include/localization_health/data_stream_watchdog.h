@@ -25,24 +25,28 @@ class DataStreamWatchdog {
   explicit DataStreamWatchdog(const Config& config);
 
   void RecordLidar(std::uint64_t stamp_us);
+  void RecordLidar(std::uint64_t stamp_us, std::uint64_t arrival_us);
   void RecordImu(std::uint64_t stamp_us);
+  void RecordImu(std::uint64_t stamp_us, std::uint64_t arrival_us);
   [[nodiscard]] StreamHealth Evaluate(std::uint64_t now_us) const;
 
  private:
   struct Channel {
     std::deque<std::uint64_t> stamps;
     std::uint64_t last_stamp = 0U;
+    std::uint64_t last_arrival_us = 0U;
     bool has_last = false;
-    bool monotonic = true;
-    bool jump = false;
+    mutable bool pending_rollback = false;
+    mutable bool pending_jump = false;
   };
 
   void Record(Channel& channel, std::uint64_t stamp_us,
-              std::uint64_t nominal_period_us);
+              std::uint64_t arrival_us, std::uint64_t nominal_period_us);
   [[nodiscard]] double RateHz(const Channel& channel) const;
 
   const Config config_;
   mutable std::mutex mutex_;
+  mutable bool pending_observation_ = false;
   Channel lidar_;
   Channel imu_;
 };

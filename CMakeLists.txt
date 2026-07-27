@@ -24,6 +24,7 @@ find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
+find_package(diagnostic_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(pcl_conversions REQUIRED)
 find_package(pcl_msgs REQUIRED)
@@ -143,6 +144,8 @@ add_library(${PROJECT_NAME}_relocalization_lib
   src/optimization/g2o/rotation_edge.cpp
   src/optimization/g2o/velocity_edge.cpp
   src/relocalization/scan_context.cpp
+  src/localization_health/data_stream_watchdog.cpp
+  src/localization_health/localization_state_machine.cpp
   src/slam/config_parameters.cpp
   src/slam/preprocessing.cpp
   src/slam/localization.cpp
@@ -150,7 +153,7 @@ add_library(${PROJECT_NAME}_relocalization_lib
   src/slam/system.cpp
 )
 ament_target_dependencies(${PROJECT_NAME}_relocalization_lib
-  rclcpp rclpy std_msgs sensor_msgs geometry_msgs nav_msgs pcl_conversions
+  rclcpp rclpy std_msgs sensor_msgs geometry_msgs nav_msgs diagnostic_msgs pcl_conversions
   pcl_msgs visualization_msgs tf2 tf2_ros tf2_eigen tf2_sensor_msgs
   tf2_geometry_msgs OpenCV PCL
 )
@@ -161,7 +164,7 @@ target_link_libraries(${PROJECT_NAME}_relocalization_lib
 
 add_executable(${PROJECT_NAME}_relocalization src/relocalization_node.cpp)
 ament_target_dependencies(${PROJECT_NAME}_relocalization
-  rclcpp rclpy std_msgs sensor_msgs geometry_msgs nav_msgs pcl_conversions
+  rclcpp rclpy std_msgs sensor_msgs geometry_msgs nav_msgs diagnostic_msgs pcl_conversions
   pcl_msgs visualization_msgs tf2 tf2_ros tf2_eigen tf2_sensor_msgs
   tf2_geometry_msgs OpenCV PCL
 )
