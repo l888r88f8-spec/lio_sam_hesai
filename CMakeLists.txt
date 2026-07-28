@@ -238,6 +238,14 @@ if(BUILD_TESTING)
     test/test_relocalization_efficiency_surface.cpp)
   ament_add_gtest(test_bounded_async test/test_bounded_async.cpp)
   target_include_directories(test_bounded_async PRIVATE include)
+  ament_add_gtest(test_ivox_map_batch_add
+    test/test_ivox_map_batch_add.cpp
+    src/ivox_map/ivox_map.cpp
+    src/ivox_map/voxel_grid_node.cpp)
+  target_include_directories(test_ivox_map_batch_add PRIVATE
+    include ${PCL_INCLUDE_DIRS})
+  target_link_libraries(test_ivox_map_batch_add
+    ${PCL_LIBRARIES} ${GLOG_LIBRARIES})
   ament_add_gtest(test_data_stream_watchdog test/test_data_stream_watchdog.cpp src/localization_health/data_stream_watchdog.cpp)
   target_include_directories(test_data_stream_watchdog PRIVATE include)
   ament_add_gtest(test_localization_state_machine
