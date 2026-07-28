@@ -307,6 +307,7 @@ def _run_replay(arguments, runtime_parameters, quick, launch_log, player_log):
     from diagnostic_msgs.msg import DiagnosticArray
     from nav_msgs.msg import Odometry
     from rclpy.parameter import Parameter
+    from rclpy.qos import qos_profile_sensor_data
     from rosgraph_msgs.msg import Clock
 
     domain_id = str(200 + (os.getpid() % 30))
@@ -382,11 +383,21 @@ def _run_replay(arguments, runtime_parameters, quick, launch_log, player_log):
                     {value.key: value.value for value in status.values},
                 )
 
-        node.create_subscription(Clock, "/clock", clock_callback, 10)
         node.create_subscription(
-            Odometry, "/lio_sam/localization/odometry", odometry_callback, 10
+            Clock, "/clock", clock_callback, qos_profile_sensor_data
         )
-        node.create_subscription(DiagnosticArray, "/diagnostics", diagnostics_callback, 10)
+        node.create_subscription(
+            Odometry,
+            "/lio_sam/localization/odometry",
+            odometry_callback,
+            qos_profile_sensor_data,
+        )
+        node.create_subscription(
+            DiagnosticArray,
+            "/diagnostics",
+            diagnostics_callback,
+            qos_profile_sensor_data,
+        )
 
         launch_process = subprocess.Popen(
             launch_command,
