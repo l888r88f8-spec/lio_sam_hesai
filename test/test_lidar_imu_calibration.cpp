@@ -230,12 +230,13 @@ TEST(LidarImuCalibration, LaunchStaticTransformsMatchCanonicalCalibration)
     ReadProjectFile("config/relocalization.yaml"));
   ASSERT_TRUE(mapping_translation.isApprox(relocalization_translation));
 
-  const std::array<std::pair<std::string, std::string>, 2> launch_files = {{
-    {"launch/localization.launch.py", "true"},
-    {"launch/localization_with_nonground.launch.py", "false"},
+  const std::array<std::string, 3> launch_files = {{
+    "launch/mapping.launch.py",
+    "launch/localization.launch.py",
+    "launch/localization_with_nonground.launch.py",
   }};
   for (const auto & launch_file : launch_files) {
-    const std::string launch_text = ReadProjectFile(launch_file.first);
+    const std::string launch_text = ReadProjectFile(launch_file);
     const StaticTransform base_to_lidar =
       ReadStaticTransform(launch_text, "hesai_lidar");
     const StaticTransform base_to_imu =
@@ -251,13 +252,29 @@ TEST(LidarImuCalibration, LaunchStaticTransformsMatchCanonicalCalibration)
 
     EXPECT_TRUE(
       base_lidar.translation().isApprox(
-        Eigen::Vector3d(0.02, 0.0, 0.32))) << launch_file.first;
+        Eigen::Vector3d(0.02, 0.0, 0.32))) << launch_file;
+    EXPECT_TRUE(
+      base_imu.translation().isApprox(
+        Eigen::Vector3d(0.02, 0.0, 0.22))) << launch_file;
+    EXPECT_TRUE(base_lidar.linear().isApprox(Eigen::Matrix3d::Identity()))
+      << launch_file;
+    EXPECT_TRUE(base_imu.linear().isApprox(Eigen::Matrix3d::Identity()))
+      << launch_file;
     EXPECT_TRUE(imu_lidar.translation().isApprox(mapping_translation))
-      << launch_file.first;
+      << launch_file;
     EXPECT_TRUE(imu_lidar.linear().isApprox(Eigen::Matrix3d::Identity()))
-      << launch_file.first;
+      << launch_file;
+  }
+
+  const std::array<std::pair<std::string, std::string>, 2>
+    publish_static_tf_defaults = {{
+      {"launch/localization.launch.py", "true"},
+      {"launch/localization_with_nonground.launch.py", "false"},
+    }};
+  for (const auto & launch_file : publish_static_tf_defaults) {
     EXPECT_EQ(
-      ReadPublishStaticTfDefault(launch_text), launch_file.second)
+      ReadPublishStaticTfDefault(ReadProjectFile(launch_file.first)),
+      launch_file.second)
       << launch_file.first;
   }
 }
