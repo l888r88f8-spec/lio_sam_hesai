@@ -8,7 +8,7 @@ from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import localization_regression
 from localization_regression import MetricCollector
@@ -113,6 +113,13 @@ class MetricCollectorTest(unittest.TestCase):
         self.assertIsNone(metrics["first_ok_seconds"])
         self.assertEqual(metrics["max_non_ok_gap_seconds"], 4.0)
 
+    def test_no_diagnostic_samples_leave_non_ok_gap_unavailable(self):
+        collector = MetricCollector()
+
+        collector.clock(100.0)
+
+        self.assertIsNone(collector.finish(104.0)["max_non_ok_gap_seconds"])
+
     def test_error_level_two_is_counted(self):
         collector = MetricCollector()
 
@@ -121,6 +128,24 @@ class MetricCollectorTest(unittest.TestCase):
         collector.diagnostic(102.0, 2, "lio_sam_hesai: localization", {})
 
         self.assertEqual(collector.finish(103.0)["error_samples"], 2)
+
+    def test_first_odom_and_ok_offsets_are_order_independent_of_clock_callback(self):
+        collector = MetricCollector()
+
+        collector.odom(101.5, 0, 0, 0, 0, 0, 0, 1)
+        collector.diagnostic(
+            102.0,
+            0,
+            "lio_sam_hesai: localization",
+            {"timestamp_monotonic": "true"},
+        )
+        collector.clock(100.0)
+
+        metrics = collector.finish(110.0)
+
+        self.assertEqual(metrics["first_odom_seconds"], 1.5)
+        self.assertEqual(metrics["first_ok_seconds"], 2.0)
+        self.assertEqual(metrics["max_non_ok_gap_seconds"], 2.0)
 
 
 class LocalizationRegressionCliTest(unittest.TestCase):
@@ -286,6 +311,85 @@ class LocalizationRegressionCliTest(unittest.TestCase):
         self.assertEqual(exit_code, 2)
         observed = json.loads((self.output_dir / "observed.json").read_text(encoding="utf-8"))
         self.assertEqual(observed["error"], "no rclpy in this environment")
+
+    def test_replay_timeout_returns_clear_cli_error_with_artifacts(self):
+        runtime_parameters = self.output_dir / "relocalization.runtime.yaml"
+        with (
+            patch.object(localization_regression, "validate_dataset", return_value=self.identity),
+            patch.object(
+                localization_regression,
+                "write_runtime_parameters",
+                return_value=runtime_parameters,
+            ),
+            patch.object(
+                localization_regression,
+                "load_baseline",
+                return_value=copy.deepcopy(BASELINE),
+            ),
+            patch.object(
+                localization_regression,
+                "_run_replay",
+                side_effect=localization_regression.ReplayError(
+                    "replay timed out waiting for /clock"
+                ),
+            ),
+            redirect_stderr(StringIO()),
+        ):
+            exit_code = localization_regression.main(
+                self._arguments("--baseline", str(self.root / "baseline.yaml"))
+            )
+
+        self.assertEqual(exit_code, 2)
+        self.assertTrue((self.output_dir / "launch.log").is_file())
+        self.assertTrue((self.output_dir / "bag-play.log").is_file())
+        observed = json.loads((self.output_dir / "observed.json").read_text(encoding="utf-8"))
+        self.assertEqual(observed["error"], "replay timed out waiting for /clock")
+
+    def test_replay_clock_timeout_uses_injected_monotonic_without_sleeping(self):
+        class FakeMonotonic:
+            def __init__(self):
+                self.seconds = 0.0
+
+            def __call__(self):
+                return self.seconds
+
+            def advance(self, seconds):
+                self.seconds += seconds
+
+        monotonic = FakeMonotonic()
+        launch_process = Mock()
+        player_process = Mock()
+        launch_process.poll.return_value = None
+        player_process.poll.return_value = None
+
+        def spin_once(_node, _timeout_seconds):
+            monotonic.advance(31.0)
+
+        with self.assertRaisesRegex(
+            localization_regression.ReplayError, "timed out waiting for /clock"
+        ):
+            localization_regression._spin_bag_window(
+                None,
+                launch_process,
+                player_process,
+                [None],
+                duration_seconds=1.0,
+                rate=1.0,
+                monotonic=monotonic,
+                spin_once=spin_once,
+            )
+
+    def test_cleanup_signals_process_group_when_leader_already_exited(self):
+        process = Mock()
+        process.pid = 1234
+        process.poll.return_value = 0
+        process.wait.return_value = 0
+
+        with patch.object(localization_regression.os, "killpg") as killpg:
+            localization_regression._stop_process_group(process)
+
+        killpg.assert_called_once_with(1234, localization_regression.signal.SIGINT)
+        process.wait.assert_called_once_with(timeout=10.0)
 
 
 if __name__ == "__main__":

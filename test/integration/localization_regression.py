@@ -47,6 +47,9 @@ _NUMERIC_DIAGNOSTIC_FIELDS = (
     "lidar_rate_hz",
     "imu_rate_hz",
 )
+_REPLAY_TIMEOUT_MIN_SECONDS = 30.0
+_REPLAY_TIMEOUT_MAX_SECONDS = 900.0
+_REPLAY_TIMEOUT_ALLOWANCE_SECONDS = 30.0
 
 
 class MetricCollector:
@@ -56,13 +59,12 @@ class MetricCollector:
         self._clock_start = None
         self._odom_samples = 0
         self._valid_odom_samples = 0
-        self._first_odom = None
+        self._first_valid_odom_seconds = None
         self._last_valid_odom = None
         self._max_odom_gap = None
-        self._first_ok = None
+        self._first_ok_seconds = None
         self._error_samples = 0
-        self._non_ok_start = None
-        self._max_non_ok_gap = None
+        self._diagnostic_events = []
         self._diagnostic_values = {key: [] for key in _NUMERIC_DIAGNOSTIC_FIELDS}
         self._invalid_diagnostic_values = set()
         self._timestamp_monotonic = None
@@ -84,8 +86,8 @@ class MetricCollector:
             return
 
         self._valid_odom_samples += 1
-        if self._clock_start is not None and self._first_odom is None:
-            self._first_odom = timestamp - self._clock_start
+        if self._first_valid_odom_seconds is None:
+            self._first_valid_odom_seconds = timestamp
         if self._last_valid_odom is None:
             self._max_odom_gap = 0.0
         else:
@@ -102,22 +104,12 @@ class MetricCollector:
         numeric_level = _diagnostic_level(level)
         if numeric_level is None or timestamp is None:
             return
+        self._diagnostic_events.append((timestamp, numeric_level))
 
         if numeric_level == 0:
-            if self._clock_start is not None and self._first_ok is None:
-                self._first_ok = timestamp - self._clock_start
-            if self._non_ok_start is None and self._clock_start is not None:
-                self._non_ok_start = self._clock_start
-            if self._non_ok_start is not None:
-                self._max_non_ok_gap = _max_or_initial(
-                    self._max_non_ok_gap, max(0.0, timestamp - self._non_ok_start)
-                )
-            self._non_ok_start = None
+            if self._first_ok_seconds is None:
+                self._first_ok_seconds = timestamp
         else:
-            if self._non_ok_start is None:
-                self._non_ok_start = (
-                    self._clock_start if self._clock_start is not None else timestamp
-                )
             if numeric_level == 2:
                 self._error_samples += 1
 
@@ -145,23 +137,25 @@ class MetricCollector:
 
     def finish(self, seconds):
         finish_time = _finite_number(seconds)
-        max_non_ok_gap = self._max_non_ok_gap
-        if self._clock_start is not None and self._non_ok_start is not None and finish_time is not None:
-            max_non_ok_gap = _max_or_initial(
-                max_non_ok_gap, max(0.0, finish_time - self._non_ok_start)
-            )
+        max_non_ok_gap = _max_non_ok_gap_seconds(
+            self._diagnostic_events, self._clock_start, finish_time
+        )
 
         values = self._diagnostic_values
         invalid = self._invalid_diagnostic_values
         return {
-            "first_odom_seconds": self._first_odom,
+            "first_odom_seconds": _offset_from_clock(
+                self._first_valid_odom_seconds, self._clock_start
+            ),
             "valid_odom_ratio": (
                 self._valid_odom_samples / self._odom_samples
                 if self._odom_samples
                 else None
             ),
             "max_odom_gap_seconds": self._max_odom_gap,
-            "first_ok_seconds": self._first_ok,
+            "first_ok_seconds": _offset_from_clock(
+                self._first_ok_seconds, self._clock_start
+            ),
             "error_samples": self._error_samples,
             "max_non_ok_gap_seconds": max_non_ok_gap,
             "min_health_score": _minimum(values["health_score"], "health_score" in invalid),
@@ -205,6 +199,34 @@ def _boolean_value(value):
 
 def _max_or_initial(previous, value):
     return value if previous is None else max(previous, value)
+
+
+def _max_non_ok_gap_seconds(events, clock_start, finish_time):
+    if clock_start is None or not events:
+        return None
+    non_ok_start = clock_start
+    maximum_gap = None
+    for timestamp, level in sorted(events):
+        if timestamp < clock_start:
+            continue
+        if level == 0:
+            maximum_gap = _max_or_initial(
+                maximum_gap, max(0.0, timestamp - non_ok_start)
+            )
+            non_ok_start = None
+        elif non_ok_start is None:
+            non_ok_start = timestamp
+    if non_ok_start is not None and finish_time is not None:
+        maximum_gap = _max_or_initial(
+            maximum_gap, max(0.0, finish_time - non_ok_start)
+        )
+    return maximum_gap
+
+
+def _offset_from_clock(timestamp, clock_start):
+    if timestamp is None or clock_start is None:
+        return None
+    return timestamp - clock_start
 
 
 def _minimum(values, invalid):
@@ -423,6 +445,7 @@ def _run_replay(arguments, runtime_parameters, quick, launch_log, player_log):
             player_process,
             latest_clock,
             float(quick["duration_seconds"]),
+            float(quick["rate"]),
         )
         return collector.finish(latest_clock[0])
     finally:
@@ -453,7 +476,20 @@ def _wait_for_startup(node, launch_process, grace_seconds):
         rclpy_spin_once(node, min(0.1, max(0.0, deadline - time.monotonic())))
 
 
-def _spin_bag_window(node, launch_process, player_process, latest_clock, duration_seconds):
+def _spin_bag_window(
+    node,
+    launch_process,
+    player_process,
+    latest_clock,
+    duration_seconds,
+    rate,
+    monotonic=time.monotonic,
+    spin_once=None,
+):
+    if spin_once is None:
+        spin_once = rclpy_spin_once
+    timeout_seconds = _replay_timeout_seconds(duration_seconds, rate)
+    deadline = monotonic() + timeout_seconds
     first_clock = None
     while True:
         if launch_process.poll() is not None:
@@ -465,7 +501,14 @@ def _spin_bag_window(node, launch_process, player_process, latest_clock, duratio
                 f"bag player exited before replay duration with code {player_process.returncode}"
             )
 
-        rclpy_spin_once(node, 0.1)
+        if monotonic() >= deadline:
+            waiting_for = "/clock" if first_clock is None else "/clock progress"
+            raise ReplayError(
+                f"replay timed out waiting for {waiting_for} after "
+                f"{timeout_seconds:.1f} wall-clock seconds"
+            )
+
+        spin_once(node, min(0.1, max(0.0, deadline - monotonic())))
         current_clock = latest_clock[0]
         if current_clock is None:
             continue
@@ -473,6 +516,24 @@ def _spin_bag_window(node, launch_process, player_process, latest_clock, duratio
             first_clock = current_clock
         if current_clock - first_clock >= duration_seconds:
             return
+
+
+def _replay_timeout_seconds(duration_seconds, rate):
+    """Bound replay collection to expected wall time plus 30s, capped at 15 minutes."""
+    duration = _finite_number(duration_seconds)
+    playback_rate = _finite_number(rate)
+    if duration is None or duration <= 0.0:
+        raise ReplayError("quick.duration_seconds must be a positive finite number")
+    if playback_rate is None or playback_rate <= 0.0:
+        raise ReplayError("quick.rate must be a positive finite number")
+    expected_wall_seconds = duration / playback_rate
+    return min(
+        _REPLAY_TIMEOUT_MAX_SECONDS,
+        max(
+            _REPLAY_TIMEOUT_MIN_SECONDS,
+            expected_wall_seconds + _REPLAY_TIMEOUT_ALLOWANCE_SECONDS,
+        ),
+    )
 
 
 def rclpy_spin_once(node, timeout_seconds):
@@ -484,11 +545,10 @@ def rclpy_spin_once(node, timeout_seconds):
 def _stop_process_group(process, timeout_seconds=10.0):
     if process is None:
         return
-    if process.poll() is None:
-        try:
-            os.killpg(process.pid, signal.SIGINT)
-        except ProcessLookupError:
-            pass
+    try:
+        os.killpg(process.pid, signal.SIGINT)
+    except ProcessLookupError:
+        pass
     try:
         process.wait(timeout=timeout_seconds)
         return
