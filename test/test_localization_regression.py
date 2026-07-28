@@ -464,9 +464,15 @@ class LocalizationRegressionCliTest(unittest.TestCase):
         launch_process.poll.return_value = None
         player_process.poll.side_effect = [None, 0]
         clock_values = iter((100.0, 100.5))
+        spin_calls = 0
 
         def spin_once(_node, _timeout_seconds):
-            latest_clock[0] = next(clock_values)
+            nonlocal spin_calls
+            spin_calls += 1
+            try:
+                latest_clock[0] = next(clock_values)
+            except StopIteration:
+                pass
 
         with self.assertRaisesRegex(
             localization_regression.ReplayError,
@@ -482,6 +488,35 @@ class LocalizationRegressionCliTest(unittest.TestCase):
                 monotonic=lambda: 0.0,
                 spin_once=spin_once,
             )
+
+        self.assertEqual(
+            spin_calls,
+            1 + localization_regression._FINAL_CLOCK_DRAIN_MAX_CALLBACKS,
+        )
+
+    def test_successful_player_exit_drains_multiple_queued_clock_callbacks(self):
+        launch_process = Mock()
+        player_process = Mock()
+        latest_clock = [None]
+        launch_process.poll.return_value = None
+        player_process.poll.side_effect = [None, 0]
+        clock_values = iter((100.0, 100.5, 101.0))
+
+        def spin_once(_node, _timeout_seconds):
+            latest_clock[0] = next(clock_values)
+
+        localization_regression._spin_bag_window(
+            None,
+            launch_process,
+            player_process,
+            latest_clock,
+            duration_seconds=1.0,
+            rate=1.0,
+            monotonic=lambda: 0.0,
+            spin_once=spin_once,
+        )
+
+        self.assertEqual(latest_clock[0], 101.0)
 
 
 if __name__ == "__main__":
