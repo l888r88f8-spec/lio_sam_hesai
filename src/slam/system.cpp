@@ -868,7 +868,9 @@ void System::PublishLocalizationHealth() {
   add_value("lidar_rate_hz", std::to_string(inputs.stream.lidar_rate_hz));
   add_value("imu_rate_hz", std::to_string(inputs.stream.imu_rate_hz));
   add_value("covariance_scale", std::to_string(report.covariance_scale));
-  add_value("reg_fitness", std::to_string(inputs.reg_fitness));
+  add_value("reg_fitness",
+            std::to_string(localization_health::DiagnosticFitnessForPublication(
+                inputs.reg_fitness, config.health_lost_fitness_thres_)));
   add_value("last_result_age_us", std::to_string(inputs.last_result_age_us));
   add_value("has_imu_init", BoolString(inputs.has_imu_init));
   add_value("has_init", BoolString(inputs.has_init));

@@ -1,6 +1,7 @@
 #ifndef LIO_SAM_HESAI_LOCALIZATION_HEALTH_HEALTH_TYPES_H
 #define LIO_SAM_HESAI_LOCALIZATION_HEALTH_HEALTH_TYPES_H
 
+#include <cmath>
 #include <cstdint>
 #include <string>
 
@@ -58,6 +59,12 @@ struct HealthReport {
   double covariance_scale = 1.0;
   std::string reason;
 };
+
+inline double DiagnosticFitnessForPublication(float reg_fitness,
+                                              double lost_fitness_threshold) {
+  return std::isfinite(reg_fitness) ? static_cast<double>(reg_fitness)
+                                    : lost_fitness_threshold;
+}
 
 inline const char* ToString(LocalizationState state) {
   switch (state) {

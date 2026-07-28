@@ -12,6 +12,29 @@ using localization_health::HealthLevel;
 using localization_health::LocalizationState;
 using localization_health::LocalizationStateMachine;
 
+TEST(LocalizationHealthDiagnostics, PublishesFiniteFitnessUnchanged) {
+  constexpr double kLostFitnessThreshold = 1.25;
+  constexpr float kFiniteFitness = 0.42F;
+
+  EXPECT_DOUBLE_EQ(
+      localization_health::DiagnosticFitnessForPublication(kFiniteFitness,
+                                                           kLostFitnessThreshold),
+      static_cast<double>(kFiniteFitness));
+}
+
+TEST(LocalizationHealthDiagnostics, MapsNonFiniteFitnessToLostThreshold) {
+  constexpr double kLostFitnessThreshold = 1.25;
+
+  EXPECT_DOUBLE_EQ(
+      localization_health::DiagnosticFitnessForPublication(
+          std::numeric_limits<float>::infinity(), kLostFitnessThreshold),
+      kLostFitnessThreshold);
+  EXPECT_DOUBLE_EQ(
+      localization_health::DiagnosticFitnessForPublication(
+          std::numeric_limits<float>::quiet_NaN(), kLostFitnessThreshold),
+      kLostFitnessThreshold);
+}
+
 HealthInputs HealthyTrackingInput() {
   HealthInputs input;
   input.has_imu_init = true;
