@@ -457,6 +457,47 @@ class LocalizationRegressionCliTest(unittest.TestCase):
                 spin_once=spin_once,
             )
 
+    def test_target_clock_drains_queued_diagnostic_before_metrics_finish(self):
+        launch_process = Mock()
+        player_process = Mock()
+        latest_clock = [None]
+        collector = MetricCollector()
+        launch_process.poll.return_value = None
+        player_process.poll.return_value = None
+
+        def record_clock(seconds):
+            latest_clock[0] = seconds
+            collector.clock(seconds)
+
+        callbacks = iter(
+            (
+                lambda: record_clock(100.0),
+                lambda: record_clock(101.0),
+                lambda: collector.diagnostic(
+                    latest_clock[0], 0, "lio_sam_hesai: localization", {}
+                ),
+            )
+        )
+
+        def spin_once(_node, _timeout_seconds):
+            try:
+                next(callbacks)()
+            except StopIteration:
+                pass
+
+        localization_regression._spin_bag_window(
+            None,
+            launch_process,
+            player_process,
+            latest_clock,
+            duration_seconds=1.0,
+            rate=1.0,
+            monotonic=lambda: 0.0,
+            spin_once=spin_once,
+        )
+
+        self.assertEqual(collector.finish(latest_clock[0])["first_ok_seconds"], 1.0)
+
     def test_cleanup_signals_process_group_when_leader_already_exited(self):
         process = Mock()
         process.pid = 1234
@@ -518,9 +559,15 @@ class LocalizationRegressionCliTest(unittest.TestCase):
         launch_process.poll.return_value = None
         player_process.poll.side_effect = [None, 0]
         clock_values = iter((100.0, 101.0))
+        spin_calls = 0
 
         def spin_once(_node, _timeout_seconds):
-            latest_clock[0] = next(clock_values)
+            nonlocal spin_calls
+            spin_calls += 1
+            try:
+                latest_clock[0] = next(clock_values)
+            except StopIteration:
+                pass
 
         localization_regression._spin_bag_window(
             None,
@@ -534,6 +581,10 @@ class LocalizationRegressionCliTest(unittest.TestCase):
         )
 
         self.assertEqual(latest_clock[0], 101.0)
+        self.assertEqual(
+            spin_calls,
+            1 + localization_regression._FINAL_CALLBACK_DRAIN_MAX_CALLBACKS,
+        )
 
     def test_successful_player_exit_after_short_drained_clock_is_premature(self):
         launch_process = Mock()
@@ -569,7 +620,7 @@ class LocalizationRegressionCliTest(unittest.TestCase):
 
         self.assertEqual(
             spin_calls,
-            1 + localization_regression._FINAL_CLOCK_DRAIN_MAX_CALLBACKS,
+            1 + localization_regression._FINAL_CALLBACK_DRAIN_MAX_CALLBACKS,
         )
 
     def test_successful_player_exit_drains_multiple_queued_clock_callbacks(self):
@@ -579,9 +630,15 @@ class LocalizationRegressionCliTest(unittest.TestCase):
         launch_process.poll.return_value = None
         player_process.poll.side_effect = [None, 0]
         clock_values = iter((100.0, 100.5, 101.0))
+        spin_calls = 0
 
         def spin_once(_node, _timeout_seconds):
-            latest_clock[0] = next(clock_values)
+            nonlocal spin_calls
+            spin_calls += 1
+            try:
+                latest_clock[0] = next(clock_values)
+            except StopIteration:
+                pass
 
         localization_regression._spin_bag_window(
             None,
@@ -595,6 +652,10 @@ class LocalizationRegressionCliTest(unittest.TestCase):
         )
 
         self.assertEqual(latest_clock[0], 101.0)
+        self.assertEqual(
+            spin_calls,
+            1 + localization_regression._FINAL_CALLBACK_DRAIN_MAX_CALLBACKS,
+        )
 
 
 if __name__ == "__main__":

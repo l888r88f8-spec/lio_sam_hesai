@@ -50,7 +50,7 @@ _NUMERIC_DIAGNOSTIC_FIELDS = (
 _REPLAY_TIMEOUT_MIN_SECONDS = 30.0
 _REPLAY_TIMEOUT_MAX_SECONDS = 900.0
 _REPLAY_TIMEOUT_ALLOWANCE_SECONDS = 30.0
-_FINAL_CLOCK_DRAIN_MAX_CALLBACKS = 16
+_FINAL_CALLBACK_DRAIN_MAX_CALLBACKS = 32
 
 
 def _observer_subscription_qos(sensor_data_qos, reliable_qos):
@@ -496,6 +496,16 @@ def _spin_bag_window(
             first_clock = current_clock
         return current_clock - first_clock >= duration_seconds
 
+    def drain_final_callbacks():
+        """Dispatch a bounded backlog from all replay metric subscriptions.
+
+        The 32-callback cap covers the combined clock, odometry, and
+        diagnostics subscription backlog with headroom without extending the
+        replay or waiting for new work.
+        """
+        for _ in range(_FINAL_CALLBACK_DRAIN_MAX_CALLBACKS):
+            spin_once(node, 0.0)
+
     while True:
         if launch_process.poll() is not None:
             raise ReplayError(
@@ -507,10 +517,9 @@ def _spin_bag_window(
                 raise ReplayError(
                     f"bag player exited during playback with code {player_exit_code}"
                 )
-            for _ in range(_FINAL_CLOCK_DRAIN_MAX_CALLBACKS):
-                spin_once(node, 0.0)
-                if simulated_duration_reached():
-                    return
+            drain_final_callbacks()
+            if simulated_duration_reached():
+                return
             raise ReplayError(
                 "bag player exited before replay duration after draining queued /clock"
             )
@@ -524,6 +533,7 @@ def _spin_bag_window(
 
         spin_once(node, min(0.1, max(0.0, deadline - monotonic())))
         if simulated_duration_reached():
+            drain_final_callbacks()
             return
 
 
