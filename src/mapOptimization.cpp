@@ -206,9 +206,9 @@ public:
     std::deque<nav_msgs::msg::Odometry> gpsQueue;
     lio_sam_hesai::msg::CloudInfo cloudInfo;
 
-    vector<pcl::PointCloud<PointType>::Ptr> cornerCloudKeyFrames;
-    vector<pcl::PointCloud<PointType>::Ptr> surfCloudKeyFrames;
-    vector<pcl::PointCloud<PointType>::Ptr> groundCloudKeyFrames;
+    std::vector<pcl::PointCloud<PointType>::Ptr> cornerCloudKeyFrames;
+    std::vector<pcl::PointCloud<PointType>::Ptr> surfCloudKeyFrames;
+    std::vector<pcl::PointCloud<PointType>::Ptr> groundCloudKeyFrames;
     
     pcl::PointCloud<PointType>::Ptr cloudKeyPoses3D;
     pcl::PointCloud<PointTypePose>::Ptr cloudKeyPoses6D;
@@ -231,7 +231,7 @@ public:
     std::vector<PointType> coeffSelSurfVec;
     std::vector<bool> laserCloudOriSurfFlag;
 
-    map<int, pair<pcl::PointCloud<PointType>, pcl::PointCloud<PointType>>> laserCloudMapContainer;
+    std::map<int, std::pair<pcl::PointCloud<PointType>, pcl::PointCloud<PointType>>> laserCloudMapContainer;
     pcl::PointCloud<PointType>::Ptr laserCloudCornerFromMap;
     pcl::PointCloud<PointType>::Ptr laserCloudSurfFromMap;
     pcl::PointCloud<PointType>::Ptr laserCloudCornerFromMapDS;
@@ -265,11 +265,11 @@ public:
     int laserCloudSurfLastDSNum = 0;
 
     bool aLoopIsClosed = false;
-    map<int, int> loopIndexContainer; // from new to old
-    vector<pair<int, int>> loopIndexQueue;
-    vector<gtsam::Pose3> loopPoseQueue;
-    vector<gtsam::noiseModel::Diagonal::shared_ptr> loopNoiseQueue;
-    deque<std_msgs::msg::Float64MultiArray> loopInfoVec;
+    std::map<int, int> loopIndexContainer; // from new to old
+    std::vector<std::pair<int, int>> loopIndexQueue;
+    std::vector<gtsam::Pose3> loopPoseQueue;
+    std::vector<gtsam::noiseModel::Diagonal::shared_ptr> loopNoiseQueue;
+    std::deque<std_msgs::msg::Float64MultiArray> loopInfoVec;
     std::vector<int> cachedLocalMapKeyIndices;
     bool localMapCacheValid = false;
 
@@ -318,12 +318,12 @@ public:
         {
             auto saveMapService = [this](const std::shared_ptr<rmw_request_id_t> request_header, const std::shared_ptr<lio_sam_hesai::srv::SaveMap::Request> req, std::shared_ptr<lio_sam_hesai::srv::SaveMap::Response> res) -> void {
             (void)request_header;
-            string saveMapDirectory;
-            cout << "****************************************************" << endl;
-            cout << "Saving map to pcd files ..." << endl;
+            std::string saveMapDirectory;
+            std::cout << "****************************************************" << std::endl;
+            std::cout << "Saving map to pcd files ..." << std::endl;
             if(req->destination.empty()) saveMapDirectory = std::getenv("HOME") + savePCDDirectory;
             else saveMapDirectory = std::getenv("HOME") + req->destination;
-            cout << "Save destination: " << saveMapDirectory << endl;
+            std::cout << "Save destination: " << saveMapDirectory << std::endl;
             // create directory and remove old files;
             int unused = system((std::string("exec rm -r ") + saveMapDirectory).c_str());
             unused = system((std::string("mkdir -p ") + saveMapDirectory).c_str());
@@ -431,7 +431,7 @@ public:
                     *globalSurfCloud   += *surfT;
                 }
 
-                cout << "" << std::flush << "Processing feature cloud " << i << " of " << keyPoses6DSnapshot->size() << " ..." << endl;
+                std::cout << "" << std::flush << "Processing feature cloud " << i << " of " << keyPoses6DSnapshot->size() << " ..." << std::endl;
             }
 
             if (useStaticFilter)
@@ -455,13 +455,13 @@ public:
             shiftSavedMapCloudZ(globalSurfCloud);
             if (alignSavedMapGroundToZero)
             {
-                cout << "Saved map Z offset: " << savedMapGroundZOffset
-                     << " m (align ground to map z=0)" << endl;
+                std::cout << "Saved map Z offset: " << savedMapGroundZOffset
+                     << " m (align ground to map z=0)" << std::endl;
             }
 
             if(req->resolution != 0)
             {
-               cout << "\n\nSave resolution: " << req->resolution << endl;
+               std::cout << "\n\nSave resolution: " << req->resolution << std::endl;
                // down-sample and save corner cloud
                downSizeFilterCorner.setInputCloud(globalCornerCloud);
                downSizeFilterCorner.setLeafSize(req->resolution, req->resolution, req->resolution);
@@ -497,8 +497,8 @@ public:
                     scanContextGenerator.SaveDB(scanContextPath, "GlobalMap.pcd");
                 if (scanContextDbSaved)
                 {
-                    cout << "Scan Context DB (" << scanContextGenerator.Size()
-                         << " keyframes) saved: " << scanContextPath << endl;
+                    std::cout << "Scan Context DB (" << scanContextGenerator.Size()
+                         << " keyframes) saved: " << scanContextPath << std::endl;
                 }
                 else
                 {
@@ -515,12 +515,12 @@ public:
                     saveMapDirectory + "/GroundMap.pcd", groundRes, true);
             }
             if (groundRes != req->resolution)
-                cout << "Ground save resolution: " << groundRes << endl;
+                std::cout << "Ground save resolution: " << groundRes << std::endl;
             res->success = (ret == 0) && groundSaved && scanContextDbSaved;
             downSizeFilterCorner.setLeafSize(mappingCornerLeafSize, mappingCornerLeafSize, mappingCornerLeafSize);
             downSizeFilterSurf.setLeafSize(mappingSurfLeafSize, mappingSurfLeafSize, mappingSurfLeafSize);
-            cout << "****************************************************" << endl;
-            cout << "Saving map to pcd files completed\n" << endl;
+            std::cout << "****************************************************" << std::endl;
+            std::cout << "Saving map to pcd files completed\n" << std::endl;
             return;
             };
 
@@ -738,7 +738,7 @@ public:
             *laserCloudCornerFromMap += laserCloudCornerTemp;
             *laserCloudSurfFromMap += laserCloudSurfTemp;
             laserCloudMapContainer[thisKeyInd] =
-                make_pair(laserCloudCornerTemp, laserCloudSurfTemp);
+                std::make_pair(laserCloudCornerTemp, laserCloudSurfTemp);
         }
 
         downSizeFilterCorner.setInputCloud(laserCloudCornerFromMap);
@@ -915,8 +915,8 @@ public:
         }
         if (savePCD == false)
             return;
-        cout << "****************************************************" << endl;
-        cout << "Saving map to pcd files ..." << endl;
+        std::cout << "****************************************************" << std::endl;
+        std::cout << "Saving map to pcd files ..." << std::endl;
 
         savePCDDirectory = std::getenv("HOME") + savePCDDirectory;
         int unused = system((std::string("exec rm -r ") + savePCDDirectory).c_str());
@@ -936,14 +936,14 @@ public:
             *globalCornerCloud += *transformPointCloud(cornerCloudKeyFrames[i], &cloudKeyPoses6D->points[i]);
             *globalSurfCloud   += *transformPointCloud(surfCloudKeyFrames[i],   &cloudKeyPoses6D->points[i]);
 
-            cout << "\r" << std::flush << "Processing frame " << i << " of " << cloudKeyPoses3D->size() << " ..." << endl;;
+            std::cout << "\r" << std::flush << "Processing frame " << i << " of " << cloudKeyPoses3D->size() << " ..." << std::endl;;
         }
         shiftSavedMapCloudZ(globalCornerCloud);
         shiftSavedMapCloudZ(globalSurfCloud);
         if (alignSavedMapGroundToZero)
         {
-            cout << "Saved map Z offset: " << savedMapGroundZOffset
-                 << " m (align ground to map z=0)" << endl;
+            std::cout << "Saved map Z offset: " << savedMapGroundZOffset
+                 << " m (align ground to map z=0)" << std::endl;
         }
 
         if (savePCDResolution > 0.0f)
@@ -973,8 +973,8 @@ public:
         saveGlobalGroundMap(savePCDDirectory + "cloudGround.pcd", saveGroundPCDResolution, false);
         downSizeFilterCorner.setLeafSize(mappingCornerLeafSize, mappingCornerLeafSize, mappingCornerLeafSize);
         downSizeFilterSurf.setLeafSize(mappingSurfLeafSize, mappingSurfLeafSize, mappingSurfLeafSize);
-        cout << "****************************************************" << endl;
-        cout << "Saving map to pcd files completed" << endl;
+        std::cout << "****************************************************" << std::endl;
+        std::cout << "Saving map to pcd files completed" << std::endl;
     }
 
     // 保存地图时可整体平移Z，使导出的PCD地面落到map.z=0。
@@ -1382,7 +1382,7 @@ public:
 
         // Add pose constraint
         mtx.lock();
-        loopIndexQueue.push_back(make_pair(loopKeyCur, loopKeyPre));
+        loopIndexQueue.push_back(std::make_pair(loopKeyCur, loopKeyPre));
         loopPoseQueue.push_back(poseFrom.between(poseTo));
         loopNoiseQueue.push_back(constraintNoise);
         mtx.unlock();
@@ -1677,7 +1677,7 @@ public:
                 pcl::PointCloud<PointType> laserCloudSurfTemp = *transformPointCloud(surfCloudKeyFrames[thisKeyInd],    &cloudKeyPoses6D->points[thisKeyInd]);
                 *laserCloudCornerFromMap += laserCloudCornerTemp;
                 *laserCloudSurfFromMap   += laserCloudSurfTemp;
-                laserCloudMapContainer[thisKeyInd] = make_pair(laserCloudCornerTemp, laserCloudSurfTemp);
+                laserCloudMapContainer[thisKeyInd] = std::make_pair(laserCloudCornerTemp, laserCloudSurfTemp);
             }
             
         }
@@ -2240,7 +2240,7 @@ public:
                     lastGPSPoint = curGPSPoint;
 
                 gtsam::Vector Vector3(3);
-                Vector3 << max(noise_x, 1.0f), max(noise_y, 1.0f), max(noise_z, 1.0f);
+                Vector3 << std::max(noise_x, 1.0f), std::max(noise_y, 1.0f), std::max(noise_z, 1.0f);
                 noiseModel::Diagonal::shared_ptr gps_noise = noiseModel::Diagonal::Variances(Vector3);
                 gtsam::GPSFactor gps_factor(cloudKeyPoses3D->size(), gtsam::Point3(gps_x, gps_y, gps_z), gps_noise);
                 gtSAMgraph.add(gps_factor);

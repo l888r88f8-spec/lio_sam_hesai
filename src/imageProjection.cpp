@@ -320,7 +320,7 @@ private:
     double timeScanEnd;
     std_msgs::msg::Header cloudHeader;
 
-    vector<int> columnIdnCountVec;
+    std::vector<int> columnIdnCountVec;
 
 
 public:
@@ -644,7 +644,7 @@ public:
         }
 
         // remove Nan
-        vector<int> indices;
+        std::vector<int> indices;
         pcl::removeNaNFromPointCloud(*laserCloudIn, *laserCloudIn, indices);
 
         if (laserCloudIn->empty())

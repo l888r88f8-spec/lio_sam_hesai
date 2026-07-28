@@ -45,7 +45,7 @@ public:
     bool lidarToBaselinkCached = false;
 
     double lidarOdomTime = -1;
-    deque<nav_msgs::msg::Odometry> imuOdomQueue;
+    std::deque<nav_msgs::msg::Odometry> imuOdomQueue;
 
     TransformFusion(const rclcpp::NodeOptions & options) : ParamServer("lio_sam_transformFusion", options)
     {

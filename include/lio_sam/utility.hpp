@@ -60,8 +60,6 @@
 #include <thread>
 #include <mutex>
 
-using namespace std;
-
 typedef pcl::PointXYZI PointType;
 
 enum class SensorType { VELODYNE, OUSTER, LIVOX, LSLIDAR, HESAI};
@@ -72,16 +70,16 @@ public:
     std::string robot_id;
 
     //Topics
-    string pointCloudTopic;
-    string imuTopic;
-    string odomTopic;
-    string gpsTopic;
+    std::string pointCloudTopic;
+    std::string imuTopic;
+    std::string odomTopic;
+    std::string gpsTopic;
 
     //Frames
-    string lidarFrame;
-    string baselinkFrame;
-    string odometryFrame;
-    string mapFrame;
+    std::string lidarFrame;
+    std::string baselinkFrame;
+    std::string odometryFrame;
+    std::string mapFrame;
 
     // GPS Settings
     bool useImuHeadingInitialization;
@@ -92,13 +90,13 @@ public:
     // Save pcd
     bool savePCD;
     bool generateScDb;
-    string savePCDDirectory;
+    std::string savePCDDirectory;
     bool mappingMode;
     float savePCDResolution;
     float saveGroundPCDResolution;
     bool saveGroundPCD;
-    string groundPCDDirectory;
-    string groundPCDDirectoryGlobal;
+    std::string groundPCDDirectory;
+    std::string groundPCDDirectoryGlobal;
     bool groundFinalUseOdom;
     float groundLeafSize;
     float groundGlobalLeafSize;
@@ -139,9 +137,9 @@ public:
     float imuGyrBiasN;
     float imuGravity;
     float imuRPYWeight;
-    vector<double> extRotV;
-    vector<double> extRPYV;
-    vector<double> extTransV;
+    std::vector<double> extRotV;
+    std::vector<double> extRPYV;
+    std::vector<double> extTransV;
     Eigen::Matrix3d extRot;
     Eigen::Matrix3d extRPY;
     Eigen::Vector3d extTrans;
@@ -491,7 +489,7 @@ public:
         imu_out.orientation.z = q_final.z();
         imu_out.orientation.w = q_final.w();
 
-        if (sqrt(q_final.x()*q_final.x() + q_final.y()*q_final.y() + q_final.z()*q_final.z() + q_final.w()*q_final.w()) < 0.1)
+        if (std::sqrt(q_final.x()*q_final.x() + q_final.y()*q_final.y() + q_final.z()*q_final.z() + q_final.w()*q_final.w()) < 0.1)
         {
             RCLCPP_ERROR(get_logger(), "Invalid quaternion, please use a 9-axis IMU!");
             rclcpp::shutdown();
@@ -554,13 +552,13 @@ void imuRPY2rosRPY(sensor_msgs::msg::Imu *thisImuMsg, T *rosRoll, T *rosPitch, T
 
 float pointDistance(PointType p)
 {
-    return sqrt(p.x*p.x + p.y*p.y + p.z*p.z);
+    return std::sqrt(p.x*p.x + p.y*p.y + p.z*p.z);
 }
 
 
 float pointDistance(PointType p1, PointType p2)
 {
-    return sqrt((p1.x-p2.x)*(p1.x-p2.x) + (p1.y-p2.y)*(p1.y-p2.y) + (p1.z-p2.z)*(p1.z-p2.z));
+    return std::sqrt((p1.x-p2.x)*(p1.x-p2.x) + (p1.y-p2.y)*(p1.y-p2.y) + (p1.z-p2.z)*(p1.z-p2.z));
 }
 
 rmw_qos_profile_t qos_profile{
