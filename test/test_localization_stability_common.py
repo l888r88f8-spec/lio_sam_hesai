@@ -199,6 +199,33 @@ sc_db_path: old-db
             runtime_text,
         )
 
+    def test_write_runtime_parameters_keeps_hashes_inside_quoted_values(self):
+        template = self.root / "relocalization.yaml"
+        template.write_text(
+            """map_path: "old # literal"
+ground_map_path: old-ground  # trailing comment
+sc_db_path: old-db
+""",
+            encoding="utf-8",
+        )
+
+        runtime_path = write_runtime_parameters(template, self.map_dir, self.root / "runtime")
+        runtime_text = runtime_path.read_text(encoding="utf-8")
+        parameters = yaml.safe_load(runtime_text)
+
+        self.assertEqual(
+            parameters["map_path"], str((self.map_dir / "GlobalMap.pcd").resolve())
+        )
+        self.assertEqual(
+            parameters["ground_map_path"],
+            str((self.map_dir / "GroundMap.pcd").resolve()),
+        )
+        self.assertEqual(
+            parameters["sc_db_path"], str((self.map_dir / "sc_db.bin").resolve())
+        )
+        self.assertNotIn("# literal", runtime_text)
+        self.assertIn("  # trailing comment", runtime_text)
+
     def test_write_runtime_parameters_rejects_duplicate_key(self):
         template = self.root / "relocalization.yaml"
         template.write_text(

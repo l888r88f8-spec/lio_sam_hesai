@@ -27,7 +27,7 @@ class DatasetIdentity:
 _REQUIRED_MAP_FILES = ("GlobalMap.pcd", "GroundMap.pcd", "sc_db.bin")
 _RUNTIME_PARAMETER_LINE = re.compile(
     r"^(?P<indent>\s*)(?P<key>map_path|ground_map_path|sc_db_path)\s*:"
-    r".*?(?P<comment>[ \t]+#.*)?$"
+    r"(?P<value>.*)$"
 )
 _PCD_HEADER_LIMIT_BYTES = 64 * 1024
 _PCD_DATA_ENCODINGS = frozenset((b"ascii", b"binary", b"binary_compressed"))
@@ -104,7 +104,7 @@ def write_runtime_parameters(template, map_dir, output_dir):
 
         key = match.group("key")
         replacement_counts[key] += 1
-        comment = match.group("comment") or ""
+        _, comment = _split_inline_yaml_comment(match.group("value"))
         rendered_lines.append(
             f"{match.group('indent')}{key}: "
             f"{json.dumps(str(replacements[key]))}{comment}{line_ending}"
@@ -132,6 +132,39 @@ def terminate_process_group(pid, timeout_seconds=10.0):
         os.killpg(pid, signal.SIGINT)
     except ProcessLookupError:
         pass
+
+
+def _split_inline_yaml_comment(value_tail: str) -> tuple[str, str]:
+    in_single_quote = False
+    in_double_quote = False
+    index = 0
+
+    while index < len(value_tail):
+        character = value_tail[index]
+        if in_double_quote:
+            if character == "\\":
+                index += 2
+                continue
+            if character == '"':
+                in_double_quote = False
+        elif in_single_quote:
+            if character == "'":
+                if index + 1 < len(value_tail) and value_tail[index + 1] == "'":
+                    index += 2
+                    continue
+                in_single_quote = False
+        elif character == "'":
+            in_single_quote = True
+        elif character == '"':
+            in_double_quote = True
+        elif character == "#" and (index == 0 or value_tail[index - 1].isspace()):
+            comment_start = index
+            while comment_start > 0 and value_tail[comment_start - 1].isspace():
+                comment_start -= 1
+            return value_tail[:comment_start], value_tail[comment_start:]
+        index += 1
+
+    return value_tail, ""
 
 
 def _require_directory(path: Path, label: str) -> None:
