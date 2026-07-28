@@ -1,9 +1,11 @@
+from collections.abc import Mapping
 from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
 import re
 import signal
+from types import MappingProxyType
 
 import yaml
 
@@ -16,7 +18,7 @@ class DatasetError(RuntimeError):
 class DatasetIdentity:
     duration_ns: int
     message_count: int
-    topic_counts: dict[str, int]
+    topic_counts: Mapping[str, int]
     db3_bytes: int
     map_points: int
     map_bytes: int
@@ -24,9 +26,11 @@ class DatasetIdentity:
 
 _REQUIRED_MAP_FILES = ("GlobalMap.pcd", "GroundMap.pcd", "sc_db.bin")
 _RUNTIME_PARAMETER_LINE = re.compile(
-    r"^(?P<indent>\s*)(?P<key>map_path|ground_map_path|sc_db_path)\s*:.*$"
+    r"^(?P<indent>\s*)(?P<key>map_path|ground_map_path|sc_db_path)\s*:"
+    r".*?(?P<comment>[ \t]+#.*)?$"
 )
 _PCD_HEADER_LIMIT_BYTES = 64 * 1024
+_PCD_DATA_ENCODINGS = frozenset((b"ascii", b"binary", b"binary_compressed"))
 
 
 def validate_dataset(bag_dir: Path, map_dir: Path) -> DatasetIdentity:
@@ -64,7 +68,7 @@ def validate_dataset(bag_dir: Path, map_dir: Path) -> DatasetIdentity:
     return DatasetIdentity(
         duration_ns=duration_ns,
         message_count=message_count,
-        topic_counts=topic_counts,
+        topic_counts=MappingProxyType(topic_counts),
         db3_bytes=db3_bytes,
         map_points=_pcd_points(global_map),
         map_bytes=map_bytes,
@@ -100,9 +104,10 @@ def write_runtime_parameters(template, map_dir, output_dir):
 
         key = match.group("key")
         replacement_counts[key] += 1
+        comment = match.group("comment") or ""
         rendered_lines.append(
             f"{match.group('indent')}{key}: "
-            f"{json.dumps(str(replacements[key]))}{line_ending}"
+            f"{json.dumps(str(replacements[key]))}{comment}{line_ending}"
         )
 
     invalid_keys = [key for key, count in replacement_counts.items() if count != 1]
@@ -193,14 +198,21 @@ def _pcd_points(pcd_path: Path) -> int:
         with pcd_path.open("rb") as pcd_file:
             while header_bytes < _PCD_HEADER_LIMIT_BYTES:
                 remaining = _PCD_HEADER_LIMIT_BYTES - header_bytes
-                raw_line = pcd_file.readline(remaining)
+                raw_line = pcd_file.readline(remaining + 1)
                 if not raw_line:
                     break
+                if not raw_line.endswith(b"\n"):
+                    raise DatasetError(
+                        f"PCD header line exceeds the size limit or is not newline-terminated: "
+                        f"{pcd_path}"
+                    )
                 header_bytes += len(raw_line)
+                if header_bytes > _PCD_HEADER_LIMIT_BYTES:
+                    raise DatasetError(f"PCD header exceeds the size limit: {pcd_path}")
                 line = raw_line.strip()
                 if not line or line.startswith(b"#"):
                     continue
-                fields = line.split(maxsplit=1)
+                fields = line.split()
                 key = fields[0].upper()
                 if key == b"POINTS":
                     if len(fields) != 2:
@@ -212,6 +224,8 @@ def _pcd_points(pcd_path: Path) -> int:
                     if points < 0:
                         raise DatasetError(f"PCD POINTS header is invalid: {pcd_path}")
                 elif key == b"DATA":
+                    if len(fields) != 2 or fields[1] not in _PCD_DATA_ENCODINGS:
+                        raise DatasetError(f"PCD DATA header is invalid: {pcd_path}")
                     if points is None:
                         raise DatasetError(f"PCD POINTS header is missing: {pcd_path}")
                     return points

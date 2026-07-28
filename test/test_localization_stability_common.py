@@ -72,6 +72,50 @@ class LocalizationStabilityCommonTest(unittest.TestCase):
         self.assertEqual(identity.map_points, 4)
         self.assertEqual(identity.map_bytes, (self.map_dir / "GlobalMap.pcd").stat().st_size)
 
+    def test_validate_dataset_accepts_binary_pcd_header_followed_by_payload(self):
+        global_map = self.map_dir / "GlobalMap.pcd"
+        payload = b"\xff\x00\x80" * 1024
+        global_map.write_bytes(b"VERSION .7\nPOINTS 7\nDATA binary\n" + payload)
+
+        identity = validate_dataset(self.bag_dir, self.map_dir)
+
+        self.assertEqual(identity.map_points, 7)
+        self.assertEqual(identity.map_bytes, global_map.stat().st_size)
+
+    def test_validate_dataset_rejects_pcd_data_without_encoding(self):
+        (self.map_dir / "GlobalMap.pcd").write_bytes(b"POINTS 4\nDATA\n")
+
+        with self.assertRaisesRegex(DatasetError, "DATA"):
+            validate_dataset(self.bag_dir, self.map_dir)
+
+    def test_validate_dataset_rejects_oversized_or_unterminated_pcd_header_line(self):
+        header_limit = 64 * 1024
+        prefix = b"POINTS 4\n"
+        data_line_without_newline = b"DATA binary"
+        comment_line = (
+            b"#"
+            + b"x" * (header_limit - len(prefix) - len(data_line_without_newline) - 2)
+            + b"\n"
+        )
+        invalid_headers = {
+            "oversized": prefix + b"#" + b"x" * header_limit,
+            "unterminated at limit": prefix + comment_line + data_line_without_newline,
+        }
+
+        for name, header in invalid_headers.items():
+            with self.subTest(name=name):
+                (self.map_dir / "GlobalMap.pcd").write_bytes(header)
+                with self.assertRaises(DatasetError):
+                    validate_dataset(self.bag_dir, self.map_dir)
+
+    def test_validate_dataset_exposes_immutable_topic_counts(self):
+        identity = validate_dataset(self.bag_dir, self.map_dir)
+
+        self.assertEqual(identity.topic_counts["/imu"], 42617)
+        self.assertEqual(identity.topic_counts, {"/imu": 42617, "/lidar_points": 4258})
+        with self.assertRaises(TypeError):
+            identity.topic_counts["/imu"] = 0
+
     def test_validate_dataset_rejects_incomplete_map(self):
         (self.map_dir / "GroundMap.pcd").unlink()
 
@@ -125,6 +169,34 @@ sc_db_path: old-db
         )
         self.assertEqual(
             parameters["sc_db_path"], str((special_map_dir / "sc_db.bin").resolve())
+        )
+
+    def test_write_runtime_parameters_preserves_inline_comments(self):
+        template = self.root / "relocalization.yaml"
+        template.write_text(
+            """      map_path: old-map      # 全局地图
+      sc_db_path: old-db       # 空值表示与 GlobalMap.pcd 同目录
+      ground_map_path: old-ground  # 空=与map_path同目录 地面高度约束
+""",
+            encoding="utf-8",
+        )
+
+        runtime_path = write_runtime_parameters(template, self.map_dir, self.root / "runtime")
+        runtime_text = runtime_path.read_text(encoding="utf-8")
+
+        self.assertIn(
+            f'      map_path: "{(self.map_dir / "GlobalMap.pcd").resolve()}"      # 全局地图',
+            runtime_text,
+        )
+        self.assertIn(
+            f'      sc_db_path: "{(self.map_dir / "sc_db.bin").resolve()}"'
+            "       # 空值表示与 GlobalMap.pcd 同目录",
+            runtime_text,
+        )
+        self.assertIn(
+            f'      ground_map_path: "{(self.map_dir / "GroundMap.pcd").resolve()}"'
+            "  # 空=与map_path同目录 地面高度约束",
+            runtime_text,
         )
 
     def test_write_runtime_parameters_rejects_duplicate_key(self):
