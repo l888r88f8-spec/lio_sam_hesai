@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import copy
 import math
 from collections.abc import Mapping
 from pathlib import Path
@@ -251,7 +250,7 @@ def write_candidate(path, identity, observed):
         "dataset": {
             "duration_ns": _identity_value(identity, "duration_ns"),
             "message_count": _identity_value(identity, "message_count"),
-            "topic_counts": copy.deepcopy(_identity_value(identity, "topic_counts")),
+            "topic_counts": dict(_identity_value(identity, "topic_counts")),
             "map_points": _identity_value(identity, "map_points"),
         },
         "quick": {

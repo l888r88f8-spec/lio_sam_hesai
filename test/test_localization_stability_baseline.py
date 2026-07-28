@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import copy
 import math
+from types import MappingProxyType
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -14,6 +15,7 @@ from stability_baseline import (
     load_baseline,
     write_candidate,
 )
+from stability_common import DatasetIdentity
 
 
 class LocalizationStabilityBaselineTest(unittest.TestCase):
@@ -341,6 +343,37 @@ class LocalizationStabilityBaselineTest(unittest.TestCase):
             expected_quick["ok_deadline_seconds"],
         )
         self.assertEqual(candidate["memory"], BASELINE["memory"])
+
+    def test_write_candidate_accepts_read_only_dataset_identity(self):
+        candidate_path = self.root / "candidate.yaml"
+        identity = DatasetIdentity(
+            duration_ns=756378139407,
+            message_count=46875,
+            topic_counts=MappingProxyType({"/imu": 42617, "/lidar_points": 4258}),
+            db3_bytes=1580380160,
+            map_points=178455,
+            map_bytes=1,
+        )
+        observed = {
+            "first_odom_seconds": 8.0,
+            "valid_odom_ratio": 0.99,
+            "max_odom_gap_seconds": 0.4,
+            "first_ok_seconds": 12.0,
+            "error_samples": 3,
+            "max_non_ok_gap_seconds": 0.8,
+            "min_health_score": 0.8,
+            "max_reg_fitness": 0.5,
+            "max_covariance_scale": 40.0,
+            "min_lidar_rate_hz": 10.0,
+            "min_imu_rate_hz": 100.0,
+        }
+
+        write_candidate(candidate_path, identity, observed)
+        candidate = yaml.safe_load(candidate_path.read_text(encoding="utf-8"))
+        candidate["dataset"]["topic_counts"]["/imu"] = 1
+
+        self.assertEqual(identity.topic_counts["/imu"], 42617)
+        self.assertEqual(candidate["dataset"]["topic_counts"]["/lidar_points"], 4258)
 
 
 if __name__ == "__main__":
