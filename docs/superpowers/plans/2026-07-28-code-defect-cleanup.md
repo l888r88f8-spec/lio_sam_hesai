@@ -17,6 +17,9 @@
 - Modify `CMakeLists.txt`: register and link the two new gtest targets.
 - Modify `src/ivox_map/ivox_map.cpp`: continue the batch after classifying a no-downsample point.
 - Modify `include/lio_sam/utility.hpp`: remove the namespace directive and explicitly qualify standard-library names.
+- Modify `src/imageProjection.cpp`: explicitly qualify the `std::vector` names that previously came from `utility.hpp`.
+- Modify `src/imuPreintegration.cpp`: explicitly qualify the `std::deque` name that previously came from `utility.hpp`.
+- Modify `src/mapOptimization.cpp`: explicitly qualify the standard-library names that previously came from `utility.hpp`.
 - Delete `src/slam/frontend.cpp`: remove unbuilt legacy frontend implementation.
 - Delete `src/slam/loop_closure.cpp`: remove unbuilt legacy loop-closure implementation.
 
@@ -258,6 +261,9 @@ git commit -m "test: lock code cleanup contracts"
 
 **Files:**
 - Modify: `include/lio_sam/utility.hpp`
+- Modify: `src/imageProjection.cpp`
+- Modify: `src/imuPreintegration.cpp`
+- Modify: `src/mapOptimization.cpp`
 - Delete: `src/slam/frontend.cpp`
 - Delete: `src/slam/loop_closure.cpp`
 - Test: `test/test_code_hygiene.cpp`
@@ -292,7 +298,7 @@ Apply these exact declaration changes in `ParamServer`:
     std::vector<double> extTransV;
 ```
 
-Qualify the two remaining square-root calls:
+Qualify the three remaining square-root calls:
 
 ```cpp
         if (std::sqrt(q_final.x()*q_final.x() + q_final.y()*q_final.y() +
@@ -309,7 +315,82 @@ Qualify the two remaining square-root calls:
                      (p1.z-p2.z)*(p1.z-p2.z));
 ```
 
-- [ ] **Step 2: Delete the two unbuilt source files**
+- [ ] **Step 2: Verify the direct-consumer build is RED**
+
+Run after removing the header directive but before changing its consumers:
+
+```bash
+source /opt/ros/humble/setup.bash
+colcon build --symlink-install --packages-select lio_sam_hesai
+```
+
+Expected: FAIL with unqualified standard-library-name errors in exactly these
+direct consumers:
+
+```text
+src/imageProjection.cpp
+src/imuPreintegration.cpp
+src/mapOptimization.cpp
+```
+
+This failure proves the consumers depended on the header's namespace leakage.
+
+- [ ] **Step 3: Explicitly qualify the direct consumers**
+
+In `src/imageProjection.cpp`, change both active declarations:
+
+```cpp
+    std::vector<int> columnIdnCountVec;
+```
+
+```cpp
+        std::vector<int> indices;
+```
+
+In `src/imuPreintegration.cpp`, change:
+
+```cpp
+    std::deque<nav_msgs::msg::Odometry> imuOdomQueue;
+```
+
+In `src/mapOptimization.cpp`, make these declarations explicit:
+
+```cpp
+    std::vector<pcl::PointCloud<PointType>::Ptr> cornerCloudKeyFrames;
+    std::vector<pcl::PointCloud<PointType>::Ptr> surfCloudKeyFrames;
+    std::vector<pcl::PointCloud<PointType>::Ptr> groundCloudKeyFrames;
+
+    std::map<int, std::pair<pcl::PointCloud<PointType>,
+                            pcl::PointCloud<PointType>>>
+        laserCloudMapContainer;
+
+    std::map<int, int> loopIndexContainer;
+    std::vector<std::pair<int, int>> loopIndexQueue;
+    std::vector<gtsam::Pose3> loopPoseQueue;
+    std::vector<gtsam::noiseModel::Diagonal::shared_ptr> loopNoiseQueue;
+    std::deque<std_msgs::msg::Float64MultiArray> loopInfoVec;
+```
+
+Change the local map-directory declaration:
+
+```cpp
+            std::string saveMapDirectory;
+```
+
+Qualify every active stream and helper use in `src/mapOptimization.cpp`:
+
+```cpp
+std::cout
+std::endl
+std::make_pair
+std::max
+```
+
+Only replace the corresponding unqualified identifiers; do not reformat
+surrounding algorithms or alter commented examples. Do not add a namespace
+directive, namespace alias, or file-level using declaration.
+
+- [ ] **Step 4: Delete the two unbuilt source files**
 
 Delete exactly:
 
@@ -318,7 +399,7 @@ src/slam/frontend.cpp
 src/slam/loop_closure.cpp
 ```
 
-- [ ] **Step 3: Run the contract test and verify GREEN**
+- [ ] **Step 5: Run the build and contract test and verify GREEN**
 
 Run:
 
@@ -331,7 +412,7 @@ ctest --test-dir build/lio_sam_hesai \
 
 Expected: PASS, 1 CTest entry run and 0 failures.
 
-- [ ] **Step 4: Confirm no unqualified header declarations remain**
+- [ ] **Step 6: Confirm the namespace directive and header declarations are gone**
 
 Run:
 
@@ -342,12 +423,13 @@ rg -n 'using namespace std;|^[[:space:]]+(string|vector)<*' \
 
 Expected: no output and exit status 1.
 
-- [ ] **Step 5: Commit the cleanup**
+- [ ] **Step 7: Commit the cleanup**
 
 Run:
 
 ```bash
 git add include/lio_sam/utility.hpp \
+  src/imageProjection.cpp src/imuPreintegration.cpp src/mapOptimization.cpp \
   src/slam/frontend.cpp src/slam/loop_closure.cpp
 git commit -m "refactor: remove known code defects"
 ```
@@ -357,6 +439,9 @@ git commit -m "refactor: remove known code defects"
 **Files:**
 - Verify: `CMakeLists.txt`
 - Verify: `include/lio_sam/utility.hpp`
+- Verify: `src/imageProjection.cpp`
+- Verify: `src/imuPreintegration.cpp`
+- Verify: `src/mapOptimization.cpp`
 - Verify: `src/ivox_map/ivox_map.cpp`
 - Verify: `test/test_ivox_map_batch_add.cpp`
 - Verify: `test/test_code_hygiene.cpp`
@@ -367,7 +452,8 @@ Run:
 
 ```bash
 rg -n 'using namespace std;|src/slam/(frontend|loop_closure)\\.cpp' \
-  include/lio_sam/utility.hpp CMakeLists.txt
+  include/lio_sam/utility.hpp src/imageProjection.cpp \
+  src/imuPreintegration.cpp src/mapOptimization.cpp CMakeLists.txt
 test ! -e src/slam/frontend.cpp
 test ! -e src/slam/loop_closure.cpp
 ```

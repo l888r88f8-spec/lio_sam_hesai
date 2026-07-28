@@ -14,13 +14,16 @@
 2. 删除未加入任何 CMake 构建目标的遗留源文件
    `src/slam/frontend.cpp` 和 `src/slam/loop_closure.cpp`。
 3. 移除公共头文件 `include/lio_sam/utility.hpp` 中的
-   `using namespace std;`，并为该头文件内依赖的标准库类型补齐 `std::` 限定。
+   `using namespace std;`，并为该头文件及其直接消费者中依赖该指令的标准库名称
+   补齐 `std::` 限定。
 
 ## 2. 非目标
 
 - 不清理其他文件中的命名空间、格式或 lint 问题。
 - 不重构 iVox 数据结构、邻域搜索或降采样策略。
 - 不恢复、迁移或替代两份死代码中的功能。
+- 除 `src/imageProjection.cpp`、`src/imuPreintegration.cpp` 和
+  `src/mapOptimization.cpp` 中必要的名称限定外，不修改其他消费者。
 - 不修改建图或重定位的 ROS 接口、配置参数和运行时线程模型。
 
 ## 3. 设计
@@ -45,7 +48,17 @@
 
 删除 `include/lio_sam/utility.hpp` 的全局 `using namespace std;`。仅在该头文件中把
 现有未限定的标准库类型改为显式 `std::` 名称，例如 `std::string` 和
-`std::vector<double>`。不引入新的 namespace alias，也不顺带改动包含该头文件的源文件。
+`std::vector<double>`，并限定其中的 `std::sqrt` 调用。
+
+完整构建证明三个直接消费者也依赖该头文件泄漏的命名空间：
+
+- `src/imageProjection.cpp`：`vector`
+- `src/imuPreintegration.cpp`：`deque`
+- `src/mapOptimization.cpp`：`vector`、`map`、`pair`、`deque`、`string`、
+  `cout`、`endl`、`make_pair` 和 `max`
+
+这些名称逐处改为显式 `std::` 限定。不得在源文件中新增 `using namespace std;`、
+namespace alias 或文件级 using 声明，也不修改上述名称以外的算法和格式。
 
 ## 4. 测试策略
 
@@ -57,7 +70,9 @@
 2. 新增代码卫生契约测试。测试读取仓库源文件，断言公共头文件不含
    `using namespace std;`，并断言两份死代码不存在。修复前应因三项契约未满足而失败。
 3. 将新测试注册到现有 `ament_cmake_gtest` 测试体系。
-4. 修复后运行新测试、全部非历史-lint测试和包级构建。
+4. 移除头文件指令但尚未修复消费者时，完整包构建应因三个消费者的未限定标准库名称
+   失败；该构建失败是消费者修复的 RED 证据。
+5. 修复后运行新测试、全部非历史-lint测试和包级构建。
 
 项目已有的 CMake/PCL/Boost/TBB 警告和已知 lint 债务不属于本子项目的失败判据；
 新增或受影响目标不得产生新的编译错误或测试失败。
@@ -68,11 +83,13 @@
 - 代码卫生测试在清理前失败，在删除死代码并移除头文件命名空间污染后通过。
 - 两份死代码从仓库中删除，且 CMake 不引用它们。
 - `utility.hpp` 不再包含 `using namespace std;`，其中标准库类型均显式限定。
+- 三个直接消费者不再依赖 `utility.hpp` 的命名空间泄漏，并且不新增任何
+  `using namespace std;`。
 - `lio_sam_hesai` 包构建成功。
 - 全部非历史-lint测试通过，现有测试无回归。
 
 ## 6. 风险与回退
 
-改动集中在一个未使用的 iVox 重载、两个未编译文件和一个公共头文件的名称限定，
-运行时风险低。主要风险是遗漏 `utility.hpp` 内依赖命名空间注入的标准库名称，
+改动集中在一个未使用的 iVox 重载、两个未编译文件，以及一个公共头文件和三个直接
+消费者的名称限定，运行时风险低。主要风险是遗漏依赖命名空间注入的标准库名称，
 由完整包构建覆盖。若出现无法解释的行为回归，可按独立提交逐项回退对应改动。
