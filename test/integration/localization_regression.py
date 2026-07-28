@@ -491,14 +491,32 @@ def _spin_bag_window(
     timeout_seconds = _replay_timeout_seconds(duration_seconds, rate)
     deadline = monotonic() + timeout_seconds
     first_clock = None
+
+    def simulated_duration_reached():
+        nonlocal first_clock
+        current_clock = latest_clock[0]
+        if current_clock is None:
+            return False
+        if first_clock is None:
+            first_clock = current_clock
+        return current_clock - first_clock >= duration_seconds
+
     while True:
         if launch_process.poll() is not None:
             raise ReplayError(
                 f"launch process exited during playback with code {launch_process.returncode}"
             )
-        if player_process.poll() is not None:
+        player_exit_code = player_process.poll()
+        if player_exit_code is not None:
+            if player_exit_code != 0:
+                raise ReplayError(
+                    f"bag player exited during playback with code {player_exit_code}"
+                )
+            spin_once(node, 0.0)
+            if simulated_duration_reached():
+                return
             raise ReplayError(
-                f"bag player exited before replay duration with code {player_process.returncode}"
+                "bag player exited before replay duration after draining queued /clock"
             )
 
         if monotonic() >= deadline:
@@ -509,12 +527,7 @@ def _spin_bag_window(
             )
 
         spin_once(node, min(0.1, max(0.0, deadline - monotonic())))
-        current_clock = latest_clock[0]
-        if current_clock is None:
-            continue
-        if first_clock is None:
-            first_clock = current_clock
-        if current_clock - first_clock >= duration_seconds:
+        if simulated_duration_reached():
             return
 
 
@@ -561,7 +574,17 @@ def _stop_process_group(process, timeout_seconds=10.0):
     try:
         process.wait(timeout=timeout_seconds)
     except subprocess.TimeoutExpired:
-        raise ReplayError(f"process group {process.pid} did not terminate after SIGTERM")
+        pass
+    else:
+        return
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    try:
+        process.wait(timeout=timeout_seconds)
+    except subprocess.TimeoutExpired:
+        raise ReplayError(f"process group {process.pid} could not be reaped after SIGKILL")
 
 
 def _ros_time_seconds(time_message):

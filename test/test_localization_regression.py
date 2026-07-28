@@ -8,7 +8,7 @@ from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 import localization_regression
 from localization_regression import MetricCollector
@@ -390,6 +390,98 @@ class LocalizationRegressionCliTest(unittest.TestCase):
 
         killpg.assert_called_once_with(1234, localization_regression.signal.SIGINT)
         process.wait.assert_called_once_with(timeout=10.0)
+
+    def test_cleanup_escalates_to_sigkill_and_performs_final_wait(self):
+        process = Mock()
+        process.pid = 1234
+        process.wait.side_effect = [
+            localization_regression.subprocess.TimeoutExpired("ros2", 10.0),
+            localization_regression.subprocess.TimeoutExpired("ros2", 10.0),
+            0,
+        ]
+
+        with patch.object(localization_regression.os, "killpg") as killpg:
+            localization_regression._stop_process_group(process)
+
+        self.assertEqual(
+            killpg.call_args_list,
+            [
+                call(1234, localization_regression.signal.SIGINT),
+                call(1234, localization_regression.signal.SIGTERM),
+                call(1234, localization_regression.signal.SIGKILL),
+            ],
+        )
+        self.assertEqual(process.wait.call_count, 3)
+
+    def test_cleanup_reports_unreaped_group_after_sigkill_final_wait(self):
+        process = Mock()
+        process.pid = 1234
+        process.wait.side_effect = [
+            localization_regression.subprocess.TimeoutExpired("ros2", 10.0),
+            localization_regression.subprocess.TimeoutExpired("ros2", 10.0),
+            localization_regression.subprocess.TimeoutExpired("ros2", 10.0),
+        ]
+
+        with patch.object(localization_regression.os, "killpg") as killpg, self.assertRaisesRegex(
+            localization_regression.ReplayError, "process group 1234 could not be reaped"
+        ):
+            localization_regression._stop_process_group(process)
+
+        self.assertEqual(
+            killpg.call_args_list[-1],
+            call(1234, localization_regression.signal.SIGKILL),
+        )
+        self.assertEqual(process.wait.call_count, 3)
+
+    def test_successful_player_exit_accepts_a_drained_final_clock_callback(self):
+        launch_process = Mock()
+        player_process = Mock()
+        latest_clock = [None]
+        launch_process.poll.return_value = None
+        player_process.poll.side_effect = [None, 0]
+        clock_values = iter((100.0, 101.0))
+
+        def spin_once(_node, _timeout_seconds):
+            latest_clock[0] = next(clock_values)
+
+        localization_regression._spin_bag_window(
+            None,
+            launch_process,
+            player_process,
+            latest_clock,
+            duration_seconds=1.0,
+            rate=1.0,
+            monotonic=lambda: 0.0,
+            spin_once=spin_once,
+        )
+
+        self.assertEqual(latest_clock[0], 101.0)
+
+    def test_successful_player_exit_after_short_drained_clock_is_premature(self):
+        launch_process = Mock()
+        player_process = Mock()
+        latest_clock = [None]
+        launch_process.poll.return_value = None
+        player_process.poll.side_effect = [None, 0]
+        clock_values = iter((100.0, 100.5))
+
+        def spin_once(_node, _timeout_seconds):
+            latest_clock[0] = next(clock_values)
+
+        with self.assertRaisesRegex(
+            localization_regression.ReplayError,
+            "before replay duration after draining queued /clock",
+        ):
+            localization_regression._spin_bag_window(
+                None,
+                launch_process,
+                player_process,
+                latest_clock,
+                duration_seconds=1.0,
+                rate=1.0,
+                monotonic=lambda: 0.0,
+                spin_once=spin_once,
+            )
 
 
 if __name__ == "__main__":
