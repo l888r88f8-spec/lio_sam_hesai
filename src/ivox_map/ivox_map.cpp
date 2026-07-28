@@ -86,7 +86,7 @@ IVoxMap::AddPoints(const PointVector &world_points, const std::vector<PointVecto
                 fabs(dis_to_center.y()) > 0.5 * options_.resolution_ &&
                 fabs(dis_to_center.z()) > 0.5 * options_.resolution_) {
                 point_no_need_downsample.emplace_back(point_world);
-                return;
+                continue;
             }
 
             bool need_add = true;
