@@ -202,6 +202,30 @@ class MetricCollectorTest(unittest.TestCase):
         self.assertIsNone(collector.finish(1.0)["valid_odom_ratio"])
 
 
+class ObserverQosTest(unittest.TestCase):
+    def test_clock_uses_sensor_qos_and_metrics_use_reliable_qos(self):
+        sensor_qos = object()
+        reliable_qos = object()
+
+        qos_by_topic = localization_regression._observer_subscription_qos(
+            sensor_qos, reliable_qos
+        )
+
+        self.assertEqual(
+            tuple(qos_by_topic),
+            (
+                "/clock",
+                "/lio_sam/localization/odometry",
+                "/diagnostics",
+            ),
+        )
+        self.assertIs(qos_by_topic["/clock"], sensor_qos)
+        self.assertIs(
+            qos_by_topic["/lio_sam/localization/odometry"], reliable_qos
+        )
+        self.assertIs(qos_by_topic["/diagnostics"], reliable_qos)
+
+
 class LocalizationRegressionCliTest(unittest.TestCase):
     def setUp(self):
         self.temporary_directory = TemporaryDirectory()

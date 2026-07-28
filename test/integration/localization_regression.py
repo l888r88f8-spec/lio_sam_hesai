@@ -53,6 +53,15 @@ _REPLAY_TIMEOUT_ALLOWANCE_SECONDS = 30.0
 _FINAL_CLOCK_DRAIN_MAX_CALLBACKS = 16
 
 
+def _observer_subscription_qos(sensor_data_qos, reliable_qos):
+    """Select the compatible QoS profile for each replay observer topic."""
+    return {
+        "/clock": sensor_data_qos,
+        "/lio_sam/localization/odometry": reliable_qos,
+        "/diagnostics": reliable_qos,
+    }
+
+
 class MetricCollector:
     """Pure, callback-friendly localization metric accumulator."""
 
@@ -330,7 +339,7 @@ def _run_replay(arguments, runtime_parameters, quick, launch_log, player_log):
     from diagnostic_msgs.msg import DiagnosticArray
     from nav_msgs.msg import Odometry
     from rclpy.parameter import Parameter
-    from rclpy.qos import qos_profile_sensor_data
+    from rclpy.qos import QoSProfile, QoSReliabilityPolicy, qos_profile_sensor_data
     from rosgraph_msgs.msg import Clock
 
     domain_id = str(200 + (os.getpid() % 30))
@@ -387,20 +396,24 @@ def _run_replay(arguments, runtime_parameters, quick, launch_log, player_log):
         def diagnostics_callback(message):
             _record_diagnostics_at_replay_clock(collector, latest_clock[0], message)
 
+        subscription_qos = _observer_subscription_qos(
+            qos_profile_sensor_data,
+            QoSProfile(depth=10, reliability=QoSReliabilityPolicy.RELIABLE),
+        )
         node.create_subscription(
-            Clock, "/clock", clock_callback, qos_profile_sensor_data
+            Clock, "/clock", clock_callback, subscription_qos["/clock"]
         )
         node.create_subscription(
             Odometry,
             "/lio_sam/localization/odometry",
             odometry_callback,
-            qos_profile_sensor_data,
+            subscription_qos["/lio_sam/localization/odometry"],
         )
         node.create_subscription(
             DiagnosticArray,
             "/diagnostics",
             diagnostics_callback,
-            qos_profile_sensor_data,
+            subscription_qos["/diagnostics"],
         )
 
         launch_process = subprocess.Popen(
