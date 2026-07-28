@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import json
 import os
 from pathlib import Path
 import re
@@ -100,7 +101,8 @@ def write_runtime_parameters(template, map_dir, output_dir):
         key = match.group("key")
         replacement_counts[key] += 1
         rendered_lines.append(
-            f'{match.group("indent")}{key}: "{replacements[key]}"{line_ending}'
+            f"{match.group('indent')}{key}: "
+            f"{json.dumps(str(replacements[key]))}{line_ending}"
         )
 
     invalid_keys = [key for key, count in replacement_counts.items() if count != 1]

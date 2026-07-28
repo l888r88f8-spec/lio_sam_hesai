@@ -5,6 +5,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+import yaml
+
 from stability_common import (
     DatasetError,
     terminate_process_group,
@@ -96,6 +98,34 @@ sc_db_path: old-db
             runtime_text,
         )
         self.assertIn(f'sc_db_path: "{(self.map_dir / "sc_db.bin").resolve()}"', runtime_text)
+
+    def test_write_runtime_parameters_quotes_special_map_paths_safely(self):
+        special_map_dir = self.root / 'map"and\\backslash'
+        special_map_dir.mkdir()
+        template = self.root / "relocalization.yaml"
+        template.write_text(
+            """map_path: old-map
+ground_map_path: old-ground
+sc_db_path: old-db
+""",
+            encoding="utf-8",
+        )
+
+        runtime_path = write_runtime_parameters(
+            template, special_map_dir, self.root / "runtime"
+        )
+        parameters = yaml.safe_load(runtime_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(
+            parameters["map_path"], str((special_map_dir / "GlobalMap.pcd").resolve())
+        )
+        self.assertEqual(
+            parameters["ground_map_path"],
+            str((special_map_dir / "GroundMap.pcd").resolve()),
+        )
+        self.assertEqual(
+            parameters["sc_db_path"], str((special_map_dir / "sc_db.bin").resolve())
+        )
 
     def test_write_runtime_parameters_rejects_duplicate_key(self):
         template = self.root / "relocalization.yaml"
