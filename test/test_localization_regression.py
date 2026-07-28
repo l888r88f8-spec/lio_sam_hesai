@@ -16,6 +16,29 @@ from stability_baseline import BASELINE
 
 
 class MetricCollectorTest(unittest.TestCase):
+    def test_diagnostic_level_decodes_single_byte_ros_levels(self):
+        self.assertEqual(localization_regression._diagnostic_level(b"\x00"), 0)
+        self.assertEqual(localization_regression._diagnostic_level(b"\x01"), 1)
+        self.assertEqual(localization_regression._diagnostic_level(b"\x02"), 2)
+        self.assertEqual(
+            localization_regression._diagnostic_level(bytearray(b"\x02")), 2
+        )
+
+    def test_diagnostic_level_rejects_invalid_byte_representations(self):
+        for value in (
+            b"",
+            b"\x00\x01",
+            bytearray(),
+            bytearray(b"\x00\x01"),
+            memoryview(b"\x00"),
+            "0",
+            0.0,
+            None,
+            True,
+        ):
+            with self.subTest(value=value):
+                self.assertIsNone(localization_regression._diagnostic_level(value))
+
     def test_collects_reference_clock_odom_and_ok_diagnostic(self):
         collector = MetricCollector()
 
@@ -57,6 +80,32 @@ class MetricCollectorTest(unittest.TestCase):
         self.assertEqual(metrics["first_odom_seconds"], 1.5)
         self.assertEqual(metrics["first_ok_seconds"], 2.0)
         self.assertIs(metrics["timestamp_monotonic"], True)
+
+    def test_byte_level_ok_diagnostic_populates_first_ok_and_scalars(self):
+        collector = MetricCollector()
+
+        collector.clock(100.0)
+        collector.diagnostic(
+            102.0,
+            b"\x00",
+            "lio_sam_hesai: localization",
+            {
+                "health_score": "0.8",
+                "reg_fitness": "0.2",
+                "covariance_scale": "1.0",
+                "lidar_rate_hz": "10.0",
+                "imu_rate_hz": "100.0",
+            },
+        )
+
+        metrics = collector.finish(110.0)
+
+        self.assertEqual(metrics["first_ok_seconds"], 2.0)
+        self.assertEqual(metrics["min_health_score"], 0.8)
+        self.assertEqual(metrics["max_reg_fitness"], 0.2)
+        self.assertEqual(metrics["max_covariance_scale"], 1.0)
+        self.assertEqual(metrics["min_lidar_rate_hz"], 10.0)
+        self.assertEqual(metrics["min_imu_rate_hz"], 100.0)
 
     def test_invalid_quaternion_does_not_count_as_valid_odom(self):
         collector = MetricCollector()

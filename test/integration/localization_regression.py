@@ -196,6 +196,8 @@ def _diagnostic_level(value):
         return None
     if isinstance(value, int):
         return value
+    if isinstance(value, (bytes, bytearray)) and len(value) == 1:
+        return value[0]
     return None
 
 
