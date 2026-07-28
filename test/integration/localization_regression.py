@@ -222,10 +222,11 @@ def _max_non_ok_gap_seconds(events, clock_start, finish_time):
         if timestamp < clock_start:
             continue
         if level == 0:
-            maximum_gap = _max_or_initial(
-                maximum_gap, max(0.0, timestamp - non_ok_start)
-            )
-            non_ok_start = None
+            if non_ok_start is not None:
+                maximum_gap = _max_or_initial(
+                    maximum_gap, max(0.0, timestamp - non_ok_start)
+                )
+                non_ok_start = None
         elif non_ok_start is None:
             non_ok_start = timestamp
     if non_ok_start is not None and finish_time is not None:

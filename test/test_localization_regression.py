@@ -169,6 +169,32 @@ class MetricCollectorTest(unittest.TestCase):
 
         self.assertIsNone(collector.finish(104.0)["max_non_ok_gap_seconds"])
 
+    def test_consecutive_ok_events_close_initial_non_ok_gap_once(self):
+        self.assertEqual(
+            localization_regression._max_non_ok_gap_seconds(
+                [(101.0, 0), (102.0, 0), (103.0, 0)], 100.0, 104.0
+            ),
+            1.0,
+        )
+
+    def test_repeated_ok_events_do_not_start_a_new_non_ok_gap(self):
+        self.assertEqual(
+            localization_regression._max_non_ok_gap_seconds(
+                [(101.0, 0), (102.0, 0)], 100.0, 104.0
+            ),
+            1.0,
+        )
+
+    def test_non_ok_gap_tracks_ok_warn_ok_transitions(self):
+        self.assertEqual(
+            localization_regression._max_non_ok_gap_seconds(
+                [(101.0, 0), (102.0, 1), (104.0, 0), (105.0, 0)],
+                100.0,
+                106.0,
+            ),
+            2.0,
+        )
+
     def test_error_level_two_is_counted(self):
         collector = MetricCollector()
 
