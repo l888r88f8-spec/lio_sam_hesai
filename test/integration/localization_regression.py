@@ -382,29 +382,10 @@ def _run_replay(arguments, runtime_parameters, quick, launch_log, player_log):
             collector.clock(seconds)
 
         def odometry_callback(message):
-            seconds = _message_seconds(message, latest_clock[0])
-            position = message.pose.pose.position
-            orientation = message.pose.pose.orientation
-            collector.odom(
-                seconds,
-                position.x,
-                position.y,
-                position.z,
-                orientation.x,
-                orientation.y,
-                orientation.z,
-                orientation.w,
-            )
+            _record_odom_at_replay_clock(collector, latest_clock[0], message)
 
         def diagnostics_callback(message):
-            seconds = _message_seconds(message, latest_clock[0])
-            for status in message.status:
-                collector.diagnostic(
-                    seconds,
-                    status.level,
-                    status.name,
-                    {value.key: value.value for value in status.values},
-                )
+            _record_diagnostics_at_replay_clock(collector, latest_clock[0], message)
 
         node.create_subscription(
             Clock, "/clock", clock_callback, qos_profile_sensor_data
@@ -597,13 +578,42 @@ def _ros_time_seconds(time_message):
     return seconds + nanoseconds * 1e-9
 
 
-def _message_seconds(message, fallback):
-    header = getattr(message, "header", None)
-    stamp = getattr(header, "stamp", None)
-    seconds = _ros_time_seconds(stamp) if stamp is not None else None
-    if seconds == 0.0 and fallback is not None:
-        return fallback
-    return seconds if seconds is not None else fallback
+def _replay_observation_seconds(latest_clock_seconds):
+    """Return replay-clock time, dropping observations received before the first /clock."""
+    return _finite_number(latest_clock_seconds)
+
+
+def _record_odom_at_replay_clock(collector, latest_clock_seconds, message):
+    seconds = _replay_observation_seconds(latest_clock_seconds)
+    if seconds is None:
+        return False
+    position = message.pose.pose.position
+    orientation = message.pose.pose.orientation
+    collector.odom(
+        seconds,
+        position.x,
+        position.y,
+        position.z,
+        orientation.x,
+        orientation.y,
+        orientation.z,
+        orientation.w,
+    )
+    return True
+
+
+def _record_diagnostics_at_replay_clock(collector, latest_clock_seconds, message):
+    seconds = _replay_observation_seconds(latest_clock_seconds)
+    if seconds is None:
+        return False
+    for status in message.status:
+        collector.diagnostic(
+            seconds,
+            status.level,
+            status.name,
+            {value.key: value.value for value in status.values},
+        )
+    return True
 
 
 def _write_observed(path, identity, metrics, error_message):

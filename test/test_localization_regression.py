@@ -147,6 +147,60 @@ class MetricCollectorTest(unittest.TestCase):
         self.assertEqual(metrics["first_ok_seconds"], 2.0)
         self.assertEqual(metrics["max_non_ok_gap_seconds"], 2.0)
 
+    def test_observer_uses_replay_clock_instead_of_epoch_message_headers(self):
+        epoch_stamp = SimpleNamespace(sec=1781750040, nanosec=500000000)
+        odometry = SimpleNamespace(
+            header=SimpleNamespace(stamp=epoch_stamp),
+            pose=SimpleNamespace(
+                pose=SimpleNamespace(
+                    position=SimpleNamespace(x=0.0, y=0.0, z=0.0),
+                    orientation=SimpleNamespace(x=0.0, y=0.0, z=0.0, w=1.0),
+                )
+            ),
+        )
+        diagnostics = SimpleNamespace(
+            header=SimpleNamespace(stamp=epoch_stamp),
+            status=[
+                SimpleNamespace(
+                    level=0,
+                    name="lio_sam_hesai: localization",
+                    values=[SimpleNamespace(key="timestamp_monotonic", value="true")],
+                )
+            ],
+        )
+        collector = MetricCollector()
+
+        collector.clock(64.0)
+        localization_regression._record_odom_at_replay_clock(
+            collector, 65.0, odometry
+        )
+        localization_regression._record_diagnostics_at_replay_clock(
+            collector, 65.0, diagnostics
+        )
+
+        metrics = collector.finish(66.0)
+
+        self.assertEqual(metrics["first_odom_seconds"], 1.0)
+        self.assertEqual(metrics["first_ok_seconds"], 1.0)
+        self.assertGreaterEqual(metrics["first_odom_seconds"], 0.0)
+
+    def test_observer_drops_messages_until_replay_clock_is_available(self):
+        odometry = SimpleNamespace(
+            pose=SimpleNamespace(
+                pose=SimpleNamespace(
+                    position=SimpleNamespace(x=0.0, y=0.0, z=0.0),
+                    orientation=SimpleNamespace(x=0.0, y=0.0, z=0.0, w=1.0),
+                )
+            )
+        )
+        collector = MetricCollector()
+
+        localization_regression._record_odom_at_replay_clock(
+            collector, None, odometry
+        )
+
+        self.assertIsNone(collector.finish(1.0)["valid_odom_ratio"])
+
 
 class LocalizationRegressionCliTest(unittest.TestCase):
     def setUp(self):
