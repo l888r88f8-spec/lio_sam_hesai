@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from yaml.constructor import ConstructorError
+from yaml.resolver import BaseResolver
 
 
 class BaselineError(RuntimeError):
@@ -78,6 +80,38 @@ _MEMORY_KEYS = (
 _MISSING = object()
 
 
+class _DuplicateKeySafeLoader(yaml.SafeLoader):
+    pass
+
+
+def _construct_mapping_without_duplicates(loader, node, deep=False):
+    mapping = {}
+    for key_node, value_node in node.value:
+        key = loader.construct_object(key_node, deep=deep)
+        if key in mapping:
+            raise ConstructorError(
+                "while constructing a mapping",
+                node.start_mark,
+                f"found duplicate key {key!r}",
+                key_node.start_mark,
+            )
+        try:
+            mapping[key] = loader.construct_object(value_node, deep=deep)
+        except (TypeError, ValueError, OverflowError) as error:
+            raise ConstructorError(
+                "while constructing a mapping",
+                node.start_mark,
+                f"invalid value for key {key!r}: {error}",
+                value_node.start_mark,
+            ) from error
+    return mapping
+
+
+_DuplicateKeySafeLoader.add_constructor(
+    BaseResolver.DEFAULT_MAPPING_TAG, _construct_mapping_without_duplicates
+)
+
+
 def load_baseline(path: Path) -> dict:
     """Load and validate a version-one localization stability baseline."""
     baseline_path = Path(path)
@@ -86,8 +120,15 @@ def load_baseline(path: Path) -> dict:
 
     try:
         with baseline_path.open(encoding="utf-8") as baseline_file:
-            contents = yaml.safe_load(baseline_file)
-    except (OSError, UnicodeError, yaml.YAMLError) as error:
+            contents = yaml.load(baseline_file, Loader=_DuplicateKeySafeLoader)
+    except (
+        OSError,
+        TypeError,
+        UnicodeError,
+        ValueError,
+        OverflowError,
+        yaml.YAMLError,
+    ) as error:
         raise BaselineError(
             f"Unable to read baseline file {baseline_path}: {error}"
         ) from error
@@ -118,6 +159,7 @@ def compare_quick_metrics(
         observed,
         "valid_odom_ratio",
         quick["min_valid_odom_ratio"],
+        unit_interval=True,
     )
     _append_upper_bound_violation(
         violations,
@@ -131,7 +173,7 @@ def compare_quick_metrics(
         "first_ok_seconds",
         quick["ok_deadline_seconds"],
     )
-    _append_upper_bound_violation(
+    _append_error_samples_violation(
         violations,
         observed,
         "error_samples",
@@ -148,6 +190,7 @@ def compare_quick_metrics(
         observed,
         "min_health_score",
         quick["health_score_min"],
+        unit_interval=True,
     )
     _append_upper_bound_violation(
         violations,
@@ -176,7 +219,7 @@ def compare_quick_metrics(
     if observed.get("timestamp_monotonic", _MISSING) is not True:
         violations.append(
             "timestamp_monotonic must be exactly True, observed "
-            f"{observed.get('timestamp_monotonic', _MISSING)!r}"
+            f"{_safe_value_repr(observed.get('timestamp_monotonic', _MISSING))}"
         )
 
     return violations
@@ -188,11 +231,15 @@ def write_candidate(path, identity, observed):
         raise BaselineError("Observed quick metrics must be a mapping")
 
     first_odom = _candidate_number(observed, "first_odom_seconds")
-    valid_odom_ratio = _candidate_number(observed, "valid_odom_ratio")
+    valid_odom_ratio = _candidate_number(
+        observed, "valid_odom_ratio", unit_interval=True
+    )
     max_odom_gap = _candidate_number(observed, "max_odom_gap_seconds")
     first_ok = _candidate_number(observed, "first_ok_seconds")
     max_non_ok_gap = _candidate_number(observed, "max_non_ok_gap_seconds")
-    min_health_score = _candidate_number(observed, "min_health_score")
+    min_health_score = _candidate_number(
+        observed, "min_health_score", unit_interval=True
+    )
     max_reg_fitness = _candidate_number(observed, "max_reg_fitness")
     max_covariance_scale = _candidate_number(observed, "max_covariance_scale")
     min_lidar_rate = _candidate_number(observed, "min_lidar_rate_hz")
@@ -361,46 +408,82 @@ def _validate_memory(value: Any) -> dict:
 
 
 def _append_upper_bound_violation(violations, observed, key, maximum) -> None:
-    value = _finite_observed_value(observed, key)
-    if value is None:
-        violations.append(
-            f"{key} must be a finite number <= {maximum}, observed "
-            f"{observed.get(key, _MISSING)!r}"
-        )
-    elif value > maximum:
+    value = _valid_nonnegative_observed_value(violations, observed, key)
+    if value is not None and value > maximum:
         violations.append(f"{key} must be <= {maximum}, observed {value}")
 
 
-def _append_lower_bound_violation(violations, observed, key, minimum) -> None:
-    value = _finite_observed_value(observed, key)
-    if value is None:
-        violations.append(
-            f"{key} must be a finite number >= {minimum}, observed "
-            f"{observed.get(key, _MISSING)!r}"
-        )
-    elif value < minimum:
+def _append_lower_bound_violation(
+    violations, observed, key, minimum, unit_interval=False
+) -> None:
+    value = _valid_observed_number(
+        violations, observed, key, unit_interval=unit_interval
+    )
+    if value is not None and value < minimum:
         violations.append(f"{key} must be >= {minimum}, observed {value}")
 
 
-def _finite_observed_value(observed: Mapping[str, Any], key: str) -> float | None:
+def _append_error_samples_violation(violations, observed, key, maximum) -> None:
     value = observed.get(key, _MISSING)
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return None
-    numeric_value = float(value)
-    if not math.isfinite(numeric_value):
-        return None
-    return numeric_value
+    if not isinstance(value, int) or isinstance(value, bool):
+        violations.append(
+            f"{key} must be a finite number represented by a non-negative integer, "
+            f"observed {_safe_value_repr(value)}"
+        )
+    elif value < 0:
+        violations.append(
+            f"{key} must be a non-negative integer, observed {_safe_value_repr(value)}"
+        )
+    elif value > maximum:
+        violations.append(
+            f"{key} must be <= {maximum}, observed {_safe_value_repr(value)}"
+        )
 
 
-def _candidate_number(observed: Mapping[str, Any], key: str) -> float:
-    value = _finite_observed_value(observed, key)
+def _valid_nonnegative_observed_value(violations, observed, key) -> float | None:
+    value = _valid_observed_number(violations, observed, key)
+    if value is not None and value < 0:
+        violations.append(
+            f"{key} must be a non-negative finite number, observed {value}"
+        )
+        return None
+    return value
+
+
+def _valid_observed_number(
+    violations, observed, key, unit_interval=False
+) -> float | None:
+    raw_value = observed.get(key, _MISSING)
+    value = _finite_numeric_value(raw_value)
+    if value is None:
+        violations.append(
+            f"{key} must be a finite number, observed {_safe_value_repr(raw_value)}"
+        )
+        return None
+    if unit_interval and not 0.0 <= value <= 1.0:
+        violations.append(
+            f"{key} must be a finite number between 0 and 1, observed {value}"
+        )
+        return None
+    return value
+
+
+def _candidate_number(
+    observed: Mapping[str, Any], key: str, unit_interval=False
+) -> float:
+    raw_value = observed.get(key, _MISSING)
+    value = _finite_numeric_value(raw_value)
     if value is None:
         raise BaselineError(
             f"Candidate observed value {key} must be a finite number, observed "
-            f"{observed.get(key, _MISSING)!r}"
+            f"{_safe_value_repr(raw_value)}"
         )
     if value < 0:
         raise BaselineError(f"Candidate observed value {key} must be non-negative")
+    if unit_interval and value > 1.0:
+        raise BaselineError(
+            f"Candidate observed value {key} must be between 0 and 1"
+        )
     return value
 
 
@@ -441,17 +524,41 @@ def _require_exact_keys(
 
 
 def _require_nonnegative_int(value: Any, key_path: str) -> int:
-    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+    if (
+        not isinstance(value, int)
+        or isinstance(value, bool)
+        or value < 0
+        or _finite_numeric_value(value) is None
+    ):
         raise BaselineError(f"{key_path} must be a non-negative integer")
     return value
 
 
 def _require_finite_number(value: Any, key_path: str) -> float | int:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise BaselineError(f"{key_path} must be a finite number")
-    if not math.isfinite(float(value)):
+    if _finite_numeric_value(value) is None:
         raise BaselineError(f"{key_path} must be a finite number")
     return value
+
+
+def _finite_numeric_value(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    try:
+        numeric_value = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not math.isfinite(numeric_value):
+        return None
+    return numeric_value
+
+
+def _safe_value_repr(value: Any) -> str:
+    if value is _MISSING:
+        return "<missing>"
+    try:
+        return repr(value)
+    except (TypeError, ValueError, OverflowError):
+        return f"<{type(value).__name__}>"
 
 
 def _require_nonnegative_number(value: Any, key_path: str) -> float | int:

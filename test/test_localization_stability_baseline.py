@@ -32,6 +32,9 @@ class LocalizationStabilityBaselineTest(unittest.TestCase):
             yaml.safe_dump(contents, sort_keys=False), encoding="utf-8"
         )
 
+    def _write_raw_fixture(self, contents):
+        self.fixture_path.write_text(contents, encoding="utf-8")
+
     def test_load_baseline_returns_an_independent_validated_copy(self):
         loaded = load_baseline(self.fixture_path)
         loaded["quick"]["rate"] = 2.0
@@ -104,6 +107,24 @@ class LocalizationStabilityBaselineTest(unittest.TestCase):
         with self.assertRaisesRegex(BaselineError, "quick.first_odom_max_seconds"):
             load_baseline(self.fixture_path)
 
+    def test_load_baseline_rejects_duplicate_yaml_keys(self):
+        fixture = yaml.safe_dump(self.baseline, sort_keys=False)
+        duplicate_fixtures = {
+            "schema version": fixture + "schema_version: 1\n",
+            "quick threshold": fixture.replace(
+                "  first_odom_max_seconds: 60.0\n",
+                "  first_odom_max_seconds: 60.0\n"
+                "  first_odom_max_seconds: 61.0\n",
+            ),
+        }
+
+        for name, duplicate_fixture in duplicate_fixtures.items():
+            with self.subTest(name=name):
+                self._write_raw_fixture(duplicate_fixture)
+
+                with self.assertRaisesRegex(BaselineError, "duplicate key"):
+                    load_baseline(self.fixture_path)
+
     def test_compare_quick_metrics_accepts_exact_boundaries(self):
         observed = {
             "first_odom_seconds": 60.0,
@@ -161,6 +182,38 @@ class LocalizationStabilityBaselineTest(unittest.TestCase):
                 msg=f"No violation reported for {field}: {violations}",
             )
 
+    def test_compare_quick_metrics_rejects_invalid_scalar_domains(self):
+        observed = {
+            "first_odom_seconds": -1.0,
+            "valid_odom_ratio": 2.0,
+            "max_odom_gap_seconds": -1.0,
+            "first_ok_seconds": 90.0,
+            "error_samples": -1,
+            "max_non_ok_gap_seconds": 5.0,
+            "min_health_score": 2.0,
+            "max_reg_fitness": 1.0,
+            "max_covariance_scale": 100.0,
+            "min_lidar_rate_hz": 5.0,
+            "min_imu_rate_hz": 50.0,
+            "timestamp_monotonic": True,
+        }
+
+        violations = compare_quick_metrics(self.baseline, observed)
+
+        expected_fields = (
+            "first_odom_seconds",
+            "valid_odom_ratio",
+            "max_odom_gap_seconds",
+            "error_samples",
+            "min_health_score",
+        )
+        self.assertEqual(len(violations), len(expected_fields))
+        for field in expected_fields:
+            self.assertTrue(
+                any(field in violation for violation in violations),
+                msg=f"No domain violation reported for {field}: {violations}",
+            )
+
     def test_compare_quick_metrics_treats_nonfinite_observations_as_violations(self):
         for value in (math.nan, math.inf, -math.inf):
             with self.subTest(value=value):
@@ -195,6 +248,43 @@ class LocalizationStabilityBaselineTest(unittest.TestCase):
         )
 
         self.assertEqual(self.baseline, baseline_before)
+
+    def test_load_baseline_rejects_huge_integer_bounds(self):
+        fixture = yaml.safe_dump(self.baseline, sort_keys=False)
+        self._write_raw_fixture(
+            fixture.replace(
+                "  first_odom_max_seconds: 60.0\n",
+                "  first_odom_max_seconds: " + "1" + "0" * 10000 + "\n",
+            )
+        )
+
+        with self.assertRaisesRegex(BaselineError, "first_odom_max_seconds"):
+            load_baseline(self.fixture_path)
+
+    def test_compare_quick_metrics_reports_huge_integer_observations(self):
+        violations = compare_quick_metrics(
+            self.baseline,
+            {
+                "first_odom_seconds": 10**10000,
+                "error_samples": 10**10000,
+                "timestamp_monotonic": True,
+            },
+        )
+
+        self.assertTrue(any("first_odom_seconds" in violation for violation in violations))
+        self.assertTrue(any("error_samples" in violation for violation in violations))
+
+    def test_write_candidate_rejects_huge_integer_before_writing(self):
+        candidate_path = self.root / "candidate.yaml"
+
+        with self.assertRaisesRegex(BaselineError, "first_odom_seconds"):
+            write_candidate(
+                candidate_path,
+                self.baseline["dataset"],
+                {"first_odom_seconds": 10**10000},
+            )
+
+        self.assertFalse(candidate_path.exists())
 
     def test_write_candidate_uses_identity_and_conservative_observed_bounds(self):
         candidate_path = self.root / "candidate" / "baseline.yaml"
