@@ -222,15 +222,13 @@ TEST(AutomaticRecoverySurface, UsesOneShotWorkerOwnedReinitialization) {
 }
 
 TEST(SystemIntegration, WiresLocalizationHealthObservability) {
-  const std::array<std::string, 10> header_tokens = {
+  const std::array<std::string, 8> header_tokens = {
     "diagnostic_msgs/msg/diagnostic_array.hpp",
     "localization_health/data_stream_watchdog.h",
-    "localization_health/localization_state_machine.h",
-    "localization_health/recovery_attempt_gate.h",
+    "localization_health/localization_recovery_coordinator.h",
     "diagnostics_pub_",
     "data_stream_watchdog_",
-    "localization_state_machine_",
-    "recovery_attempt_gate_",
+    "localization_recovery_coordinator_",
     "has_new_health_result_",
     "last_health_result_arrival_steady_us_",
   };
@@ -238,7 +236,7 @@ TEST(SystemIntegration, WiresLocalizationHealthObservability) {
     ExpectToken("include/slam/system.h", token);
   }
 
-  const std::array<std::string, 33> source_tokens = {
+  const std::array<std::string, 35> source_tokens = {
     "RecordLidar",
     "RecordImu",
     "has_new_result",
@@ -267,11 +265,13 @@ TEST(SystemIntegration, WiresLocalizationHealthObservability) {
     "current_health_covariance_scale_",
     "PublishLocalizationHealth",
     "state_config.min_stream_rate_ratio = config.health_min_rate_ratio_",
-    "UpdateForStateTransition",
+    "LocalizationRecoveryCoordinator",
+    "localization_recovery_coordinator_->Update",
+    "request_automatic_relocalization",
+    "recovery_update.request_sent",
     "RequestAutomaticRelocalization",
     "auto_relocalization_trigger",
-    "ToString(recovery_attempt_reason)",
-    "state_before_health_update",
+    "ToString(recovery_update.reason)",
   };
   for (const auto & token : source_tokens) {
     ExpectToken("src/slam/system.cpp", token);
@@ -289,11 +289,12 @@ TEST(SystemIntegration, WiresLocalizationHealthObservability) {
   ExpectNoToken(
     "src/slam/system.cpp", "has_new_stream_observation_.");
 
-  const std::array<std::string, 5> cmake_tokens = {
+  const std::array<std::string, 6> cmake_tokens = {
     "find_package(diagnostic_msgs REQUIRED)",
     "src/localization_health/data_stream_watchdog.cpp",
     "src/localization_health/localization_state_machine.cpp",
     "src/localization_health/recovery_attempt_gate.cpp",
+    "src/localization_health/localization_recovery_coordinator.cpp",
     "diagnostic_msgs",
   };
   for (const auto & token : cmake_tokens) {
