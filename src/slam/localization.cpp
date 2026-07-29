@@ -215,7 +215,7 @@ void Localization::InitPreintegration() {
   odom_pre_integration_ptr_ = std::make_shared<PreIntegration>(config_para);
 }
 
-bool Localization::Init() {
+Localization::InitializationResult Localization::Init() {
   Mat4d init_pose;
   bool has_manual_init_pose = false;
   int result_consistency_hit = 0;
@@ -236,7 +236,7 @@ bool Localization::Init() {
         !scan_context_db_loaded_) {
       LOG_EVERY_N(INFO, 10) << "Please set initialization pose for "
                                "localization by RViz -> 2D Pose Estimate";
-      return false;
+      return InitializationResult::kFailed;
     }
 
     float auto_fitness = std::numeric_limits<float>::infinity();
@@ -244,7 +244,7 @@ bool Localization::Init() {
     if (!auto_pose.has_value()) {
       consistency_ref_pose_.reset();
       consistency_hit_count_ = 0;
-      return false;
+      return InitializationResult::kFailed;
     }
 
     {
@@ -299,7 +299,7 @@ bool Localization::Init() {
       if (consistency_hit_count_ < required_frames) {
         LOG(INFO) << "Auto relocalization consistency "
                   << consistency_hit_count_ << "/" << required_frames;
-        return false;
+        return InitializationResult::kAutomaticConsistencyPending;
       }
 
       init_pose = auto_pose.value();
@@ -319,7 +319,7 @@ bool Localization::Init() {
   if (!local_map || local_map->empty()) {
     LOG(WARNING) << "Initial local map is empty, please check localization map "
                     "path and initialization pose.";
-    return false;
+    return InitializationResult::kFailed;
   }
 
   matcher_->AddCloudToLocalMap({*local_map});
@@ -352,7 +352,7 @@ bool Localization::Init() {
     LOG(WARNING) << "Initial registration failed. "
                  << "Please try to continue initialization and give a better "
                     "initial pose.";
-    return false;
+    return InitializationResult::kFailed;
   }
 
   last_odom_state_.SetPose(Mat4d::Identity());
@@ -380,7 +380,7 @@ bool Localization::Init() {
   UpdateCurrentLidarCloud(*TransformPointCloud(
       VoxelGridCloud(curr_cloud_cluster_ptr_->ordered_cloud_, 0.5), init_pose));
 
-  return success;
+  return InitializationResult::kInitialized;
 }
 
 void Localization::Run() {
@@ -486,8 +486,14 @@ void Localization::Run() {
           continue;
         }
 
-        has_init_ = Init();
-        reinitialization_attempt.RecordInitializationResult(has_init_);
+        const InitializationResult initialization_result = Init();
+        has_init_ = initialization_result == InitializationResult::kInitialized;
+        if (initialization_result ==
+            InitializationResult::kAutomaticConsistencyPending) {
+          reinitialization_attempt.RecordAutomaticConsistencyPending();
+        } else {
+          reinitialization_attempt.RecordInitializationResult(has_init_);
+        }
 
         if (has_init_) {
           InitPreintegration();

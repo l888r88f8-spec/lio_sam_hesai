@@ -14,8 +14,14 @@ ReinitializationControl::WorkerAttempt::WorkerAttempt(
   automatic_relocalization_requested_ =
       control_->automatic_relocalization_request_pending_.exchange(false);
   has_manual_initialization_ = control_->manual_initialization_pending_;
+  if (has_manual_initialization_) {
+    control_->automatic_relocalization_in_progress_ = false;
+  } else if (automatic_relocalization_requested_) {
+    control_->automatic_relocalization_in_progress_ = true;
+  }
   owns_automatic_initialization_ =
-      automatic_relocalization_requested_ && !has_manual_initialization_;
+      control_->automatic_relocalization_in_progress_ &&
+      !has_manual_initialization_;
   control_->manual_initialization_pending_ = false;
   if (automatic_relocalization_requested_) {
     control_->waiting_for_automatic_relocalization_request_.store(false);
@@ -41,10 +47,20 @@ bool ReinitializationControl::WorkerAttempt::waiting_for_automatic_request()
   return control_->waiting_for_automatic_relocalization_request_.load();
 }
 
+void ReinitializationControl::WorkerAttempt::
+    RecordAutomaticConsistencyPending() {
+  if (owns_automatic_initialization_) {
+    control_->waiting_for_automatic_relocalization_request_.store(false);
+  }
+}
+
 void ReinitializationControl::WorkerAttempt::RecordInitializationResult(
     bool initialized) {
-  if (!initialized && owns_automatic_initialization_) {
-    control_->waiting_for_automatic_relocalization_request_.store(true);
+  if (owns_automatic_initialization_) {
+    control_->automatic_relocalization_in_progress_ = false;
+    if (!initialized) {
+      control_->waiting_for_automatic_relocalization_request_.store(true);
+    }
   }
 }
 
@@ -66,6 +82,7 @@ ReinitializationControl::BeginManualInitialization() {
     lock.lock();
   }
   waiting_for_automatic_relocalization_request_.store(false);
+  automatic_relocalization_in_progress_ = false;
   manual_initialization_pending_ = true;
   return ManualInitializationTransaction(std::move(lock));
 }

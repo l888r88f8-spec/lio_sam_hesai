@@ -31,6 +31,34 @@ TEST(ReinitializationControl, FailedAutomaticAttemptWaitsForAnotherRequest) {
 }
 
 TEST(ReinitializationControl,
+     AutomaticThreeFrameConsistencyDoesNotFreezeBeforeCandidateCompletes) {
+  constexpr int sc_consistency_frames = 3;
+  ReinitializationControl control;
+  control.RequestAutomaticRelocalization();
+
+  for (int candidate_frame = 1; candidate_frame <= sc_consistency_frames;
+       ++candidate_frame) {
+    auto attempt = control.BeginWorkerAttempt();
+    EXPECT_TRUE(attempt.owns_automatic_initialization());
+
+    const bool initialization_completed =
+        candidate_frame == sc_consistency_frames;
+    if (initialization_completed) {
+      attempt.RecordInitializationResult(true);
+    } else {
+      attempt.RecordAutomaticConsistencyPending();
+    }
+
+    EXPECT_FALSE(attempt.waiting_for_automatic_request())
+        << "consistent Scan Context candidate frame " << candidate_frame
+        << " must continue automatic relocalization";
+  }
+
+  auto next_attempt = control.BeginWorkerAttempt();
+  EXPECT_FALSE(next_attempt.waiting_for_automatic_request());
+}
+
+TEST(ReinitializationControl,
      ManualRequestBeforeWorkerMakesAttemptNonAutomatic) {
   ReinitializationControl control;
   {

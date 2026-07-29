@@ -42,7 +42,13 @@ public:
     [[nodiscard]] bool IsMapReady() const { return map_ready_.load(); }
 
 private:
-    bool Init();
+    enum class InitializationResult {
+        kInitialized,
+        kAutomaticConsistencyPending,
+        kFailed,
+    };
+
+    InitializationResult Init();
 
     void LoadScanContextDb();
 

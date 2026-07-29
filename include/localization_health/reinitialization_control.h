@@ -45,6 +45,11 @@ class ReinitializationControl {
     [[nodiscard]] bool has_manual_initialization() const;
     [[nodiscard]] bool waiting_for_automatic_request() const;
 
+    // Keeps a request-owned automatic relocalization attempt active while
+    // Scan Context gathers the remaining consistency frames. This is not a
+    // failed initialization and therefore must not wait for stream recovery.
+    void RecordAutomaticConsistencyPending();
+
     void RecordInitializationResult(bool initialized);
 
    private:
@@ -75,6 +80,7 @@ class ReinitializationControl {
   std::atomic_bool automatic_relocalization_request_pending_{false};
   std::mutex mutex_;
   bool manual_initialization_pending_ = false;
+  bool automatic_relocalization_in_progress_ = false;
   std::atomic_bool waiting_for_automatic_relocalization_request_{false};
   std::mutex mutex_manual_contention_observer_;
   std::function<void()> manual_contention_observer_for_test_;
