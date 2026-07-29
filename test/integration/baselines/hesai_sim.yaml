@@ -26,5 +26,5 @@ memory:
   warmup_seconds: 300.0
   duration_seconds: 7200.0
   sample_period_seconds: 5.0
-  max_rss_mib: 4096.0
-  max_slope_mib_per_hour: 64.0
+  max_rss_mib: 256.0
+  max_slope_mib_per_hour: 32.0
