@@ -500,7 +500,8 @@ def _spin_bag_window(
         return current_clock - first_clock >= duration_seconds
 
     def drain_final_callbacks():
-        """Dispatch a bounded backlog from all replay metric subscriptions.
+        """
+        Dispatch a bounded backlog from all replay metric subscriptions.
 
         The 32-callback cap covers the combined clock, odometry, and
         diagnostics subscription backlog with headroom without extending the
