@@ -1,0 +1,30 @@
+schema_version: 1
+dataset:
+  duration_ns: 756378139407
+  message_count: 46875
+  topic_counts:
+    /imu: 42617
+    /lidar_points: 4258
+  map_points: 178455
+quick:
+  start_offset_seconds: 0.0
+  duration_seconds: 180.0
+  rate: 1.0
+  startup_grace_seconds: 30.0
+  first_odom_max_seconds: 7.010719299316406
+  min_valid_odom_ratio: 0.9
+  max_odom_gap_seconds: 0.6125840544700623
+  ok_deadline_seconds: 5.533784914016724
+  max_error_samples: 0
+  max_non_ok_gap_seconds: 5.533784914016724
+  health_score_min: 0.0
+  reg_fitness_max: 1.1
+  covariance_scale_max: 110.00000000000001
+  lidar_rate_min_hz: 0.0
+  imu_rate_min_hz: 0.0
+memory:
+  warmup_seconds: 300.0
+  duration_seconds: 7200.0
+  sample_period_seconds: 5.0
+  max_rss_mib: 4096.0
+  max_slope_mib_per_hour: 64.0
