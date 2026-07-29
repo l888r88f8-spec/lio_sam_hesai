@@ -844,23 +844,12 @@ void System::PublishLocalizationHealth() {
 
   const localization_health::LocalizationState state_before_health_update =
       localization_state_machine_->state();
-  auto recovery_attempt_reason =
-      localization_health::RecoveryAttemptReason::kNone;
-  if (state_before_health_update == localization_health::LocalizationState::kLost) {
-    recovery_attempt_reason =
-        recovery_attempt_gate_->Update(state_before_health_update,
-                                       inputs.stream);
-  }
-
   const localization_health::HealthReport report =
       localization_state_machine_->Update(inputs);
   current_health_covariance_scale_ = report.covariance_scale;
-  if (state_before_health_update != localization_health::LocalizationState::kLost) {
-    recovery_attempt_reason =
-        recovery_attempt_gate_->Update(report.state, inputs.stream);
-  } else if (report.state != localization_health::LocalizationState::kLost) {
-    recovery_attempt_gate_->Update(report.state, inputs.stream);
-  }
+  const auto recovery_attempt_reason =
+      recovery_attempt_gate_->UpdateForStateTransition(
+          state_before_health_update, report.state, inputs.stream);
   if (recovery_attempt_reason !=
           localization_health::RecoveryAttemptReason::kNone &&
       config.localization_auto_relocalization_ && localization_ptr_) {

@@ -86,34 +86,41 @@ TEST(RecoveryAttemptGate,
   RecoveryAttemptGate gate(RecoveryAttemptGate::Config{});
 
   auto healthy = HealthyTrackingInput();
+  auto state_before_health_update = machine.state();
   auto report = machine.Update(healthy);
   ASSERT_EQ(report.state, LocalizationState::kRelocalizing);
-  EXPECT_EQ(gate.Update(report.state, healthy.stream),
+  EXPECT_EQ(gate.UpdateForStateTransition(state_before_health_update,
+                                          report.state, healthy.stream),
             RecoveryAttemptReason::kNone);
+  state_before_health_update = machine.state();
   report = machine.Update(healthy);
   ASSERT_EQ(report.state, LocalizationState::kTracking);
-  EXPECT_EQ(gate.Update(report.state, healthy.stream),
+  EXPECT_EQ(gate.UpdateForStateTransition(state_before_health_update,
+                                          report.state, healthy.stream),
             RecoveryAttemptReason::kNone);
 
   auto stalled = healthy;
   stalled.stream.lidar_stalled = true;
+  state_before_health_update = machine.state();
   report = machine.Update(stalled);
   ASSERT_EQ(report.state, LocalizationState::kDegraded);
-  EXPECT_EQ(gate.Update(report.state, stalled.stream),
+  EXPECT_EQ(gate.UpdateForStateTransition(state_before_health_update,
+                                          report.state, stalled.stream),
             RecoveryAttemptReason::kNone);
+  state_before_health_update = machine.state();
   report = machine.Update(stalled);
   ASSERT_EQ(report.state, LocalizationState::kLost);
-  EXPECT_EQ(gate.Update(report.state, stalled.stream),
+  EXPECT_EQ(gate.UpdateForStateTransition(state_before_health_update,
+                                          report.state, stalled.stream),
             RecoveryAttemptReason::kLostEntry);
 
-  const LocalizationState state_before_health_update = machine.state();
-  ASSERT_EQ(state_before_health_update, LocalizationState::kLost);
-  EXPECT_EQ(gate.Update(state_before_health_update, healthy.stream),
-            RecoveryAttemptReason::kStreamRecovered);
+  ASSERT_EQ(machine.state(), LocalizationState::kLost);
+  state_before_health_update = machine.state();
   report = machine.Update(healthy);
   ASSERT_EQ(report.state, LocalizationState::kRelocalizing);
-  EXPECT_EQ(gate.Update(report.state, healthy.stream),
-            RecoveryAttemptReason::kNone);
+  EXPECT_EQ(gate.UpdateForStateTransition(state_before_health_update,
+                                          report.state, healthy.stream),
+            RecoveryAttemptReason::kStreamRecovered);
 }
 
 TEST(RecoveryAttemptGate,

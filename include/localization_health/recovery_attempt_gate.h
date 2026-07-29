@@ -25,6 +25,9 @@ class RecoveryAttemptGate {
 
   RecoveryAttemptReason Update(LocalizationState state,
                                const StreamHealth& stream);
+  RecoveryAttemptReason UpdateForStateTransition(
+      LocalizationState state_before, LocalizationState state_after,
+      const StreamHealth& stream);
   void Reset();
 
  private:

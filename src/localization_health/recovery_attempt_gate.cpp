@@ -64,6 +64,20 @@ RecoveryAttemptReason RecoveryAttemptGate::Update(LocalizationState state,
   return RecoveryAttemptReason::kNone;
 }
 
+RecoveryAttemptReason RecoveryAttemptGate::UpdateForStateTransition(
+    LocalizationState state_before, LocalizationState state_after,
+    const StreamHealth& stream) {
+  if (state_before != LocalizationState::kLost) {
+    return Update(state_after, stream);
+  }
+
+  const auto reason = Update(state_before, stream);
+  if (state_after != LocalizationState::kLost) {
+    (void)Update(state_after, stream);
+  }
+  return reason;
+}
+
 void RecoveryAttemptGate::Reset() {
   previous_state_ = LocalizationState::kInit;
   saw_stream_fault_ = false;

@@ -267,7 +267,7 @@ TEST(SystemIntegration, WiresLocalizationHealthObservability) {
     "current_health_covariance_scale_",
     "PublishLocalizationHealth",
     "state_config.min_stream_rate_ratio = config.health_min_rate_ratio_",
-    "recovery_attempt_gate_->Update(report.state, inputs.stream)",
+    "UpdateForStateTransition",
     "RequestAutomaticRelocalization",
     "auto_relocalization_trigger",
     "ToString(recovery_attempt_reason)",
