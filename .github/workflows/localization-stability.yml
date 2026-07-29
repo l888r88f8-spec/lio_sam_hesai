@@ -1,0 +1,45 @@
+name: Localization stability
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "15 2 * * *"
+
+jobs:
+  quick:
+    runs-on: [self-hosted, linux, arm64, orin]
+    env:
+      LIO_SAM_KEEP_RESULTS: "1"
+      LIO_SAM_WORKSPACE: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: test -d "${LIO_SAM_TESTDATA_ROOT}/rosbag2/hesai_sim"
+      - run: test -d "${LIO_SAM_TESTDATA_ROOT}/map/hesai_sim2"
+      - run: source /opt/ros/humble/setup.bash && colcon build --symlink-install --packages-select lio_sam_hesai
+      - id: quick
+        run: ./scripts/run_localization_stability.sh quick
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: localization-quick, path: "${{ steps.quick.outputs.results_dir }}"}
+      - if: always()
+        env:
+          RESULTS_DIR: ${{ steps.quick.outputs.results_dir }}
+        run: if [[ -n "$RESULTS_DIR" ]]; then rm -rf -- "$RESULTS_DIR"; fi
+  memory:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, linux, arm64, orin]
+    env:
+      LIO_SAM_KEEP_RESULTS: "1"
+      LIO_SAM_WORKSPACE: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: source /opt/ros/humble/setup.bash && colcon build --symlink-install --packages-select lio_sam_hesai
+      - id: memory
+        run: ./scripts/run_localization_stability.sh memory
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: localization-rss, path: "${{ steps.memory.outputs.results_dir }}"}
+      - if: always()
+        env:
+          RESULTS_DIR: ${{ steps.memory.outputs.results_dir }}
+        run: if [[ -n "$RESULTS_DIR" ]]; then rm -rf -- "$RESULTS_DIR"; fi
