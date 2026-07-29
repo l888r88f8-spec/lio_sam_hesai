@@ -7,6 +7,7 @@
 #include "common/data_type.h"
 #include "common/compare_function.h"
 #include "imu/pre_integration.h"
+#include "localization_health/reinitialization_control.h"
 #include "registration/registration_interface.h"
 #include "registration/icp_optimized.h"
 #include "relocalization/scan_context.h"
@@ -125,10 +126,7 @@ private:
     TimeStampUs curr_time_us_ = 0u;
 
     std::atomic_bool has_init_{false};
-    std::atomic_bool automatic_relocalization_request_pending_{false};
-    std::atomic_bool waiting_for_automatic_relocalization_request_{false};
-    std::mutex mutex_reinitialization_control_;
-    bool manual_initialization_pending_{false};
+    localization_health::ReinitializationControl reinitialization_control_;
     std::atomic_bool map_ready_{false};
 
     std::mutex mutex_lidar_cloud_;

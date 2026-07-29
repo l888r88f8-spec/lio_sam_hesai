@@ -89,10 +89,8 @@ Localization::Localization(System* system_ptr) : system_ptr_(system_ptr) {
 }
 
 void Localization::SetInitPose(const Mat4d& pose) {
-  std::unique_lock<std::mutex> reinitialization_control_lock(
-      mutex_reinitialization_control_);
-  waiting_for_automatic_relocalization_request_.store(false);
-  manual_initialization_pending_ = true;
+  [[maybe_unused]] auto manual_initialization =
+      reinitialization_control_.BeginManualInitialization();
   std::lock_guard<std::mutex> lg(mutex_init_pose_optional_);
   // RViz/System provides map->lidar, while registration consumes the
   // deskewed IMU-frame cloud and therefore uses map->imu internally.
@@ -101,7 +99,7 @@ void Localization::SetInitPose(const Mat4d& pose) {
 }
 
 void Localization::RequestAutomaticRelocalization() {
-  automatic_relocalization_request_pending_.store(true);
+  reinitialization_control_.RequestAutomaticRelocalization();
 }
 
 Mat4d Localization::MapLidarPoseToMapImuPose(
@@ -473,41 +471,30 @@ void Localization::Run() {
     }
 
     curr_time_us_ = curr_cloud_cluster_ptr_->timestamp_;
-    std::unique_lock<std::mutex> reinitialization_control_lock(
-        mutex_reinitialization_control_);
-    const bool automatic_relocalization_requested =
-        automatic_relocalization_request_pending_.exchange(false);
-    const bool automatic_attempt_owns_initialization =
-        automatic_relocalization_requested && !manual_initialization_pending_;
-    manual_initialization_pending_ = false;
-    if (automatic_relocalization_requested) {
-      has_init_.store(false);
-      waiting_for_automatic_relocalization_request_.store(false);
-      consistency_ref_pose_.reset();
-      consistency_hit_count_ = 0;
-      InitPreintegration();
-    }
-
-    if (!has_init_) {
-      if (waiting_for_automatic_relocalization_request_.load()) {
-        reinitialization_control_lock.unlock();
-        continue;
-      }
-
-      has_init_ = Init();
-
-      if (!has_init_ && automatic_attempt_owns_initialization) {
-        waiting_for_automatic_relocalization_request_.store(true);
-      }
-
-      if (has_init_) {
+    {
+      auto reinitialization_attempt =
+          reinitialization_control_.BeginWorkerAttempt();
+      if (reinitialization_attempt.automatic_relocalization_requested()) {
+        has_init_.store(false);
+        consistency_ref_pose_.reset();
+        consistency_hit_count_ = 0;
         InitPreintegration();
       }
-      reinitialization_control_lock.unlock();
-      continue;
-    }
 
-    reinitialization_control_lock.unlock();
+      if (!has_init_) {
+        if (reinitialization_attempt.waiting_for_automatic_request()) {
+          continue;
+        }
+
+        has_init_ = Init();
+        reinitialization_attempt.RecordInitializationResult(has_init_);
+
+        if (has_init_) {
+          InitPreintegration();
+        }
+        continue;
+      }
+    }
 
     if (curr_cloud_cluster_ptr_->imu_data_.size() < 2) {
       LOG(WARNING) << "Skip localization frame due to insufficient IMU data: "
