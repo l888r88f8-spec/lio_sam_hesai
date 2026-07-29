@@ -127,6 +127,8 @@ private:
     std::atomic_bool has_init_{false};
     std::atomic_bool automatic_relocalization_request_pending_{false};
     std::atomic_bool waiting_for_automatic_relocalization_request_{false};
+    std::mutex mutex_reinitialization_control_;
+    bool manual_initialization_pending_{false};
     std::atomic_bool map_ready_{false};
 
     std::mutex mutex_lidar_cloud_;

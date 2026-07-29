@@ -185,24 +185,68 @@ TEST(AutoRelocalizationParameterSurface, ExposesLocalizationHealthParameters) {
 }
 
 TEST(AutomaticRecoverySurface, UsesOneShotWorkerOwnedReinitialization) {
-  const std::array<std::string, 3> header_tokens = {
+  const std::array<std::string, 5> header_tokens = {
     "void RequestAutomaticRelocalization()",
     "automatic_relocalization_request_pending_",
     "waiting_for_automatic_relocalization_request_",
+    "mutex_reinitialization_control_",
+    "manual_initialization_pending_",
   };
   for (const auto& token : header_tokens) {
     ExpectToken("include/slam/localization.h", token);
   }
 
-  const std::array<std::string, 4> source_tokens = {
+  const std::array<std::string, 7> source_tokens = {
     ".exchange(false)",
     ".store(true)",
     ".store(false)",
     "InitPreintegration",
+    "automatic_attempt_owns_initialization",
+    "manual_initialization_pending_",
+    "reinitialization_control_lock",
   };
   for (const auto& token : source_tokens) {
     ExpectToken("src/slam/localization.cpp", token);
   }
+
+  const std::string source = ReadProjectFile("src/slam/localization.cpp");
+  const std::size_t set_init_pose = source.find("void Localization::SetInitPose");
+  const std::size_t run = source.find("void Localization::Run");
+  const std::size_t clear_wait = source.find(
+    "waiting_for_automatic_relocalization_request_.store(false)",
+    set_init_pose);
+  const std::size_t mark_manual_pending = source.find(
+    "manual_initialization_pending_ = true", set_init_pose);
+  const std::size_t store_manual_pose = source.find(
+    "init_pose_optional_ =", set_init_pose);
+  const std::size_t control_lock = source.find(
+    "std::unique_lock<std::mutex> reinitialization_control_lock", run);
+  const std::size_t consume_request = source.find(".exchange(false)", run);
+  const std::size_t automatic_ownership = source.find(
+    "automatic_attempt_owns_initialization", consume_request);
+  const std::size_t clear_manual_pending = source.find(
+    "manual_initialization_pending_ = false", automatic_ownership);
+  const std::size_t initialize = source.find("has_init_ = Init();", run);
+  const std::size_t control_unlock = source.find(
+    "reinitialization_control_lock.unlock()", initialize);
+  ASSERT_NE(set_init_pose, std::string::npos);
+  ASSERT_NE(run, std::string::npos);
+  ASSERT_NE(clear_wait, std::string::npos);
+  ASSERT_NE(mark_manual_pending, std::string::npos);
+  ASSERT_NE(store_manual_pose, std::string::npos);
+  ASSERT_NE(control_lock, std::string::npos);
+  ASSERT_NE(consume_request, std::string::npos);
+  ASSERT_NE(automatic_ownership, std::string::npos);
+  ASSERT_NE(clear_manual_pending, std::string::npos);
+  ASSERT_NE(initialize, std::string::npos);
+  ASSERT_NE(control_unlock, std::string::npos);
+  EXPECT_LT(clear_wait, mark_manual_pending);
+  EXPECT_LT(mark_manual_pending, store_manual_pose);
+  EXPECT_LT(control_lock, initialize);
+  EXPECT_LT(consume_request, automatic_ownership);
+  EXPECT_LT(automatic_ownership, clear_manual_pending);
+  EXPECT_LT(clear_manual_pending, initialize);
+  EXPECT_LT(initialize, control_unlock);
 }
 
 TEST(SystemIntegration, WiresLocalizationHealthObservability) {

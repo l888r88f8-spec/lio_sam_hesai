@@ -89,7 +89,10 @@ Localization::Localization(System* system_ptr) : system_ptr_(system_ptr) {
 }
 
 void Localization::SetInitPose(const Mat4d& pose) {
+  std::unique_lock<std::mutex> reinitialization_control_lock(
+      mutex_reinitialization_control_);
   waiting_for_automatic_relocalization_request_.store(false);
+  manual_initialization_pending_ = true;
   std::lock_guard<std::mutex> lg(mutex_init_pose_optional_);
   // RViz/System provides map->lidar, while registration consumes the
   // deskewed IMU-frame cloud and therefore uses map->imu internally.
@@ -470,8 +473,13 @@ void Localization::Run() {
     }
 
     curr_time_us_ = curr_cloud_cluster_ptr_->timestamp_;
+    std::unique_lock<std::mutex> reinitialization_control_lock(
+        mutex_reinitialization_control_);
     const bool automatic_relocalization_requested =
         automatic_relocalization_request_pending_.exchange(false);
+    const bool automatic_attempt_owns_initialization =
+        automatic_relocalization_requested && !manual_initialization_pending_;
+    manual_initialization_pending_ = false;
     if (automatic_relocalization_requested) {
       has_init_.store(false);
       waiting_for_automatic_relocalization_request_.store(false);
@@ -482,20 +490,24 @@ void Localization::Run() {
 
     if (!has_init_) {
       if (waiting_for_automatic_relocalization_request_.load()) {
+        reinitialization_control_lock.unlock();
         continue;
       }
 
       has_init_ = Init();
 
-      if (!has_init_ && automatic_relocalization_requested) {
+      if (!has_init_ && automatic_attempt_owns_initialization) {
         waiting_for_automatic_relocalization_request_.store(true);
       }
 
       if (has_init_) {
         InitPreintegration();
       }
+      reinitialization_control_lock.unlock();
       continue;
     }
+
+    reinitialization_control_lock.unlock();
 
     if (curr_cloud_cluster_ptr_->imu_data_.size() < 2) {
       LOG(WARNING) << "Skip localization frame due to insufficient IMU data: "
