@@ -184,6 +184,27 @@ TEST(AutoRelocalizationParameterSurface, ExposesLocalizationHealthParameters) {
   }
 }
 
+TEST(AutomaticRecoverySurface, UsesOneShotWorkerOwnedReinitialization) {
+  const std::array<std::string, 3> header_tokens = {
+    "void RequestAutomaticRelocalization()",
+    "automatic_relocalization_request_pending_",
+    "waiting_for_automatic_relocalization_request_",
+  };
+  for (const auto& token : header_tokens) {
+    ExpectToken("include/slam/localization.h", token);
+  }
+
+  const std::array<std::string, 4> source_tokens = {
+    ".exchange(false)",
+    ".store(true)",
+    ".store(false)",
+    "InitPreintegration",
+  };
+  for (const auto& token : source_tokens) {
+    ExpectToken("src/slam/localization.cpp", token);
+  }
+}
+
 TEST(SystemIntegration, WiresLocalizationHealthObservability) {
   const std::array<std::string, 8> header_tokens = {
     "diagnostic_msgs/msg/diagnostic_array.hpp",

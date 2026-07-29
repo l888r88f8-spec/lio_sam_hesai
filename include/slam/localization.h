@@ -34,6 +34,8 @@ public:
 
     void SetInitPose(const Mat4d& pose);
 
+    void RequestAutomaticRelocalization();
+
     void Run();
 
     [[nodiscard]] bool IsMapReady() const { return map_ready_.load(); }
@@ -123,6 +125,8 @@ private:
     TimeStampUs curr_time_us_ = 0u;
 
     std::atomic_bool has_init_{false};
+    std::atomic_bool automatic_relocalization_request_pending_{false};
+    std::atomic_bool waiting_for_automatic_relocalization_request_{false};
     std::atomic_bool map_ready_{false};
 
     std::mutex mutex_lidar_cloud_;

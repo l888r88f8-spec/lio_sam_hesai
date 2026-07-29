@@ -89,11 +89,16 @@ Localization::Localization(System* system_ptr) : system_ptr_(system_ptr) {
 }
 
 void Localization::SetInitPose(const Mat4d& pose) {
+  waiting_for_automatic_relocalization_request_.store(false);
   std::lock_guard<std::mutex> lg(mutex_init_pose_optional_);
   // RViz/System provides map->lidar, while registration consumes the
   // deskewed IMU-frame cloud and therefore uses map->imu internally.
   init_pose_optional_ = MapLidarPoseToMapImuPose(pose);
   has_init_ = false;
+}
+
+void Localization::RequestAutomaticRelocalization() {
+  automatic_relocalization_request_pending_.store(true);
 }
 
 Mat4d Localization::MapLidarPoseToMapImuPose(
@@ -465,11 +470,28 @@ void Localization::Run() {
     }
 
     curr_time_us_ = curr_cloud_cluster_ptr_->timestamp_;
+    const bool automatic_relocalization_requested =
+        automatic_relocalization_request_pending_.exchange(false);
+    if (automatic_relocalization_requested) {
+      has_init_.store(false);
+      waiting_for_automatic_relocalization_request_.store(false);
+      consistency_ref_pose_.reset();
+      consistency_hit_count_ = 0;
+      InitPreintegration();
+    }
 
     if (!has_init_) {
+      if (waiting_for_automatic_relocalization_request_.load()) {
+        continue;
+      }
+
       has_init_ = Init();
 
-      if (has_init_ && (!pre_integration_ptr_ || !odom_pre_integration_ptr_)) {
+      if (!has_init_ && automatic_relocalization_requested) {
+        waiting_for_automatic_relocalization_request_.store(true);
+      }
+
+      if (has_init_) {
         InitPreintegration();
       }
       continue;
