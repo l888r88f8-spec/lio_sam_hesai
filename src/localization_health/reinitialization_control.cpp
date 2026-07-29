@@ -52,9 +52,19 @@ void ReinitializationControl::RequestAutomaticRelocalization() {
   automatic_relocalization_request_pending_.store(true);
 }
 
+void ReinitializationControl::SetManualContentionObserverForTest(
+    std::function<void()> observer) {
+  std::lock_guard<std::mutex> lock(mutex_manual_contention_observer_);
+  manual_contention_observer_for_test_ = std::move(observer);
+}
+
 ReinitializationControl::ManualInitializationTransaction
 ReinitializationControl::BeginManualInitialization() {
-  std::unique_lock<std::mutex> lock(mutex_);
+  std::unique_lock<std::mutex> lock(mutex_, std::defer_lock);
+  if (!lock.try_lock()) {
+    NotifyManualContentionForTest();
+    lock.lock();
+  }
   waiting_for_automatic_relocalization_request_.store(false);
   manual_initialization_pending_ = true;
   return ManualInitializationTransaction(std::move(lock));
@@ -63,6 +73,17 @@ ReinitializationControl::BeginManualInitialization() {
 ReinitializationControl::WorkerAttempt
 ReinitializationControl::BeginWorkerAttempt() {
   return WorkerAttempt(this, std::unique_lock<std::mutex>(mutex_));
+}
+
+void ReinitializationControl::NotifyManualContentionForTest() {
+  std::function<void()> observer;
+  {
+    std::lock_guard<std::mutex> lock(mutex_manual_contention_observer_);
+    observer = manual_contention_observer_for_test_;
+  }
+  if (observer) {
+    observer();
+  }
 }
 
 }  // namespace localization_health

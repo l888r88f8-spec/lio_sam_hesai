@@ -56,6 +56,14 @@ TEST(ReinitializationControl,
   ReinitializationControl control;
   control.RequestAutomaticRelocalization();
 
+  std::promise<void> manual_contention_observed;
+  std::future<void> manual_contention_observed_future =
+      manual_contention_observed.get_future();
+  control.SetManualContentionObserverForTest([&] {
+    manual_contention_observed.set_value();
+  });
+
+  std::atomic_bool automatic_attempt_active{false};
   std::promise<void> automatic_attempt_started;
   std::future<void> automatic_attempt_started_future =
       automatic_attempt_started.get_future();
@@ -72,20 +80,19 @@ TEST(ReinitializationControl,
   std::thread automatic_worker([&] {
     {
       auto attempt = control.BeginWorkerAttempt();
+      automatic_attempt_active.store(true);
       automatic_attempt_started.set_value();
       finish_automatic_attempt_future.wait();
       attempt.RecordInitializationResult(false);
       automatic_waiting_after_failure.set_value(
           attempt.waiting_for_automatic_request());
     }
+    automatic_attempt_active.store(false);
     automatic_attempt_finished.set_value();
   });
 
   automatic_attempt_started_future.wait();
 
-  std::promise<void> manual_request_started;
-  std::future<void> manual_request_started_future =
-      manual_request_started.get_future();
   std::promise<void> manual_request_acquired;
   std::future<void> manual_request_acquired_future =
       manual_request_acquired.get_future();
@@ -94,13 +101,13 @@ TEST(ReinitializationControl,
       release_manual_request.get_future();
 
   std::thread manual_worker([&] {
-    manual_request_started.set_value();
     auto manual_request = control.BeginManualInitialization();
     manual_request_acquired.set_value();
     release_manual_request_future.wait();
   });
 
-  manual_request_started_future.wait();
+  manual_contention_observed_future.wait();
+  EXPECT_TRUE(automatic_attempt_active.load());
   finish_automatic_attempt.set_value();
   automatic_attempt_finished_future.wait();
   EXPECT_TRUE(automatic_waiting_after_failure_future.get());
