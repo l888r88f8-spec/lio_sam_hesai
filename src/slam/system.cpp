@@ -6,6 +6,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <functional>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -107,18 +108,15 @@ System::System(const rclcpp::NodeOptions& options)
       config.health_result_timeout_, "localization_health.result_timeout");
   state_config.base_covariance = config.health_base_covariance_;
   state_config.max_covariance_scale = config.health_max_covariance_scale_;
-  localization_state_machine_ =
-      std::make_unique<localization_health::LocalizationStateMachine>(
-          state_config);
 
   localization_health::RecoveryAttemptGate::Config recovery_gate_config;
   recovery_gate_config.nominal_lidar_rate_hz =
       config.health_nominal_lidar_rate_hz_;
   recovery_gate_config.nominal_imu_rate_hz = config.health_nominal_imu_rate_hz_;
   recovery_gate_config.min_stream_rate_ratio = config.health_min_rate_ratio_;
-  recovery_attempt_gate_ =
-      std::make_unique<localization_health::RecoveryAttemptGate>(
-          recovery_gate_config);
+  localization_recovery_coordinator_ =
+      std::make_unique<localization_health::LocalizationRecoveryCoordinator>(
+          state_config, recovery_gate_config);
 
   InitLidarModel();
   InitPublisher();
@@ -813,7 +811,7 @@ bool System::ProcessLocalizationResultCache(bool& had_new_result) {
 void System::PublishLocalizationHealth() {
   const auto& config = ConfigParameters::Instance();
   if (!config.health_enable_ || !data_stream_watchdog_ ||
-      !localization_state_machine_ || !recovery_attempt_gate_ ||
+      !localization_recovery_coordinator_ ||
       !diagnostics_pub_) {
     return;
   }
@@ -842,22 +840,22 @@ void System::PublishLocalizationHealth() {
   inputs.stream = data_stream_watchdog_->Evaluate(steady_now_us);
   inputs.has_new_stream_observation = inputs.stream.has_new_observation;
 
-  const localization_health::LocalizationState state_before_health_update =
-      localization_state_machine_->state();
-  const localization_health::HealthReport report =
-      localization_state_machine_->Update(inputs);
+  std::function<void()> request_automatic_relocalization;
+  if (localization_ptr_) {
+    request_automatic_relocalization = [this] {
+      localization_ptr_->RequestAutomaticRelocalization();
+    };
+  }
+  const auto recovery_update = localization_recovery_coordinator_->Update(
+      inputs, config.localization_auto_relocalization_,
+      request_automatic_relocalization);
+  const auto& report = recovery_update.report;
   current_health_covariance_scale_ = report.covariance_scale;
-  const auto recovery_attempt_reason =
-      recovery_attempt_gate_->UpdateForStateTransition(
-          state_before_health_update, report.state, inputs.stream);
-  if (recovery_attempt_reason !=
-          localization_health::RecoveryAttemptReason::kNone &&
-      config.localization_auto_relocalization_ && localization_ptr_) {
+  if (recovery_update.request_sent) {
     last_auto_relocalization_trigger_ =
-        localization_health::ToString(recovery_attempt_reason);
+        localization_health::ToString(recovery_update.reason);
     LOG(INFO) << "Requesting automatic relocalization due to "
               << last_auto_relocalization_trigger_;
-    localization_ptr_->RequestAutomaticRelocalization();
   }
 
   diagnostic_msgs::msg::DiagnosticArray diagnostics;

@@ -147,6 +147,7 @@ add_library(${PROJECT_NAME}_relocalization_lib
   src/localization_health/data_stream_watchdog.cpp
   src/localization_health/localization_state_machine.cpp
   src/localization_health/recovery_attempt_gate.cpp
+  src/localization_health/localization_recovery_coordinator.cpp
   src/localization_health/reinitialization_control.cpp
   src/slam/config_parameters.cpp
   src/slam/preprocessing.cpp
@@ -281,6 +282,13 @@ if(BUILD_TESTING)
     test/test_reinitialization_control.cpp
     src/localization_health/reinitialization_control.cpp)
   target_include_directories(test_reinitialization_control PRIVATE include)
+  ament_add_gtest(test_localization_recovery_coordinator
+    test/test_localization_recovery_coordinator.cpp
+    src/localization_health/localization_recovery_coordinator.cpp
+    src/localization_health/localization_state_machine.cpp
+    src/localization_health/recovery_attempt_gate.cpp
+    src/localization_health/reinitialization_control.cpp)
+  target_include_directories(test_localization_recovery_coordinator PRIVATE include)
   ament_add_gtest(test_localization_state_machine
     test/test_localization_state_machine.cpp
     src/localization_health/localization_state_machine.cpp)

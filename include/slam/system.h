@@ -27,8 +27,7 @@
 #include "imu/imu_data_searcher.h"
 #include "lidar/pointcloud_cluster.h"
 #include "localization_health/data_stream_watchdog.h"
-#include "localization_health/localization_state_machine.h"
-#include "localization_health/recovery_attempt_gate.h"
+#include "localization_health/localization_recovery_coordinator.h"
 
 class PreProcessing;
 class Localization;
@@ -109,10 +108,8 @@ class System : public rclcpp::Node {
   std::shared_ptr<Localization> localization_ptr_ = nullptr;
   std::unique_ptr<localization_health::DataStreamWatchdog>
       data_stream_watchdog_;
-  std::unique_ptr<localization_health::LocalizationStateMachine>
-      localization_state_machine_;
-  std::unique_ptr<localization_health::RecoveryAttemptGate>
-      recovery_attempt_gate_;
+  std::unique_ptr<localization_health::LocalizationRecoveryCoordinator>
+      localization_recovery_coordinator_;
 
   std::shared_ptr<std::thread> pre_processing_thread_ptr_ = nullptr;
   std::shared_ptr<std::thread> localization_thread_ptr_ = nullptr;
