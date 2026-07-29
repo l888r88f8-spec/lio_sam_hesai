@@ -146,6 +146,7 @@ add_library(${PROJECT_NAME}_relocalization_lib
   src/relocalization/scan_context.cpp
   src/localization_health/data_stream_watchdog.cpp
   src/localization_health/localization_state_machine.cpp
+  src/localization_health/recovery_attempt_gate.cpp
   src/slam/config_parameters.cpp
   src/slam/preprocessing.cpp
   src/slam/localization.cpp
@@ -270,6 +271,10 @@ if(BUILD_TESTING)
   ament_add_gtest(test_code_hygiene test/test_code_hygiene.cpp)
   ament_add_gtest(test_data_stream_watchdog test/test_data_stream_watchdog.cpp src/localization_health/data_stream_watchdog.cpp)
   target_include_directories(test_data_stream_watchdog PRIVATE include)
+  ament_add_gtest(test_recovery_attempt_gate
+    test/test_recovery_attempt_gate.cpp
+    src/localization_health/recovery_attempt_gate.cpp)
+  target_include_directories(test_recovery_attempt_gate PRIVATE include)
   ament_add_gtest(test_localization_state_machine
     test/test_localization_state_machine.cpp
     src/localization_health/localization_state_machine.cpp)
