@@ -111,6 +111,15 @@ System::System(const rclcpp::NodeOptions& options)
       std::make_unique<localization_health::LocalizationStateMachine>(
           state_config);
 
+  localization_health::RecoveryAttemptGate::Config recovery_gate_config;
+  recovery_gate_config.nominal_lidar_rate_hz =
+      config.health_nominal_lidar_rate_hz_;
+  recovery_gate_config.nominal_imu_rate_hz = config.health_nominal_imu_rate_hz_;
+  recovery_gate_config.min_stream_rate_ratio = config.health_min_rate_ratio_;
+  recovery_attempt_gate_ =
+      std::make_unique<localization_health::RecoveryAttemptGate>(
+          recovery_gate_config);
+
   InitLidarModel();
   InitPublisher();
   InitSubscriber();
@@ -804,7 +813,8 @@ bool System::ProcessLocalizationResultCache(bool& had_new_result) {
 void System::PublishLocalizationHealth() {
   const auto& config = ConfigParameters::Instance();
   if (!config.health_enable_ || !data_stream_watchdog_ ||
-      !localization_state_machine_ || !diagnostics_pub_) {
+      !localization_state_machine_ || !recovery_attempt_gate_ ||
+      !diagnostics_pub_) {
     return;
   }
 
@@ -835,6 +845,17 @@ void System::PublishLocalizationHealth() {
   const localization_health::HealthReport report =
       localization_state_machine_->Update(inputs);
   current_health_covariance_scale_ = report.covariance_scale;
+  const auto recovery_attempt_reason =
+      recovery_attempt_gate_->Update(report.state, inputs.stream);
+  if (recovery_attempt_reason !=
+          localization_health::RecoveryAttemptReason::kNone &&
+      config.localization_auto_relocalization_ && localization_ptr_) {
+    last_auto_relocalization_trigger_ =
+        localization_health::ToString(recovery_attempt_reason);
+    LOG(INFO) << "Requesting automatic relocalization due to "
+              << last_auto_relocalization_trigger_;
+    localization_ptr_->RequestAutomaticRelocalization();
+  }
 
   diagnostic_msgs::msg::DiagnosticArray diagnostics;
   diagnostics.header.stamp = get_clock()->now();
@@ -868,6 +889,8 @@ void System::PublishLocalizationHealth() {
   add_value("lidar_rate_hz", std::to_string(inputs.stream.lidar_rate_hz));
   add_value("imu_rate_hz", std::to_string(inputs.stream.imu_rate_hz));
   add_value("covariance_scale", std::to_string(report.covariance_scale));
+  add_value("auto_relocalization_trigger",
+            last_auto_relocalization_trigger_);
   add_value("reg_fitness",
             std::to_string(localization_health::DiagnosticFitnessForPublication(
                 inputs.reg_fitness, config.health_lost_fitness_thres_)));

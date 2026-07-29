@@ -20,6 +20,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
+#include <string>
 #include <thread>
 
 #include "common/sensor_data_type.h"
@@ -27,6 +28,7 @@
 #include "lidar/pointcloud_cluster.h"
 #include "localization_health/data_stream_watchdog.h"
 #include "localization_health/localization_state_machine.h"
+#include "localization_health/recovery_attempt_gate.h"
 
 class PreProcessing;
 class Localization;
@@ -109,6 +111,8 @@ class System : public rclcpp::Node {
       data_stream_watchdog_;
   std::unique_ptr<localization_health::LocalizationStateMachine>
       localization_state_machine_;
+  std::unique_ptr<localization_health::RecoveryAttemptGate>
+      recovery_attempt_gate_;
 
   std::shared_ptr<std::thread> pre_processing_thread_ptr_ = nullptr;
   std::shared_ptr<std::thread> localization_thread_ptr_ = nullptr;
@@ -153,6 +157,7 @@ class System : public rclcpp::Node {
   bool has_health_result_ = false;
   bool has_new_health_result_ = false;
   double current_health_covariance_scale_ = 1.0;
+  std::string last_auto_relocalization_trigger_{"none"};
 };
 
 #endif  // FUNNY_LIDAR_SLAM_SYSTEM_H
