@@ -274,7 +274,8 @@ if(BUILD_TESTING)
   target_include_directories(test_data_stream_watchdog PRIVATE include)
   ament_add_gtest(test_recovery_attempt_gate
     test/test_recovery_attempt_gate.cpp
-    src/localization_health/recovery_attempt_gate.cpp)
+    src/localization_health/recovery_attempt_gate.cpp
+    src/localization_health/localization_state_machine.cpp)
   target_include_directories(test_recovery_attempt_gate PRIVATE include)
   ament_add_gtest(test_reinitialization_control
     test/test_reinitialization_control.cpp

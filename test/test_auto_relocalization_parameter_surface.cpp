@@ -238,7 +238,7 @@ TEST(SystemIntegration, WiresLocalizationHealthObservability) {
     ExpectToken("include/slam/system.h", token);
   }
 
-  const std::array<std::string, 32> source_tokens = {
+  const std::array<std::string, 33> source_tokens = {
     "RecordLidar",
     "RecordImu",
     "has_new_result",
@@ -271,6 +271,7 @@ TEST(SystemIntegration, WiresLocalizationHealthObservability) {
     "RequestAutomaticRelocalization",
     "auto_relocalization_trigger",
     "ToString(recovery_attempt_reason)",
+    "state_before_health_update",
   };
   for (const auto & token : source_tokens) {
     ExpectToken("src/slam/system.cpp", token);

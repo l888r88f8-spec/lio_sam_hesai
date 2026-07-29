@@ -1,4 +1,5 @@
 #include "localization_health/recovery_attempt_gate.h"
+#include "localization_health/localization_state_machine.h"
 
 #include <gtest/gtest.h>
 
@@ -8,6 +9,7 @@
 namespace {
 
 using localization_health::LocalizationState;
+using localization_health::LocalizationStateMachine;
 using localization_health::RecoveryAttemptGate;
 using localization_health::RecoveryAttemptReason;
 using localization_health::StreamHealth;
@@ -26,6 +28,19 @@ StreamHealth UnknownRateHealthyStream(bool has_new_observation = true) {
   stream.rates_known = false;
   stream.has_new_observation = has_new_observation;
   return stream;
+}
+
+localization_health::HealthInputs HealthyTrackingInput() {
+  localization_health::HealthInputs input;
+  input.has_imu_init = true;
+  input.map_ready = true;
+  input.has_init = true;
+  input.is_tracking = true;
+  input.has_new_result = true;
+  input.has_new_stream_observation = true;
+  input.reg_fitness = 0.1F;
+  input.stream = HealthyStream();
+  return input;
 }
 
 TEST(RecoveryAttemptGate, ReturnsLostEntryOnlyOnTransitionIntoLost) {
@@ -62,6 +77,42 @@ TEST(RecoveryAttemptGate, LidarStallRetriesOnceAfterHealthyNewObservation) {
   EXPECT_EQ(gate.Update(LocalizationState::kLost, HealthyStream()),
             RecoveryAttemptReason::kStreamRecovered);
   EXPECT_EQ(gate.Update(LocalizationState::kLost, HealthyStream()),
+            RecoveryAttemptReason::kNone);
+}
+
+TEST(RecoveryAttemptGate,
+     SystemOrderingPreservesStreamRecoveredWhenLostStateExits) {
+  LocalizationStateMachine machine(LocalizationStateMachine::Config{});
+  RecoveryAttemptGate gate(RecoveryAttemptGate::Config{});
+
+  auto healthy = HealthyTrackingInput();
+  auto report = machine.Update(healthy);
+  ASSERT_EQ(report.state, LocalizationState::kRelocalizing);
+  EXPECT_EQ(gate.Update(report.state, healthy.stream),
+            RecoveryAttemptReason::kNone);
+  report = machine.Update(healthy);
+  ASSERT_EQ(report.state, LocalizationState::kTracking);
+  EXPECT_EQ(gate.Update(report.state, healthy.stream),
+            RecoveryAttemptReason::kNone);
+
+  auto stalled = healthy;
+  stalled.stream.lidar_stalled = true;
+  report = machine.Update(stalled);
+  ASSERT_EQ(report.state, LocalizationState::kDegraded);
+  EXPECT_EQ(gate.Update(report.state, stalled.stream),
+            RecoveryAttemptReason::kNone);
+  report = machine.Update(stalled);
+  ASSERT_EQ(report.state, LocalizationState::kLost);
+  EXPECT_EQ(gate.Update(report.state, stalled.stream),
+            RecoveryAttemptReason::kLostEntry);
+
+  const LocalizationState state_before_health_update = machine.state();
+  ASSERT_EQ(state_before_health_update, LocalizationState::kLost);
+  EXPECT_EQ(gate.Update(state_before_health_update, healthy.stream),
+            RecoveryAttemptReason::kStreamRecovered);
+  report = machine.Update(healthy);
+  ASSERT_EQ(report.state, LocalizationState::kRelocalizing);
+  EXPECT_EQ(gate.Update(report.state, healthy.stream),
             RecoveryAttemptReason::kNone);
 }
 
