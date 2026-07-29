@@ -238,6 +238,11 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/test/test_localization_regression.py)
   set_tests_properties(test_localization_regression PROPERTIES
     ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/test/integration")
+  add_test(NAME test_localization_stability_rss
+    COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/test/test_localization_stability_rss.py)
+  set_tests_properties(test_localization_stability_rss PROPERTIES
+    ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/test/integration")
   find_package(ament_cmake_gtest REQUIRED)
   find_package(ament_lint_auto REQUIRED)
   ament_add_gtest(test_ground_ring_policy test/test_ground_ring_policy.cpp)
