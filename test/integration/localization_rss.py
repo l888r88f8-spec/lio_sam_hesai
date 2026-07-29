@@ -234,14 +234,14 @@ def _wait_for_relocalization_pid(launch_process):
     )
 
 
-def _find_relocalization_pid(launch_pid):
-    for process_id in _descendant_process_ids(launch_pid):
-        if _is_relocalization_process(process_id):
+def _find_relocalization_pid(launch_pid, proc_root=Path("/proc")):
+    for process_id in _descendant_process_ids(launch_pid, proc_root):
+        if _is_relocalization_process(process_id, proc_root):
             return process_id
     return None
 
 
-def _descendant_process_ids(root_pid):
+def _descendant_process_ids(root_pid, proc_root=Path("/proc")):
     pending = [int(root_pid)]
     seen = set()
     descendants = []
@@ -250,21 +250,20 @@ def _descendant_process_ids(root_pid):
         if process_id in seen:
             continue
         seen.add(process_id)
-        for child_pid in _child_process_ids(process_id):
+        for child_pid in _child_process_ids(process_id, proc_root):
             if child_pid not in seen:
                 descendants.append(child_pid)
                 pending.append(child_pid)
     return descendants
 
 
-def _child_process_ids(process_id):
-    children_path = Path(
-        f"/proc/{process_id}/task/{process_id}/children"
-    )
+def _child_process_ids(process_id, proc_root=Path("/proc")):
+    proc_root = Path(proc_root)
+    children_path = proc_root / str(process_id) / "task" / str(process_id) / "children"
     try:
         children_text = children_path.read_text(encoding="ascii")
     except FileNotFoundError:
-        return ()
+        return _status_child_process_ids(process_id, proc_root)
     except OSError as error:
         raise RssError(f"unable to read {children_path}: {error}") from error
     try:
@@ -273,8 +272,46 @@ def _child_process_ids(process_id):
         raise RssError(f"invalid child PID data in {children_path}") from error
 
 
-def _is_relocalization_process(process_id):
-    cmdline_path = Path(f"/proc/{process_id}/cmdline")
+def _status_child_process_ids(parent_pid, proc_root):
+    try:
+        process_directories = tuple(Path(proc_root).iterdir())
+    except OSError as error:
+        raise RssError(f"unable to scan {proc_root}: {error}") from error
+
+    child_process_ids = []
+    for process_directory in process_directories:
+        if not process_directory.name.isdecimal():
+            continue
+        status_path = process_directory / "status"
+        try:
+            status_text = status_path.read_text(encoding="utf-8")
+        except (FileNotFoundError, PermissionError):
+            continue
+        except OSError as error:
+            raise RssError(f"unable to read {status_path}: {error}") from error
+        if _status_ppid(status_text) == parent_pid:
+            child_process_ids.append(int(process_directory.name))
+    return tuple(sorted(child_process_ids))
+
+
+def _status_ppid(status_text):
+    for line in status_text.splitlines():
+        fields = line.split()
+        if fields and fields[0] == "PPid:":
+            if len(fields) != 2:
+                raise RssError("PPid field in process status is malformed")
+            try:
+                parent_pid = int(fields[1])
+            except ValueError as error:
+                raise RssError("PPid field in process status is malformed") from error
+            if parent_pid < 0:
+                raise RssError("PPid field in process status is malformed")
+            return parent_pid
+    raise RssError("PPid field is missing from process status")
+
+
+def _is_relocalization_process(process_id, proc_root=Path("/proc")):
+    cmdline_path = Path(proc_root) / str(process_id) / "cmdline"
     try:
         command_line = cmdline_path.read_bytes()
     except FileNotFoundError:
