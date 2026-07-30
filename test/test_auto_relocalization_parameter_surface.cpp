@@ -451,9 +451,8 @@ TEST(FrameProcessingPipelineSurface, DropsOverdueFramesBeforeStateCommit) {
   EXPECT_LT(force_local_map_rebuild, load_local_map);
   EXPECT_LT(load_local_map, apply_forced_local_map);
   EXPECT_LT(apply_forced_local_map, force_need_local_map_update);
-  EXPECT_LT(force_need_local_map_update, clear_forced_local_map);
-  EXPECT_LT(apply_forced_local_map, clear_forced_local_map);
-  EXPECT_LT(clear_forced_local_map, add_local_map);
+  EXPECT_LT(force_need_local_map_update, add_local_map);
+  EXPECT_LT(add_local_map, clear_forced_local_map);
 
   EXPECT_NE(initialization_body.find(
     "NavStateData initialized_nav_state = last_nav_state_"),

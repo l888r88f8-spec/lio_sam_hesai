@@ -588,7 +588,6 @@ void Localization::Run() {
     }
     if (force_local_map_rebuild) {
       need_update_local_map_ = true;
-      force_local_map_rebuild_ = false;
     }
     if (need_update_local_map_) {
       if (!local_map || local_map->empty()) {
@@ -599,6 +598,9 @@ void Localization::Run() {
       DLOG(INFO) << "Load local map use time(ms): " << timer_load_map.End();
       Timer timer_add_cloud;
       matcher_->AddCloudToLocalMap({*local_map});
+      if (force_local_map_rebuild) {
+        force_local_map_rebuild_ = false;
+      }
       DLOG(INFO) << "Add local map to matcher use time(ms): "
                  << timer_add_cloud.End();
     }
