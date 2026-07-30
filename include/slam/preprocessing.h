@@ -10,6 +10,7 @@
 #include "lidar/lidar_point_type.h"
 #include "loam/feature_extractor.h"
 #include "loam/pointcloud_projector.h"
+#include "runtime/frame_processing_watchdog.h"
 #include "slam/system.h"
 
 class PreProcessing {
@@ -24,6 +25,10 @@ class PreProcessing {
   ~PreProcessing() = default;
 
   void Run();
+
+  [[nodiscard]] runtime::FrameProcessingSnapshot FrameProcessingSnapshot() const {
+    return frame_processing_watchdog_.Snapshot();
+  }
 
  private:
   void InitVoxelGridFilter();
@@ -76,6 +81,7 @@ class PreProcessing {
       nullptr;
 
   System* system_ptr_ = nullptr;
+  runtime::FrameProcessingWatchdog frame_processing_watchdog_;
 };
 
 #endif  // FUNNY_LIDAR_SLAM_PREPROCESSING_H

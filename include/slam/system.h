@@ -47,6 +47,8 @@ class System : public rclcpp::Node {
   // lookupTransform(lidar, base) returns the transform from base to lidar.
   std::optional<Mat4d> GetBaseToLidarTransform();
 
+  [[nodiscard]] std::uint64_t FrameProcessingTimeoutUs() const;
+
   static constexpr std::size_t kMaxRawCloudQueueSize = 3;
   static constexpr std::size_t kMaxCloudClusterQueueSize = 2;
   static constexpr std::size_t kMaxLocalizationResultQueueSize = 5;

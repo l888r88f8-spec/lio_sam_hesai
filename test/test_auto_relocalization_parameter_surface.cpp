@@ -325,6 +325,91 @@ TEST(SystemRuntimeResourceSurface, ConfiguresWorkersBeforeTheirRunLoops) {
   }
 }
 
+TEST(FrameProcessingPipelineSurface, DropsOverdueFramesBeforeStateCommit) {
+  const std::array<std::string, 2> worker_headers = {
+    "include/slam/preprocessing.h",
+    "include/slam/localization.h",
+  };
+  const std::array<std::string, 3> worker_tokens = {
+    "runtime/frame_processing_watchdog.h",
+    "runtime::FrameProcessingWatchdog frame_processing_watchdog_",
+    "FrameProcessingSnapshot() const",
+  };
+  ExpectTokens(worker_headers, worker_tokens);
+
+  ExpectToken(
+    "include/slam/system.h", "FrameProcessingTimeoutUs() const");
+  ExpectToken(
+    "src/slam/system.cpp", "FrameProcessingTimeoutUs() const");
+
+  const std::string preprocessing_run = ReadFunctionBody(
+    "src/slam/preprocessing.cpp", "void PreProcessing::Run()");
+  EXPECT_NE(preprocessing_run.find("frame_processing_watchdog_.Begin("),
+    std::string::npos);
+  const std::size_t preprocessing_deadline = preprocessing_run.find(
+    "frame_processing_watchdog_.Exceeded(");
+  const std::size_t preprocessing_enqueue = preprocessing_run.find(
+    "cloud_cluster_deque_.emplace_back");
+  ASSERT_NE(preprocessing_deadline, std::string::npos);
+  ASSERT_NE(preprocessing_enqueue, std::string::npos);
+  EXPECT_LT(preprocessing_deadline, preprocessing_enqueue);
+  EXPECT_NE(preprocessing_run.find("Complete(now_us, true)"),
+    std::string::npos);
+  EXPECT_NE(preprocessing_run.find("Complete(now_us, false)"),
+    std::string::npos);
+
+  const std::string localization_run = ReadFunctionBody(
+    "src/slam/localization.cpp", "void Localization::Run()");
+  EXPECT_NE(localization_run.find("frame_processing_watchdog_.Begin("),
+    std::string::npos);
+  const std::array<std::string, 4> localization_tokens = {
+    "DiscardTimedOutFrameIfNeeded()",
+    "LoadLocalMap(",
+    "matcher_->Match(",
+    "Optimize(",
+  };
+  for (const auto & token : localization_tokens) {
+    EXPECT_NE(localization_run.find(token), std::string::npos);
+  }
+  const std::size_t discard = localization_run.find(
+    "DiscardTimedOutFrameIfNeeded()");
+  const std::size_t cache_result = localization_run.find("CacheResultToSystem(");
+  ASSERT_NE(discard, std::string::npos);
+  ASSERT_NE(cache_result, std::string::npos);
+  EXPECT_LT(discard, cache_result);
+
+  const std::string discard_body = ReadFunctionBody(
+    "src/slam/localization.cpp",
+    "bool Localization::DiscardTimedOutFrameIfNeeded()");
+  const std::array<std::string, 6> discard_tokens = {
+    "frame_processing_watchdog_.Exceeded(",
+    "Complete(",
+    "InitMatcher()",
+    "InitPreintegration()",
+    "need_update_local_map_ = true",
+    "delta_pose_ = Mat4d::Identity()",
+  };
+  for (const auto & token : discard_tokens) {
+    EXPECT_NE(discard_body.find(token), std::string::npos);
+  }
+
+  const std::array<std::string, 8> diagnostic_keys = {
+    "preprocessing_last_frame_duration_ms",
+    "preprocessing_last_frame_timed_out",
+    "preprocessing_timeout_count",
+    "preprocessing_dropped_count",
+    "localization_last_frame_duration_ms",
+    "localization_last_frame_timed_out",
+    "localization_timeout_count",
+    "localization_dropped_count",
+  };
+  const std::string runtime_diagnostics_body = ReadFunctionBody(
+    "src/slam/system.cpp", "void System::AppendRuntimeDiagnostics(");
+  for (const auto & key : diagnostic_keys) {
+    EXPECT_NE(runtime_diagnostics_body.find(key), std::string::npos);
+  }
+}
+
 TEST(AutomaticRecoverySurface, UsesOneShotWorkerOwnedReinitialization) {
   const std::array<std::string, 2> header_tokens = {
     "void RequestAutomaticRelocalization()",

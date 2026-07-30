@@ -11,6 +11,7 @@
 #include "registration/registration_interface.h"
 #include "registration/icp_optimized.h"
 #include "relocalization/scan_context.h"
+#include "runtime/frame_processing_watchdog.h"
 
 #include <atomic>
 #include <map>
@@ -47,6 +48,10 @@ public:
         return map_preparation_duration_ms_.load();
     }
 
+    [[nodiscard]] runtime::FrameProcessingSnapshot FrameProcessingSnapshot() const {
+        return frame_processing_watchdog_.Snapshot();
+    }
+
 private:
     enum class InitializationResult {
         kInitialized,
@@ -64,6 +69,8 @@ private:
     void InitPreintegration();
 
     void InitMatcher();
+
+    bool DiscardTimedOutFrameIfNeeded();
 
     // Builds a fresh matcher without modifying matcher_. Automatic
     // relocalization uses a fresh instance for each ordered candidate.
@@ -120,6 +127,7 @@ private:
     PointcloudClusterPtr curr_cloud_cluster_ptr_ = nullptr;
 
     System* system_ptr_ = nullptr;
+    runtime::FrameProcessingWatchdog frame_processing_watchdog_;
 
     std::map<Vec2i, PCLPointCloudXYZI::Ptr, LessVec2i> local_map_data_;
     std::set<Vec2i, LessVec2i> map_data_indices_;

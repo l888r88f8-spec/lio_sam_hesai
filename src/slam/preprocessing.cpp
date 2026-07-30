@@ -14,7 +14,9 @@
 #include "lidar/pointcloud_cluster.h"
 #include "slam/config_parameters.h"
 
-PreProcessing::PreProcessing(System* system_ptr) : system_ptr_(system_ptr) {
+PreProcessing::PreProcessing(System* system_ptr)
+    : system_ptr_(system_ptr),
+      frame_processing_watchdog_(system_ptr->FrameProcessingTimeoutUs()) {
   lidar_distortion_corrector_ptr_ = std::make_shared<LidarDistortionCorrector>(
       ConfigParameters::Instance().calibration_lidar_to_imu_);
 
@@ -261,6 +263,13 @@ void PreProcessing::Run() {
       continue;
     }
 
+    frame_processing_watchdog_.Begin(
+        runtime::FrameProcessingWatchdog::SteadyNowMicroseconds());
+    const auto complete_frame_without_timeout = [this] {
+      frame_processing_watchdog_.Complete(
+          runtime::FrameProcessingWatchdog::SteadyNowMicroseconds(), false);
+    };
+
     // Convert lidar ros message to unified format
     PCLPointCloudXYZIRT::Ptr raw_cloud_ptr;
 
@@ -308,6 +317,7 @@ void PreProcessing::Run() {
       system_ptr_->raw_cloud_deque_.pop_front();
       temp_cloud_ptr_ = nullptr;
       LOG(WARNING) << "Lidar cloud data empty";
+      complete_frame_without_timeout();
       continue;
     }
 
@@ -323,6 +333,7 @@ void PreProcessing::Run() {
                    << " last="
                    << static_cast<double>(last_cloud_timestamp) *
                           kMicroseconds2Seconds;
+      complete_frame_without_timeout();
       continue;
     }
 
@@ -337,6 +348,7 @@ void PreProcessing::Run() {
       // When the system lags and there is no time to process lidar data,
       // the following warning may be displayed.
       LOG(WARNING) << "Lidar data queue may be blocked";
+      complete_frame_without_timeout();
       continue;
     }
 
@@ -347,6 +359,7 @@ void PreProcessing::Run() {
         latest_imu_data.value().timestamp_ < cloud_end_timestamp) {
       temp_cloud_ptr_ = raw_cloud_ptr;
       imu_data_blocked = true;
+      complete_frame_without_timeout();
       continue;
     }
 
@@ -369,6 +382,7 @@ void PreProcessing::Run() {
                    << static_cast<double>(cloud_end_timestamp) *
                           kMicroseconds2Seconds
                    << " imu_size=" << imu_data_segment.size();
+      complete_frame_without_timeout();
       continue;
     }
 
@@ -392,6 +406,7 @@ void PreProcessing::Run() {
                      << "Skip first lidar cloud because nearest IMU data is missing: time="
                      << static_cast<double>(curr_cloud_timestamp) *
                             kMicroseconds2Seconds;
+        complete_frame_without_timeout();
         continue;
       }
       curr_data = IMUInterpolator(data_l, data_r, curr_cloud_timestamp);
@@ -405,6 +420,7 @@ void PreProcessing::Run() {
                      << " last="
                      << static_cast<double>(last_cloud_timestamp) *
                             kMicroseconds2Seconds;
+        complete_frame_without_timeout();
         continue;
       }
       cloud_cluster_ptr->imu_data_ =
@@ -504,6 +520,15 @@ void PreProcessing::Run() {
                     "kIncrementalNDT";
     }
 
+    const auto now_us =
+        runtime::FrameProcessingWatchdog::SteadyNowMicroseconds();
+    if (frame_processing_watchdog_.Exceeded(now_us)) {
+      frame_processing_watchdog_.Complete(now_us, true);
+      lidar_distortion_corrector_ptr_->SetDataSearcher(nullptr);
+      LOG(WARNING) << "Drop overdue preprocessing frame.";
+      continue;
+    }
+
     {
       // Cache data and remind the frontend thread to process it
       std::lock_guard<std::mutex> lg(system_ptr_->mutex_cloud_cluster_deque_);
@@ -516,6 +541,8 @@ void PreProcessing::Run() {
 
       system_ptr_->cv_localization_.notify_one();
     }
+
+    frame_processing_watchdog_.Complete(now_us, false);
 
     lidar_distortion_corrector_ptr_->SetDataSearcher(nullptr);
   }

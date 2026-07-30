@@ -79,7 +79,9 @@ PCLPointCloudXYZI::Ptr LoadPcdAsXYZI(const std::string& path) {
 
 }  // namespace
 
-Localization::Localization(System* system_ptr) : system_ptr_(system_ptr) {
+Localization::Localization(System* system_ptr)
+    : system_ptr_(system_ptr),
+      frame_processing_watchdog_(system_ptr->FrameProcessingTimeoutUs()) {
   if (use_tile_map_) {
     tile_map_grid_size_ = ConfigParameters::Instance().tile_map_grid_size_;
     tile_map_grid_size_half_ = tile_map_grid_size_ * 0.5;
@@ -189,6 +191,22 @@ std::shared_ptr<RegistrationInterface> Localization::CreateMatcher() const {
 }
 
 void Localization::InitMatcher() { matcher_ = CreateMatcher(); }
+
+bool Localization::DiscardTimedOutFrameIfNeeded() {
+  const auto now_us =
+      runtime::FrameProcessingWatchdog::SteadyNowMicroseconds();
+  if (!frame_processing_watchdog_.Exceeded(now_us)) {
+    return false;
+  }
+
+  frame_processing_watchdog_.Complete(now_us, true);
+  InitMatcher();
+  InitPreintegration();
+  need_update_local_map_ = true;
+  delta_pose_ = Mat4d::Identity();
+  LOG(WARNING) << "Drop overdue localization frame.";
+  return true;
+}
 
 void Localization::InitPreintegration() {
   PreIntegration::ConfigPara config_para;
@@ -376,6 +394,9 @@ Localization::InitializationResult Localization::Init() {
       init_result.map_ground_z = map_ground_z.value();
     }
   }
+  if (DiscardTimedOutFrameIfNeeded()) {
+    return InitializationResult::kFailed;
+  }
   CacheResultToSystem(init_result);
   UpdateCurrentLidarCloud(*TransformPointCloud(
       VoxelGridCloud(curr_cloud_cluster_ptr_->ordered_cloud_, 0.5), init_pose));
@@ -497,6 +518,16 @@ void Localization::Run() {
       system_ptr_->cloud_cluster_deque_.pop_front();
     }
 
+    frame_processing_watchdog_.Begin(
+        runtime::FrameProcessingWatchdog::SteadyNowMicroseconds());
+    const auto complete_frame_without_timeout = [this] {
+      if (!frame_processing_watchdog_.Snapshot().active) {
+        return;
+      }
+      frame_processing_watchdog_.Complete(
+          runtime::FrameProcessingWatchdog::SteadyNowMicroseconds(), false);
+    };
+
     curr_time_us_ = curr_cloud_cluster_ptr_->timestamp_;
     {
       auto reinitialization_attempt =
@@ -510,10 +541,16 @@ void Localization::Run() {
 
       if (!has_init_) {
         if (reinitialization_attempt.waiting_for_automatic_request()) {
+          complete_frame_without_timeout();
           continue;
         }
 
         const InitializationResult initialization_result = Init();
+        if (DiscardTimedOutFrameIfNeeded()) {
+          has_init_.store(false);
+          reinitialization_attempt.RecordInitializationResult(false);
+          continue;
+        }
         has_init_ = initialization_result == InitializationResult::kInitialized;
         if (initialization_result ==
             InitializationResult::kAutomaticConsistencyPending) {
@@ -525,6 +562,7 @@ void Localization::Run() {
         if (has_init_) {
           InitPreintegration();
         }
+        complete_frame_without_timeout();
         continue;
       }
     }
@@ -532,14 +570,19 @@ void Localization::Run() {
     if (curr_cloud_cluster_ptr_->imu_data_.size() < 2) {
       LOG(WARNING) << "Skip localization frame due to insufficient IMU data: "
                    << curr_cloud_cluster_ptr_->imu_data_.size();
+      complete_frame_without_timeout();
       continue;
     }
 
     Timer timer_load_map;
     auto local_map = LoadLocalMap(MapImuPoseToMapLidarPose(last_pose_));
+    if (DiscardTimedOutFrameIfNeeded()) {
+      continue;
+    }
     if (need_update_local_map_) {
       if (!local_map || local_map->empty()) {
         LOG(WARNING) << "Skip localization frame because local map is empty.";
+        complete_frame_without_timeout();
         continue;
       }
       DLOG(INFO) << "Load local map use time(ms): " << timer_load_map.End();
@@ -594,7 +637,13 @@ void Localization::Run() {
     // Performing pointcloud registration.
     // Use the predicted pose as the initial pose.
     Mat4d match_pose = predict_nav_state.Pose();
-    if (!matcher_->Match(curr_cloud_cluster_ptr_, match_pose)) {
+    const bool match_success =
+        matcher_->Match(curr_cloud_cluster_ptr_, match_pose);
+    if (DiscardTimedOutFrameIfNeeded()) {
+      continue;
+    }
+    if (!match_success) {
+      complete_frame_without_timeout();
       continue;
     }
 
@@ -624,9 +673,12 @@ void Localization::Run() {
                  << ConfigParameters::Instance().fusion_method_;
     }
 
+    if (DiscardTimedOutFrameIfNeeded()) {
+      continue;
+    }
+
     Mat4d curr_pose = curr_nav_state.Pose();
-    delta_pose_ = last_pose_.inverse() * curr_pose;
-    last_pose_ = curr_pose;
+    const Mat4d delta_pose = last_pose_.inverse() * curr_pose;
 
     // Cache result to System for visualization
     LocalizationResult result;
@@ -644,11 +696,16 @@ void Localization::Run() {
         result.map_ground_z = map_ground_z.value();
       }
     }
+    if (DiscardTimedOutFrameIfNeeded()) {
+      continue;
+    }
     CacheResultToSystem(result);
     UpdateCurrentLidarCloud(*TransformPointCloud(
         VoxelGridCloud(curr_cloud_cluster_ptr_->ordered_cloud_, 0.5),
         curr_pose));
 
+    delta_pose_ = delta_pose;
+    last_pose_ = curr_pose;
     last_nav_state_ = curr_nav_state;
     last_odom_state_ = predict_odom_state;
     last_odom_state_.bg_ = curr_nav_state.bg_;
@@ -668,6 +725,7 @@ void Localization::Run() {
       odom_pre_integration_ptr_->SetGyroAccBias(curr_nav_state.bg_,
                                                 curr_nav_state.ba_);
     }
+    complete_frame_without_timeout();
   }
 }
 

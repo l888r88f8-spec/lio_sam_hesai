@@ -201,6 +201,10 @@ System::~System() {
   }
 }
 
+std::uint64_t System::FrameProcessingTimeoutUs() const {
+  return runtime_frame_processing_timeout_us_;
+}
+
 void System::InitLidarModel() {
   const auto& lidar_type = ConfigParameters::Instance().lidar_sensor_type_;
   if (lidar_type == "None" || lidar_type == "Hesai") {
@@ -1012,6 +1016,14 @@ void System::AppendRuntimeDiagnostics(
       localization_thread_runtime_
           ? localization_thread_runtime_->Snapshot()
           : runtime::ThreadRuntimeStatus{};
+  const runtime::FrameProcessingSnapshot preprocessing_frame_snapshot =
+      pre_processing_ptr_
+          ? pre_processing_ptr_->FrameProcessingSnapshot()
+          : runtime::FrameProcessingSnapshot{};
+  const runtime::FrameProcessingSnapshot localization_frame_snapshot =
+      localization_ptr_
+          ? localization_ptr_->FrameProcessingSnapshot()
+          : runtime::FrameProcessingSnapshot{};
 
   const auto add_value = [&status](const std::string& key,
                                    const std::string& value) {
@@ -1044,6 +1056,28 @@ void System::AppendRuntimeDiagnostics(
             BoolString(localization_runtime_status.affinity_applied));
   add_value("localization_affinity_errno",
             std::to_string(localization_runtime_status.affinity_errno));
+  add_value("preprocessing_last_frame_duration_ms",
+            std::to_string(
+                static_cast<double>(
+                    preprocessing_frame_snapshot.last_duration_us) /
+                static_cast<double>(kMicrosecondsPerMillisecond)));
+  add_value("preprocessing_last_frame_timed_out",
+            BoolString(preprocessing_frame_snapshot.last_frame_timed_out));
+  add_value("preprocessing_timeout_count",
+            std::to_string(preprocessing_frame_snapshot.timeout_count));
+  add_value("preprocessing_dropped_count",
+            std::to_string(preprocessing_frame_snapshot.dropped_count));
+  add_value("localization_last_frame_duration_ms",
+            std::to_string(
+                static_cast<double>(
+                    localization_frame_snapshot.last_duration_us) /
+                static_cast<double>(kMicrosecondsPerMillisecond)));
+  add_value("localization_last_frame_timed_out",
+            BoolString(localization_frame_snapshot.last_frame_timed_out));
+  add_value("localization_timeout_count",
+            std::to_string(localization_frame_snapshot.timeout_count));
+  add_value("localization_dropped_count",
+            std::to_string(localization_frame_snapshot.dropped_count));
 }
 
 void System::ApplyLocalizationZOffset(PCLPointCloudXYZI& cloud) const {
