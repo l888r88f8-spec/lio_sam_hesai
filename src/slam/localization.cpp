@@ -383,8 +383,14 @@ Localization::InitializationResult Localization::Init() {
   return InitializationResult::kInitialized;
 }
 
-void Localization::Run() {
-  LOG(INFO) << "\033[1;32m----> Localization Started.\033[0m";
+bool Localization::PrepareMap() {
+  const auto preparation_start = std::chrono::steady_clock::now();
+  const auto record_preparation_duration = [&]() {
+    map_preparation_duration_ms_.store(
+        std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - preparation_start)
+            .count());
+  };
 
   map_ready_.store(false);
   {
@@ -410,11 +416,17 @@ void Localization::Run() {
       }
       global_map_xy_kdtree_.reset(new pcl::KdTreeFLANN<PCLPointXYZI>());
       global_map_xy_kdtree_->setInputCloud(global_map_xy_cloud_ptr_);
-      map_ready_.store(true);
     } else {
+      global_map_cloud_ptr_.reset();
       global_map_xy_cloud_ptr_.reset();
       global_map_xy_kdtree_.reset();
-      map_ready_.store(false);
+      ground_map_cloud_ptr_.reset();
+      ground_map_xy_cloud_ptr_.reset();
+      ground_map_xy_kdtree_.reset();
+      record_preparation_duration();
+      LOG(ERROR) << "Global map is missing or empty at " << global_map_path
+                 << ".";
+      return false;
     }
 
     std::string ground_map_path =
@@ -448,12 +460,27 @@ void Localization::Run() {
 
   if (ConfigParameters::Instance().localization_auto_relocalization_) {
     LoadScanContextDb();
+  } else {
+    scan_context_db_loaded_ = false;
   }
 
   // If use tile map, load tile map indices file
   if (use_tile_map_) {
     LoadTileMapIndices();
   }
+
+  record_preparation_duration();
+  map_ready_.store(true);
+  return true;
+}
+
+void Localization::Run() {
+  if (!IsMapReady()) {
+    LOG(ERROR) << "Localization map preparation has not completed.";
+    return;
+  }
+
+  LOG(INFO) << "\033[1;32m----> Localization Started.\033[0m";
 
   while (rclcpp::ok()) {
     {

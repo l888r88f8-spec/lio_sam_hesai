@@ -41,6 +41,38 @@ void ExpectNoToken(const std::string & file, const std::string & token)
     << token << " must not appear in " << file;
 }
 
+std::string ReadFunctionBody(
+  const std::string & file,
+  const std::string & signature)
+{
+  const std::string text = ReadProjectFile(file);
+  const std::size_t signature_start = text.find(signature);
+  EXPECT_NE(signature_start, std::string::npos)
+    << signature << " is missing from " << file;
+  if (signature_start == std::string::npos) {
+    return {};
+  }
+
+  const std::size_t body_start = text.find('{', signature_start);
+  EXPECT_NE(body_start, std::string::npos)
+    << signature << " has no body in " << file;
+  if (body_start == std::string::npos) {
+    return {};
+  }
+
+  std::size_t depth = 1;
+  for (std::size_t cursor = body_start + 1; cursor < text.size(); ++cursor) {
+    if (text[cursor] == '{') {
+      ++depth;
+    } else if (text[cursor] == '}' && --depth == 0) {
+      return text.substr(body_start + 1, cursor - body_start - 1);
+    }
+  }
+
+  ADD_FAILURE() << signature << " body is not balanced in " << file;
+  return {};
+}
+
 void ExpectQuotedParameter(
   const std::string & file,
   const std::string & parameter_name)
@@ -219,6 +251,19 @@ TEST(AutomaticRecoverySurface, UsesOneShotWorkerOwnedReinitialization) {
     "src/localization_health/reinitialization_control.cpp", ".store(true)");
   ExpectToken(
     "src/localization_health/reinitialization_control.cpp", ".store(false)");
+}
+
+TEST(LocalizationMapReadinessSurface, PreparesMapsBeforeRun) {
+  ExpectToken("include/slam/localization.h", "bool PrepareMap()");
+  ExpectToken(
+    "include/slam/localization.h", "MapPreparationDurationMs() const");
+
+  const std::string run_body = ReadFunctionBody(
+    "src/slam/localization.cpp", "void Localization::Run()");
+  EXPECT_EQ(run_body.find("LoadGlobalMap("), std::string::npos)
+    << "Run() must only consume a prepared global map";
+  EXPECT_EQ(run_body.find("LoadScanContextDb("), std::string::npos)
+    << "Run() must only consume a prepared Scan Context database";
 }
 
 TEST(SystemIntegration, WiresLocalizationHealthObservability) {

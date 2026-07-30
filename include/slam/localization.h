@@ -37,9 +37,15 @@ public:
 
     void RequestAutomaticRelocalization();
 
+    bool PrepareMap();
+
     void Run();
 
     [[nodiscard]] bool IsMapReady() const { return map_ready_.load(); }
+
+    [[nodiscard]] double MapPreparationDurationMs() const {
+        return map_preparation_duration_ms_.load();
+    }
 
 private:
     enum class InitializationResult {
@@ -134,6 +140,7 @@ private:
     std::atomic_bool has_init_{false};
     localization_health::ReinitializationControl reinitialization_control_;
     std::atomic_bool map_ready_{false};
+    std::atomic<double> map_preparation_duration_ms_{0.0};
 
     std::mutex mutex_lidar_cloud_;
     std::mutex mutex_global_map_cloud_;
