@@ -399,6 +399,17 @@ TEST(ThreadRuntimeControllerSurface, ExposesIndependentNativeThreadControls) {
   ExpectToken("CMakeLists.txt", "src/runtime/thread_runtime_controller.cpp");
   ExpectToken("CMakeLists.txt", "test_thread_runtime_controller");
   ExpectToken("CMakeLists.txt", "Threads::Threads");
+
+  const std::array<std::string, 5> warning_tokens = {
+    "LOG(WARNING)",
+    "FIFO scheduling",
+    "priority",
+    "CPU affinity",
+    "pthread error code",
+  };
+  for (const auto & token : warning_tokens) {
+    ExpectToken("src/runtime/thread_runtime_controller.cpp", token);
+  }
 }
 
 TEST(FrameProcessingWatchdogSurface, ExposesThreadSafeFrameDeadlines) {

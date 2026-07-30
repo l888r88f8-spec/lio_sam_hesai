@@ -5,6 +5,7 @@
 #include "runtime/thread_runtime_controller.h"
 
 #include <cerrno>
+#include <glog/logging.h>
 #include <pthread.h>
 #include <sched.h>
 #include <stdexcept>
@@ -68,6 +69,10 @@ void ThreadRuntimeController::ApplyToCurrentThread()
       operations_.set_fifo_priority(config_.fifo_priority) : EINVAL;
     next_status.scheduling_applied = error == 0;
     next_status.scheduling_errno = error;
+    if (error != 0) {
+      LOG(WARNING) << "FIFO scheduling request for priority " << config_.fifo_priority
+                   << " failed with pthread error code " << error;
+    }
   }
   if (config_.cpu_core != -1) {
     next_status.affinity_requested = true;
@@ -75,6 +80,10 @@ void ThreadRuntimeController::ApplyToCurrentThread()
       operations_.set_cpu_affinity(config_.cpu_core) : EINVAL;
     next_status.affinity_applied = error == 0;
     next_status.affinity_errno = error;
+    if (error != 0) {
+      LOG(WARNING) << "CPU affinity request for core " << config_.cpu_core
+                   << " failed with pthread error code " << error;
+    }
   }
 
   std::lock_guard<std::mutex> lock(mutex_);

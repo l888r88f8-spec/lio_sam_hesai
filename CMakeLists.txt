@@ -264,7 +264,8 @@ if(BUILD_TESTING)
     test/test_thread_runtime_controller.cpp
     src/runtime/thread_runtime_controller.cpp)
   target_include_directories(test_thread_runtime_controller PRIVATE include)
-  target_link_libraries(test_thread_runtime_controller Threads::Threads)
+  target_link_libraries(test_thread_runtime_controller
+    Threads::Threads ${GLOG_LIBRARIES})
   ament_add_gtest(test_frame_processing_watchdog
     test/test_frame_processing_watchdog.cpp
     src/runtime/frame_processing_watchdog.cpp)
