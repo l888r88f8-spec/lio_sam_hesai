@@ -16,19 +16,19 @@
 - Modify: `include/slam/localization.h`, `src/slam/localization.cpp`
 - Test: `test/test_auto_relocalization_parameter_surface.cpp`
 
-- [ ] **Step 1: Write a failing lifecycle-contract test**
+- [x] **Step 1: Write a failing lifecycle-contract test**
 
 Require the header to expose `bool PrepareMap()` and `MapPreparationDurationMs()`, and require `Run()` to call neither `LoadGlobalMap(` nor `LoadScanContextDb(`. Run `ctest --test-dir /home/robot/slam_ws/build/lio_sam_hesai -R '^test_auto_relocalization_parameter_surface$'`; expect failure because the existing code prepares maps inside `Run()`.
 
-- [ ] **Step 2: Extract the existing preparation block**
+- [x] **Step 2: Extract the existing preparation block**
 
 Move the current `Run()` map, ground-map, XY kd-tree and optional Scan Context setup into `PrepareMap()`. Measure elapsed `steady_clock` time, set `map_ready_` only after all required resources are valid, and return `false` on a missing/empty required global map. `Run()` must return immediately unless preparation completed successfully.
 
-- [ ] **Step 3: Verify the lifecycle contract**
+- [x] **Step 3: Verify the lifecycle contract**
 
 Build `test_auto_relocalization_parameter_surface` with `cmake --build /home/robot/slam_ws/build/lio_sam_hesai --target test_auto_relocalization_parameter_surface -- -j1`, then run its CTest entry. Expected: 1/1 pass.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 Commit the lifecycle change with `feat(localization): prepare maps before data processing`.
 
@@ -38,19 +38,19 @@ Commit the lifecycle change with `feat(localization): prepare maps before data p
 - Modify: `include/slam/system.h`, `src/slam/system.cpp`
 - Test: `test/test_auto_relocalization_parameter_surface.cpp`
 
-- [ ] **Step 1: Extend the failing System contract**
+- [x] **Step 1: Extend the failing System contract**
 
 Require `System` to construct `Localization`, call `PrepareMap()` before `InitSubscriber()` and before constructing either `Localization::Run` or `PreProcessing::Run` thread; require diagnostics to publish `map_preparation_duration_ms`. Run the focused CTest and expect failure.
 
-- [ ] **Step 2: Add the startup gate and diagnostic value**
+- [x] **Step 2: Add the startup gate and diagnostic value**
 
 Call `PrepareMap()` immediately after constructing `Localization`. Throw `std::runtime_error` if it returns false, then initialize publishers/subscribers and start workers. Publish `map_preparation_duration_ms` using `Localization::MapPreparationDurationMs()` beside `map_ready`.
 
-- [ ] **Step 3: Verify focused tests and build**
+- [x] **Step 3: Verify focused tests and build**
 
 Run the focused CTest, then `cmake --build /home/robot/slam_ws/build/lio_sam_hesai -- -j1`. Expected: test passes and build exits 0.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 Commit with `feat(system): gate data pipeline on map readiness`.
 
@@ -59,14 +59,14 @@ Commit with `feat(system): gate data pipeline on map readiness`.
 **Files:**
 - Modify: this plan and `docs/superpowers/specs/2026-07-30-localization-startup-readiness-design.md`
 
-- [ ] **Step 1: Run enabled package tests**
+- [x] **Step 1: Run enabled package tests**
 
 Run `ctest --test-dir /home/robot/slam_ws/build/lio_sam_hesai --output-on-failure -E '^(copyright|cpplint|flake8|lint_cmake|uncrustify|xmllint)$'`. Expected: all enabled tests pass.
 
-- [ ] **Step 2: Install and replay**
+- [x] **Step 2: Install and replay**
 
 Run `cmake --install /home/robot/slam_ws/build/lio_sam_hesai`, then `LIO_SAM_KEEP_RESULTS=1 scripts/run_localization_stability.sh quick`. Expected: exit 0 with no error samples and valid odometry ratio 1.0.
 
-- [ ] **Step 3: Mark documentation verified and commit**
+- [x] **Step 3: Mark documentation verified and commit**
 
 Change the design status to `已实施并验证`, mark all plan checkboxes `[x]`, force-add the ignored docs, and commit with `docs(localization): record startup readiness verification`.
