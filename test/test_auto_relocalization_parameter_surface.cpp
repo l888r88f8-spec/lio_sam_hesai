@@ -292,6 +292,32 @@ TEST(ThreadRuntimeControllerSurface, ExposesIndependentNativeThreadControls) {
   ExpectToken("CMakeLists.txt", "Threads::Threads");
 }
 
+TEST(FrameProcessingWatchdogSurface, ExposesThreadSafeFrameDeadlines) {
+  const std::array<std::string, 7> header_tokens = {
+    "namespace runtime",
+    "struct FrameProcessingSnapshot",
+    "class FrameProcessingWatchdog",
+    "SteadyNowMicroseconds",
+    "Begin",
+    "Exceeded",
+    "Complete",
+  };
+  for (const auto & token : header_tokens) {
+    ExpectToken("include/runtime/frame_processing_watchdog.h", token);
+  }
+
+  const std::array<std::string, 3> source_tokens = {
+    "std::chrono::steady_clock",
+    "std::lock_guard<std::mutex>",
+    "timeout_count",
+  };
+  for (const auto & token : source_tokens) {
+    ExpectToken("src/runtime/frame_processing_watchdog.cpp", token);
+  }
+  ExpectToken("CMakeLists.txt", "src/runtime/frame_processing_watchdog.cpp");
+  ExpectToken("CMakeLists.txt", "test_frame_processing_watchdog");
+}
+
 TEST(SystemStartupReadinessSurface, PreparesMapBeforeAcceptingInput) {
   const std::string constructor_body = ReadFunctionBody(
     "src/slam/system.cpp",

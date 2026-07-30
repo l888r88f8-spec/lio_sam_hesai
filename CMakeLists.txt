@@ -151,6 +151,7 @@ add_library(${PROJECT_NAME}_relocalization_lib
   src/localization_health/localization_recovery_coordinator.cpp
   src/localization_health/reinitialization_control.cpp
   src/runtime/thread_runtime_controller.cpp
+  src/runtime/frame_processing_watchdog.cpp
   src/slam/config_parameters.cpp
   src/slam/preprocessing.cpp
   src/slam/localization.cpp
@@ -264,6 +265,10 @@ if(BUILD_TESTING)
     src/runtime/thread_runtime_controller.cpp)
   target_include_directories(test_thread_runtime_controller PRIVATE include)
   target_link_libraries(test_thread_runtime_controller Threads::Threads)
+  ament_add_gtest(test_frame_processing_watchdog
+    test/test_frame_processing_watchdog.cpp
+    src/runtime/frame_processing_watchdog.cpp)
+  target_include_directories(test_frame_processing_watchdog PRIVATE include)
   ament_add_gtest(test_unified_parameter_schema
     test/test_unified_parameter_schema.cpp)
   ament_add_gtest(test_relocalization_efficiency_surface
