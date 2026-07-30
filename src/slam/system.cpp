@@ -119,6 +119,12 @@ System::System(const rclcpp::NodeOptions& options)
           state_config, recovery_gate_config);
 
   InitLidarModel();
+
+  localization_ptr_ = std::make_shared<Localization>(this);
+  if (!localization_ptr_->PrepareMap()) {
+    throw std::runtime_error("Failed to prepare localization map.");
+  }
+
   InitPublisher();
   InitSubscriber();
 
@@ -129,7 +135,6 @@ System::System(const rclcpp::NodeOptions& options)
   imu_data_searcher_ptr_ = std::make_shared<IMUDataSearcher>(
       ConfigParameters::Instance().imu_data_searcher_buffer_size_);
 
-  localization_ptr_ = std::make_shared<Localization>(this);
   localization_thread_ptr_ = std::make_shared<std::thread>(
       &Localization::Run, localization_ptr_.get());
 
@@ -821,6 +826,8 @@ void System::PublishLocalizationHealth() {
   localization_health::HealthInputs inputs;
   inputs.has_imu_init = has_imu_init_.load();
   inputs.map_ready = localization_ptr_ && localization_ptr_->IsMapReady();
+  const double map_preparation_duration_ms =
+      localization_ptr_ ? localization_ptr_->MapPreparationDurationMs() : 0.0;
   inputs.now_us = steady_now_us;
   {
     std::lock_guard<std::mutex> lock(mutex_health_result_);
@@ -904,6 +911,8 @@ void System::PublishLocalizationHealth() {
   add_value("reason", report.reason);
   add_value("is_tracking", BoolString(inputs.is_tracking));
   add_value("map_ready", BoolString(inputs.map_ready));
+  add_value("map_preparation_duration_ms",
+            std::to_string(map_preparation_duration_ms));
   add_value("rates_known", BoolString(inputs.stream.rates_known));
   add_value("lidar_stalled", BoolString(inputs.stream.lidar_stalled));
   add_value("imu_stalled", BoolString(inputs.stream.imu_stalled));

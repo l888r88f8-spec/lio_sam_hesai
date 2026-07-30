@@ -266,6 +266,49 @@ TEST(LocalizationMapReadinessSurface, PreparesMapsBeforeRun) {
     << "Run() must only consume a prepared Scan Context database";
 }
 
+TEST(SystemStartupReadinessSurface, PreparesMapBeforeAcceptingInput) {
+  const std::string constructor_body = ReadFunctionBody(
+    "src/slam/system.cpp",
+    "System::System(const rclcpp::NodeOptions& options)");
+  const std::size_t localization_construction = constructor_body.find(
+    "localization_ptr_ = std::make_shared<Localization>(this);");
+  const std::size_t map_preparation = constructor_body.find(
+    "localization_ptr_->PrepareMap()");
+  const std::size_t publisher_initialization = constructor_body.find(
+    "InitPublisher();");
+  const std::size_t subscriber_initialization = constructor_body.find(
+    "InitSubscriber();");
+  const std::size_t localization_worker = constructor_body.find(
+    "&Localization::Run");
+  const std::size_t preprocessing_worker = constructor_body.find(
+    "&PreProcessing::Run");
+
+  ASSERT_NE(localization_construction, std::string::npos);
+  ASSERT_NE(map_preparation, std::string::npos);
+  ASSERT_NE(publisher_initialization, std::string::npos);
+  ASSERT_NE(subscriber_initialization, std::string::npos);
+  ASSERT_NE(localization_worker, std::string::npos);
+  ASSERT_NE(preprocessing_worker, std::string::npos);
+  EXPECT_LT(localization_construction, map_preparation);
+  EXPECT_LT(map_preparation, publisher_initialization);
+  EXPECT_LT(map_preparation, subscriber_initialization);
+  EXPECT_LT(map_preparation, localization_worker);
+  EXPECT_LT(map_preparation, preprocessing_worker);
+  ExpectToken("src/slam/system.cpp", "if (!localization_ptr_->PrepareMap())");
+  ExpectToken("src/slam/system.cpp", "throw std::runtime_error");
+
+  const std::string diagnostics_body = ReadFunctionBody(
+    "src/slam/system.cpp", "void System::PublishLocalizationHealth()");
+  const std::size_t map_ready = diagnostics_body.find(
+    "add_value(\"map_ready\"");
+  const std::size_t preparation_duration = diagnostics_body.find(
+    "add_value(\"map_preparation_duration_ms\"");
+  ASSERT_NE(map_ready, std::string::npos);
+  ASSERT_NE(preparation_duration, std::string::npos);
+  EXPECT_LT(map_ready, preparation_duration);
+  ExpectToken("src/slam/system.cpp", "MapPreparationDurationMs()");
+}
+
 TEST(SystemIntegration, WiresLocalizationHealthObservability) {
   const std::array<std::string, 8> header_tokens = {
     "diagnostic_msgs/msg/diagnostic_array.hpp",
