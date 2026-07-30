@@ -345,44 +345,43 @@ Localization::InitializationResult Localization::Init() {
 
   const float fitness_score = matcher_->GetFitnessScore(2.0);
 
-  if (success && fitness_score < 1.0) {
-    curr_pose_ = init_pose;
-    Mat15d cov = Mat15d::Zero();
-    cov.block<3, 3>(0, 0) =
-        Mat3d::Identity() * 1.0e-6 * 1.0e-6;  // rotation information matrix
-    cov.block<3, 3>(3, 3) =
-        Mat3d::Identity() * 1.0e-2 * 1.0e-2;  // velocity information matrix
-    cov.block<3, 3>(6, 6) =
-        Mat3d::Identity() * 1.0e-6 * 1.0e-6;  // position information matrix
-    cov.block<3, 3>(9, 9) =
-        Mat3d::Identity() *
-        std::pow(0.1 * kDegree2Radian, 2);  // bias gyro information matrix
-    cov.block<3, 3>(12, 12) =
-        Mat3d::Identity() * 0.1 * 0.1;  // bias accel information matrix
-    last_nav_state_.SetPose(init_pose);
-    last_nav_state_.V_ = Vec3d::Zero();
-    last_nav_state_.info_ = cov.inverse();
-    last_nav_state_.timestamp_ = curr_time_us_;
-
-    delta_pose_.setIdentity();
-    last_pose_ = init_pose;
-  } else {
+  if (!success || fitness_score >= 1.0) {
     LOG(WARNING) << "Initial registration failed. "
                  << "Please try to continue initialization and give a better "
                     "initial pose.";
     return InitializationResult::kFailed;
   }
 
-  last_odom_state_.SetPose(Mat4d::Identity());
-  last_odom_state_.V_ = Vec3d::Zero();
-  last_odom_state_.bg_ = last_nav_state_.bg_;
-  last_odom_state_.ba_ = last_nav_state_.ba_;
-  last_odom_state_.timestamp_ = curr_time_us_;
+  Mat15d cov = Mat15d::Zero();
+  cov.block<3, 3>(0, 0) =
+      Mat3d::Identity() * 1.0e-6 * 1.0e-6;  // rotation information matrix
+  cov.block<3, 3>(3, 3) =
+      Mat3d::Identity() * 1.0e-2 * 1.0e-2;  // velocity information matrix
+  cov.block<3, 3>(6, 6) =
+      Mat3d::Identity() * 1.0e-6 * 1.0e-6;  // position information matrix
+  cov.block<3, 3>(9, 9) =
+      Mat3d::Identity() *
+      std::pow(0.1 * kDegree2Radian, 2);  // bias gyro information matrix
+  cov.block<3, 3>(12, 12) =
+      Mat3d::Identity() * 0.1 * 0.1;  // bias accel information matrix
+
+  NavStateData initialized_nav_state;
+  initialized_nav_state.SetPose(init_pose);
+  initialized_nav_state.V_ = Vec3d::Zero();
+  initialized_nav_state.info_ = cov.inverse();
+  initialized_nav_state.timestamp_ = curr_time_us_;
+
+  NavStateData initialized_odom_state;
+  initialized_odom_state.SetPose(Mat4d::Identity());
+  initialized_odom_state.V_ = Vec3d::Zero();
+  initialized_odom_state.bg_ = initialized_nav_state.bg_;
+  initialized_odom_state.ba_ = initialized_nav_state.ba_;
+  initialized_odom_state.timestamp_ = curr_time_us_;
 
   LocalizationResult init_result;
   init_result.timestamp_ = curr_time_us_;
   init_result.map_pose = MapImuPoseToMapLidarPose(init_pose);
-  init_result.odom_pose = last_odom_state_.Pose();
+  init_result.odom_pose = initialized_odom_state.Pose();
   init_result.reg_fitness = fitness_score;
   init_result.consistency_hit = result_consistency_hit;
   init_result.consistency_required = result_consistency_required;
@@ -397,6 +396,11 @@ Localization::InitializationResult Localization::Init() {
   if (DiscardTimedOutFrameIfNeeded()) {
     return InitializationResult::kFailed;
   }
+  curr_pose_ = init_pose;
+  last_nav_state_ = initialized_nav_state;
+  delta_pose_ = Mat4d::Identity();
+  last_pose_ = init_pose;
+  last_odom_state_ = initialized_odom_state;
   CacheResultToSystem(init_result);
   UpdateCurrentLidarCloud(*TransformPointCloud(
       VoxelGridCloud(curr_cloud_cluster_ptr_->ordered_cloud_, 0.5), init_pose));
@@ -546,11 +550,6 @@ void Localization::Run() {
         }
 
         const InitializationResult initialization_result = Init();
-        if (DiscardTimedOutFrameIfNeeded()) {
-          has_init_.store(false);
-          reinitialization_attempt.RecordInitializationResult(false);
-          continue;
-        }
         has_init_ = initialization_result == InitializationResult::kInitialized;
         if (initialization_result ==
             InitializationResult::kAutomaticConsistencyPending) {
