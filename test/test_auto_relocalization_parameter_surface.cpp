@@ -266,6 +266,32 @@ TEST(LocalizationMapReadinessSurface, PreparesMapsBeforeRun) {
     << "Run() must only consume a prepared Scan Context database";
 }
 
+TEST(ThreadRuntimeControllerSurface, ExposesIndependentNativeThreadControls) {
+  const std::array<std::string, 7> header_tokens = {
+    "namespace runtime",
+    "struct ThreadRuntimeConfig",
+    "struct ThreadRuntimeStatus",
+    "struct ThreadRuntimeOperations",
+    "class ThreadRuntimeController",
+    "static void Validate",
+    "ApplyToCurrentThread",
+  };
+  for (const auto & token : header_tokens) {
+    ExpectToken("include/runtime/thread_runtime_controller.h", token);
+  }
+  const std::array<std::string, 3> source_tokens = {
+    "NativeOperations",
+    "pthread_setschedparam",
+    "pthread_setaffinity_np",
+  };
+  for (const auto & token : source_tokens) {
+    ExpectToken("src/runtime/thread_runtime_controller.cpp", token);
+  }
+  ExpectToken("CMakeLists.txt", "src/runtime/thread_runtime_controller.cpp");
+  ExpectToken("CMakeLists.txt", "test_thread_runtime_controller");
+  ExpectToken("CMakeLists.txt", "Threads::Threads");
+}
+
 TEST(SystemStartupReadinessSurface, PreparesMapBeforeAcceptingInput) {
   const std::string constructor_body = ReadFunctionBody(
     "src/slam/system.cpp",

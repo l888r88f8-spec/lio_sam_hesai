@@ -44,6 +44,7 @@ else()
   set(LIO_SAM_EIGEN_INCLUDE_DIRS ${EIGEN_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIRS})
 endif()
 find_package(OpenMP REQUIRED)
+find_package(Threads REQUIRED)
 
 set(GTSAM_LIBRARY_PATH_SUFFIXES
   ${CMAKE_INSTALL_LIBDIR}
@@ -149,6 +150,7 @@ add_library(${PROJECT_NAME}_relocalization_lib
   src/localization_health/recovery_attempt_gate.cpp
   src/localization_health/localization_recovery_coordinator.cpp
   src/localization_health/reinitialization_control.cpp
+  src/runtime/thread_runtime_controller.cpp
   src/slam/config_parameters.cpp
   src/slam/preprocessing.cpp
   src/slam/localization.cpp
@@ -163,6 +165,7 @@ ament_target_dependencies(${PROJECT_NAME}_relocalization_lib
 target_link_libraries(${PROJECT_NAME}_relocalization_lib
   ${GLOG_LIBRARIES}
   ${G2O_LIBRARIES}
+  Threads::Threads
 )
 
 add_executable(${PROJECT_NAME}_relocalization src/relocalization_node.cpp)
@@ -256,6 +259,11 @@ if(BUILD_TESTING)
   ament_add_gtest(test_ground_patch_parameter_surface test/test_ground_patch_parameter_surface.cpp)
   ament_add_gtest(test_auto_relocalization_parameter_surface
     test/test_auto_relocalization_parameter_surface.cpp)
+  ament_add_gtest(test_thread_runtime_controller
+    test/test_thread_runtime_controller.cpp
+    src/runtime/thread_runtime_controller.cpp)
+  target_include_directories(test_thread_runtime_controller PRIVATE include)
+  target_link_libraries(test_thread_runtime_controller Threads::Threads)
   ament_add_gtest(test_unified_parameter_schema
     test/test_unified_parameter_schema.cpp)
   ament_add_gtest(test_relocalization_efficiency_surface
