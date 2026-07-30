@@ -152,6 +152,14 @@ public:
     double health_result_timeout_{1.0};
     double health_base_covariance_{0.05};
     double health_max_covariance_scale_{100.0};
+
+    // runtime resource governance
+    bool runtime_enable_realtime_scheduling_{true};
+    int runtime_preprocessing_fifo_priority_{70};
+    int runtime_localization_fifo_priority_{80};
+    int runtime_preprocessing_cpu_core_{4};
+    int runtime_localization_cpu_core_{5};
+    int runtime_frame_processing_timeout_ms_{500};
 };
 
 #endif //FUNNY_LIDAR_SLAM_CONFIG_PARAMETERS_H

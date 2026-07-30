@@ -8,6 +8,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <cstdint>
 #include <deque>
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
@@ -28,6 +29,7 @@
 #include "lidar/pointcloud_cluster.h"
 #include "localization_health/data_stream_watchdog.h"
 #include "localization_health/localization_recovery_coordinator.h"
+#include "runtime/thread_runtime_controller.h"
 
 class PreProcessing;
 class Localization;
@@ -103,9 +105,14 @@ class System : public rclcpp::Node {
 
   // pre-processing
   std::shared_ptr<PreProcessing> pre_processing_ptr_ = nullptr;
+  std::unique_ptr<runtime::ThreadRuntimeController>
+      preprocessing_thread_runtime_;
 
   // localization
   std::shared_ptr<Localization> localization_ptr_ = nullptr;
+  std::unique_ptr<runtime::ThreadRuntimeController>
+      localization_thread_runtime_;
+  std::uint64_t runtime_frame_processing_timeout_us_{0U};
   std::unique_ptr<localization_health::DataStreamWatchdog>
       data_stream_watchdog_;
   std::unique_ptr<localization_health::LocalizationRecoveryCoordinator>

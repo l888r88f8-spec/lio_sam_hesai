@@ -25,6 +25,7 @@
 namespace {
 
 constexpr long double kMicrosecondsPerSecond = 1000000.0L;
+constexpr std::uint64_t kMicrosecondsPerMillisecond = 1000U;
 
 std::uint64_t SecondsToMicroseconds(double seconds,
                                     const std::string& parameter_name) {
@@ -62,6 +63,22 @@ std::uint64_t RateToPeriodMicroseconds(double rate_hz,
   return static_cast<std::uint64_t>(period_us);
 }
 
+std::uint64_t MillisecondsToMicroseconds(
+    int milliseconds, const std::string& parameter_name) {
+  if (milliseconds <= 0) {
+    throw std::invalid_argument(parameter_name + " must be greater than zero");
+  }
+
+  const auto value = static_cast<std::uint64_t>(milliseconds);
+  if (value >
+      std::numeric_limits<std::uint64_t>::max() /
+          kMicrosecondsPerMillisecond) {
+    throw std::invalid_argument(parameter_name +
+                                " cannot be represented in microseconds");
+  }
+  return value * kMicrosecondsPerMillisecond;
+}
+
 const char* BoolString(bool value) { return value ? "true" : "false"; }
 
 std::uint64_t SteadyNowMicroseconds() {
@@ -77,6 +94,26 @@ System::System(const rclcpp::NodeOptions& options)
   InitConfigParameters();
 
   const auto& config = ConfigParameters::Instance();
+  const runtime::ThreadRuntimeConfig preprocessing_thread_config{
+      config.runtime_enable_realtime_scheduling_,
+      config.runtime_preprocessing_fifo_priority_,
+      config.runtime_preprocessing_cpu_core_};
+  const runtime::ThreadRuntimeConfig localization_thread_config{
+      config.runtime_enable_realtime_scheduling_,
+      config.runtime_localization_fifo_priority_,
+      config.runtime_localization_cpu_core_};
+  runtime::ThreadRuntimeController::Validate(preprocessing_thread_config);
+  runtime::ThreadRuntimeController::Validate(localization_thread_config);
+  runtime_frame_processing_timeout_us_ = MillisecondsToMicroseconds(
+      config.runtime_frame_processing_timeout_ms_,
+      "runtime.frame_processing_timeout_ms");
+  preprocessing_thread_runtime_ =
+      std::make_unique<runtime::ThreadRuntimeController>(
+          preprocessing_thread_config);
+  localization_thread_runtime_ =
+      std::make_unique<runtime::ThreadRuntimeController>(
+          localization_thread_config);
+
   localization_health::DataStreamWatchdog::Config watchdog_config;
   watchdog_config.lidar_stall_timeout_us = SecondsToMicroseconds(
       config.health_lidar_stall_timeout_,
@@ -135,12 +172,16 @@ System::System(const rclcpp::NodeOptions& options)
   imu_data_searcher_ptr_ = std::make_shared<IMUDataSearcher>(
       ConfigParameters::Instance().imu_data_searcher_buffer_size_);
 
-  localization_thread_ptr_ = std::make_shared<std::thread>(
-      &Localization::Run, localization_ptr_.get());
+  localization_thread_ptr_ = std::make_shared<std::thread>([this] {
+    localization_thread_runtime_->ApplyToCurrentThread();
+    localization_ptr_->Run();
+  });
 
   pre_processing_ptr_ = std::make_shared<PreProcessing>(this);
-  pre_processing_thread_ptr_ =
-      std::make_shared<std::thread>(&PreProcessing::Run, pre_processing_ptr_);
+  pre_processing_thread_ptr_ = std::make_shared<std::thread>([this] {
+    preprocessing_thread_runtime_->ApplyToCurrentThread();
+    pre_processing_ptr_->Run();
+  });
 
   timer_cb_group_ =
       create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
@@ -262,6 +303,20 @@ void System::InitConfigParameters() {
               config.health_base_covariance_, 0.05);
   util::param(this, "localization_health.max_covariance_scale",
               config.health_max_covariance_scale_, 100.0);
+
+  // runtime resource governance parameters
+  util::param(this, "runtime.enable_realtime_scheduling",
+              config.runtime_enable_realtime_scheduling_, true);
+  util::param(this, "runtime.preprocessing_fifo_priority",
+              config.runtime_preprocessing_fifo_priority_, 70);
+  util::param(this, "runtime.localization_fifo_priority",
+              config.runtime_localization_fifo_priority_, 80);
+  util::param(this, "runtime.preprocessing_cpu_core",
+              config.runtime_preprocessing_cpu_core_, 4);
+  util::param(this, "runtime.localization_cpu_core",
+              config.runtime_localization_cpu_core_, 5);
+  util::param(this, "runtime.frame_processing_timeout_ms",
+              config.runtime_frame_processing_timeout_ms_, 500);
 
   // lidar config parameters
   util::param(this, "lidar.sensor_type", config.lidar_sensor_type_,
@@ -822,6 +877,14 @@ void System::PublishLocalizationHealth() {
   }
 
   const std::uint64_t steady_now_us = SteadyNowMicroseconds();
+  const runtime::ThreadRuntimeStatus preprocessing_runtime_status =
+      preprocessing_thread_runtime_
+          ? preprocessing_thread_runtime_->Snapshot()
+          : runtime::ThreadRuntimeStatus{};
+  const runtime::ThreadRuntimeStatus localization_runtime_status =
+      localization_thread_runtime_
+          ? localization_thread_runtime_->Snapshot()
+          : runtime::ThreadRuntimeStatus{};
 
   localization_health::HealthInputs inputs;
   inputs.has_imu_init = has_imu_init_.load();
@@ -913,6 +976,30 @@ void System::PublishLocalizationHealth() {
   add_value("map_ready", BoolString(inputs.map_ready));
   add_value("map_preparation_duration_ms",
             std::to_string(map_preparation_duration_ms));
+  add_value("preprocessing_fifo_priority",
+            std::to_string(config.runtime_preprocessing_fifo_priority_));
+  add_value("preprocessing_cpu_core",
+            std::to_string(config.runtime_preprocessing_cpu_core_));
+  add_value("preprocessing_fifo_applied",
+            BoolString(preprocessing_runtime_status.scheduling_applied));
+  add_value("preprocessing_fifo_errno",
+            std::to_string(preprocessing_runtime_status.scheduling_errno));
+  add_value("preprocessing_affinity_applied",
+            BoolString(preprocessing_runtime_status.affinity_applied));
+  add_value("preprocessing_affinity_errno",
+            std::to_string(preprocessing_runtime_status.affinity_errno));
+  add_value("localization_fifo_priority",
+            std::to_string(config.runtime_localization_fifo_priority_));
+  add_value("localization_cpu_core",
+            std::to_string(config.runtime_localization_cpu_core_));
+  add_value("localization_fifo_applied",
+            BoolString(localization_runtime_status.scheduling_applied));
+  add_value("localization_fifo_errno",
+            std::to_string(localization_runtime_status.scheduling_errno));
+  add_value("localization_affinity_applied",
+            BoolString(localization_runtime_status.affinity_applied));
+  add_value("localization_affinity_errno",
+            std::to_string(localization_runtime_status.affinity_errno));
   add_value("rates_known", BoolString(inputs.stream.rates_known));
   add_value("lidar_stalled", BoolString(inputs.stream.lidar_stalled));
   add_value("imu_stalled", BoolString(inputs.stream.imu_stalled));

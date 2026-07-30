@@ -129,6 +129,18 @@ void ExpectLocalizationHealthYamlParameter(const std::string & leaf)
     << " is missing from config/relocalization.yaml";
 }
 
+void ExpectRuntimeYamlParameter(const std::string & leaf)
+{
+  const std::string text = ReadProjectFile("config/relocalization.yaml");
+  const std::size_t runtime = text.find("\n    runtime:");
+  ASSERT_NE(runtime, std::string::npos)
+    << "runtime is missing from config/relocalization.yaml";
+  const std::size_t runtime_end = FindYamlBlockEnd(text, runtime, 4);
+  const std::size_t yaml_leaf = text.find("\n      " + leaf + ":", runtime);
+  EXPECT_TRUE(yaml_leaf != std::string::npos && yaml_leaf < runtime_end)
+    << "runtime." << leaf << " is missing from config/relocalization.yaml";
+}
+
 }  // namespace
 
 TEST(AutoRelocalizationParameterSurface, ExposesAllRuntimeParameters) {
@@ -213,6 +225,84 @@ TEST(AutoRelocalizationParameterSurface, ExposesLocalizationHealthParameters) {
     ExpectQuotedParameter(
       "src/slam/system.cpp", "localization_health." + parameter.leaf);
     ExpectLocalizationHealthYamlParameter(parameter.leaf);
+  }
+}
+
+TEST(SystemRuntimeResourceSurface, ConfiguresWorkersBeforeTheirRunLoops) {
+  struct RuntimeParameter {
+    std::string leaf;
+    std::string member;
+  };
+  const std::array<RuntimeParameter, 6> parameters = {{
+    {"enable_realtime_scheduling", "runtime_enable_realtime_scheduling_"},
+    {"preprocessing_fifo_priority", "runtime_preprocessing_fifo_priority_"},
+    {"localization_fifo_priority", "runtime_localization_fifo_priority_"},
+    {"preprocessing_cpu_core", "runtime_preprocessing_cpu_core_"},
+    {"localization_cpu_core", "runtime_localization_cpu_core_"},
+    {"frame_processing_timeout_ms", "runtime_frame_processing_timeout_ms_"},
+  }};
+
+  for (const auto & parameter : parameters) {
+    ExpectToken("include/slam/config_parameters.h", parameter.member);
+    ExpectQuotedParameter("src/slam/system.cpp", "runtime." + parameter.leaf);
+    ExpectRuntimeYamlParameter(parameter.leaf);
+  }
+
+  ExpectToken(
+    "include/slam/system.h", "runtime/thread_runtime_controller.h");
+  ExpectToken(
+    "include/slam/system.h", "preprocessing_thread_runtime_");
+  ExpectToken(
+    "include/slam/system.h", "localization_thread_runtime_");
+
+  const std::string constructor_body = ReadFunctionBody(
+    "src/slam/system.cpp", "System::System(const rclcpp::NodeOptions& options)");
+  const std::size_t validation = constructor_body.find(
+    "runtime::ThreadRuntimeController::Validate");
+  const std::size_t localization_worker = constructor_body.find(
+    "localization_thread_ptr_ =");
+  const std::size_t preprocessing_worker = constructor_body.find(
+    "pre_processing_thread_ptr_ =");
+  ASSERT_NE(validation, std::string::npos);
+  ASSERT_NE(localization_worker, std::string::npos);
+  ASSERT_NE(preprocessing_worker, std::string::npos);
+  EXPECT_LT(validation, localization_worker);
+  EXPECT_LT(validation, preprocessing_worker);
+
+  const std::size_t localization_apply = constructor_body.find(
+    "localization_thread_runtime_->ApplyToCurrentThread();");
+  const std::size_t localization_run = constructor_body.find(
+    "localization_ptr_->Run();");
+  const std::size_t preprocessing_apply = constructor_body.find(
+    "preprocessing_thread_runtime_->ApplyToCurrentThread();");
+  const std::size_t preprocessing_run = constructor_body.find(
+    "pre_processing_ptr_->Run();");
+  ASSERT_NE(localization_apply, std::string::npos);
+  ASSERT_NE(localization_run, std::string::npos);
+  ASSERT_NE(preprocessing_apply, std::string::npos);
+  ASSERT_NE(preprocessing_run, std::string::npos);
+  EXPECT_LT(localization_apply, localization_run);
+  EXPECT_LT(preprocessing_apply, preprocessing_run);
+
+  const std::array<std::string, 12> diagnostic_keys = {
+    "preprocessing_fifo_priority",
+    "preprocessing_cpu_core",
+    "preprocessing_fifo_applied",
+    "preprocessing_fifo_errno",
+    "preprocessing_affinity_applied",
+    "preprocessing_affinity_errno",
+    "localization_fifo_priority",
+    "localization_cpu_core",
+    "localization_fifo_applied",
+    "localization_fifo_errno",
+    "localization_affinity_applied",
+    "localization_affinity_errno",
+  };
+  const std::string diagnostics_body = ReadFunctionBody(
+    "src/slam/system.cpp", "void System::PublishLocalizationHealth()");
+  for (const auto & key : diagnostic_keys) {
+    ExpectToken("src/slam/system.cpp", "add_value(\"" + key + "\"");
+    EXPECT_NE(diagnostics_body.find(key), std::string::npos);
   }
 }
 
@@ -331,9 +421,9 @@ TEST(SystemStartupReadinessSurface, PreparesMapBeforeAcceptingInput) {
   const std::size_t subscriber_initialization = constructor_body.find(
     "InitSubscriber();");
   const std::size_t localization_worker = constructor_body.find(
-    "&Localization::Run");
+    "localization_thread_ptr_ =");
   const std::size_t preprocessing_worker = constructor_body.find(
-    "&PreProcessing::Run");
+    "pre_processing_thread_ptr_ =");
 
   ASSERT_NE(localization_construction, std::string::npos);
   ASSERT_NE(map_preparation, std::string::npos);

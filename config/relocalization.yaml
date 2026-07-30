@@ -51,6 +51,14 @@
       base_covariance: 0.05                                     # 健康时基础协方差
       max_covariance_scale: 100.0                               # 最大协方差放大倍率
 
+    runtime:
+      enable_realtime_scheduling: true
+      preprocessing_fifo_priority: 70
+      localization_fifo_priority: 80
+      preprocessing_cpu_core: 4
+      localization_cpu_core: 5
+      frame_processing_timeout_ms: 500
+
     lidar:
       sensor_type: Hesai                                       # 雷达型号
       point_jump_span: 1                                       # 点跳步长
