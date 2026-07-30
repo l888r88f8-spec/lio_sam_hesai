@@ -192,9 +192,7 @@ std::shared_ptr<RegistrationInterface> Localization::CreateMatcher() const {
 
 void Localization::InitMatcher() { matcher_ = CreateMatcher(); }
 
-bool Localization::DiscardTimedOutFrameIfNeeded() {
-  const auto now_us =
-      runtime::FrameProcessingWatchdog::SteadyNowMicroseconds();
+bool Localization::DiscardTimedOutFrameIfNeeded(std::uint64_t now_us) {
   if (!frame_processing_watchdog_.Exceeded(now_us)) {
     return false;
   }
@@ -203,9 +201,15 @@ bool Localization::DiscardTimedOutFrameIfNeeded() {
   InitMatcher();
   InitPreintegration();
   need_update_local_map_ = true;
+  force_local_map_rebuild_ = true;
   delta_pose_ = Mat4d::Identity();
   LOG(WARNING) << "Drop overdue localization frame.";
   return true;
+}
+
+bool Localization::DiscardTimedOutFrameIfNeeded() {
+  return DiscardTimedOutFrameIfNeeded(
+      runtime::FrameProcessingWatchdog::SteadyNowMicroseconds());
 }
 
 void Localization::InitPreintegration() {
@@ -365,17 +369,15 @@ Localization::InitializationResult Localization::Init() {
   cov.block<3, 3>(12, 12) =
       Mat3d::Identity() * 0.1 * 0.1;  // bias accel information matrix
 
-  NavStateData initialized_nav_state;
+  NavStateData initialized_nav_state = last_nav_state_;
   initialized_nav_state.SetPose(init_pose);
   initialized_nav_state.V_ = Vec3d::Zero();
   initialized_nav_state.info_ = cov.inverse();
   initialized_nav_state.timestamp_ = curr_time_us_;
 
-  NavStateData initialized_odom_state;
+  NavStateData initialized_odom_state = last_odom_state_;
   initialized_odom_state.SetPose(Mat4d::Identity());
   initialized_odom_state.V_ = Vec3d::Zero();
-  initialized_odom_state.bg_ = initialized_nav_state.bg_;
-  initialized_odom_state.ba_ = initialized_nav_state.ba_;
   initialized_odom_state.timestamp_ = curr_time_us_;
 
   LocalizationResult init_result;
@@ -393,17 +395,21 @@ Localization::InitializationResult Localization::Init() {
       init_result.map_ground_z = map_ground_z.value();
     }
   }
-  if (DiscardTimedOutFrameIfNeeded()) {
+  const auto initialized_lidar_cloud = TransformPointCloud(
+      VoxelGridCloud(curr_cloud_cluster_ptr_->ordered_cloud_, 0.5), init_pose);
+  const auto initialization_commit_now_us =
+      runtime::FrameProcessingWatchdog::SteadyNowMicroseconds();
+  if (DiscardTimedOutFrameIfNeeded(initialization_commit_now_us)) {
     return InitializationResult::kFailed;
   }
+  frame_processing_watchdog_.Complete(initialization_commit_now_us, false);
   curr_pose_ = init_pose;
   last_nav_state_ = initialized_nav_state;
   delta_pose_ = Mat4d::Identity();
   last_pose_ = init_pose;
   last_odom_state_ = initialized_odom_state;
   CacheResultToSystem(init_result);
-  UpdateCurrentLidarCloud(*TransformPointCloud(
-      VoxelGridCloud(curr_cloud_cluster_ptr_->ordered_cloud_, 0.5), init_pose));
+  UpdateCurrentLidarCloud(*initialized_lidar_cloud);
 
   return InitializationResult::kInitialized;
 }
@@ -560,8 +566,9 @@ void Localization::Run() {
 
         if (has_init_) {
           InitPreintegration();
+        } else {
+          complete_frame_without_timeout();
         }
-        complete_frame_without_timeout();
         continue;
       }
     }
@@ -573,10 +580,15 @@ void Localization::Run() {
       continue;
     }
 
+    const bool force_local_map_rebuild = force_local_map_rebuild_;
     Timer timer_load_map;
     auto local_map = LoadLocalMap(MapImuPoseToMapLidarPose(last_pose_));
     if (DiscardTimedOutFrameIfNeeded()) {
       continue;
+    }
+    if (force_local_map_rebuild) {
+      need_update_local_map_ = true;
+      force_local_map_rebuild_ = false;
     }
     if (need_update_local_map_) {
       if (!local_map || local_map->empty()) {
@@ -695,13 +707,17 @@ void Localization::Run() {
         result.map_ground_z = map_ground_z.value();
       }
     }
-    if (DiscardTimedOutFrameIfNeeded()) {
+    const auto current_lidar_cloud = TransformPointCloud(
+        VoxelGridCloud(curr_cloud_cluster_ptr_->ordered_cloud_, 0.5),
+        curr_pose);
+    const auto tracking_commit_now_us =
+        runtime::FrameProcessingWatchdog::SteadyNowMicroseconds();
+    if (DiscardTimedOutFrameIfNeeded(tracking_commit_now_us)) {
       continue;
     }
+    frame_processing_watchdog_.Complete(tracking_commit_now_us, false);
     CacheResultToSystem(result);
-    UpdateCurrentLidarCloud(*TransformPointCloud(
-        VoxelGridCloud(curr_cloud_cluster_ptr_->ordered_cloud_, 0.5),
-        curr_pose));
+    UpdateCurrentLidarCloud(*current_lidar_cloud);
 
     delta_pose_ = delta_pose;
     last_pose_ = curr_pose;
@@ -724,7 +740,6 @@ void Localization::Run() {
       odom_pre_integration_ptr_->SetGyroAccBias(curr_nav_state.bg_,
                                                 curr_nav_state.ba_);
     }
-    complete_frame_without_timeout();
   }
 }
 

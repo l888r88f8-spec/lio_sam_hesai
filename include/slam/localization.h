@@ -70,6 +70,8 @@ private:
 
     void InitMatcher();
 
+    bool DiscardTimedOutFrameIfNeeded(std::uint64_t now_us);
+
     bool DiscardTimedOutFrameIfNeeded();
 
     // Builds a fresh matcher without modifying matcher_. Automatic
@@ -162,6 +164,7 @@ private:
 
     bool use_tile_map_{false}; // Not recommended
     bool need_update_local_map_{};
+    bool force_local_map_rebuild_{false};
     double tile_map_grid_size_;
     double tile_map_grid_size_half_;
 

@@ -380,7 +380,7 @@ TEST(FrameProcessingPipelineSurface, DropsOverdueFramesBeforeStateCommit) {
 
   const std::string discard_body = ReadFunctionBody(
     "src/slam/localization.cpp",
-    "bool Localization::DiscardTimedOutFrameIfNeeded()");
+    "bool Localization::DiscardTimedOutFrameIfNeeded(");
   const std::array<std::string, 6> discard_tokens = {
     "frame_processing_watchdog_.Exceeded(",
     "Complete(",
@@ -397,14 +397,14 @@ TEST(FrameProcessingPipelineSurface, DropsOverdueFramesBeforeStateCommit) {
     "src/slam/localization.cpp",
     "Localization::InitializationResult Localization::Init()");
   const std::size_t initialization_deadline = initialization_body.find(
-    "DiscardTimedOutFrameIfNeeded()");
+    "DiscardTimedOutFrameIfNeeded(initialization_commit_now_us)");
   ASSERT_NE(initialization_deadline, std::string::npos);
   const std::array<std::string, 7> initialization_commit_tokens = {
-    "curr_pose_",
-    "last_nav_state_",
-    "delta_pose_",
-    "last_pose_",
-    "last_odom_state_",
+    "curr_pose_ =",
+    "last_nav_state_ =",
+    "delta_pose_ =",
+    "last_pose_ =",
+    "last_odom_state_ =",
     "CacheResultToSystem(",
     "UpdateCurrentLidarCloud(",
   };
@@ -427,6 +427,115 @@ TEST(FrameProcessingPipelineSurface, DropsOverdueFramesBeforeStateCommit) {
         "DiscardTimedOutFrameIfNeeded()"),
     std::string::npos)
     << "Init() owns the final deadline check before committing initialization";
+
+  ExpectToken("include/slam/localization.h", "force_local_map_rebuild_");
+  EXPECT_NE(discard_body.find("force_local_map_rebuild_ = true"),
+    std::string::npos);
+  const std::size_t force_local_map_rebuild = localization_run.find(
+    "const bool force_local_map_rebuild = force_local_map_rebuild_");
+  const std::size_t load_local_map = localization_run.find("LoadLocalMap(");
+  const std::size_t apply_forced_local_map = localization_run.find(
+    "if (force_local_map_rebuild)", load_local_map);
+  const std::size_t force_need_local_map_update = localization_run.find(
+    "need_update_local_map_ = true", apply_forced_local_map);
+  const std::size_t clear_forced_local_map = localization_run.find(
+    "force_local_map_rebuild_ = false", apply_forced_local_map);
+  const std::size_t add_local_map = localization_run.find(
+    "matcher_->AddCloudToLocalMap({*local_map})", apply_forced_local_map);
+  ASSERT_NE(force_local_map_rebuild, std::string::npos);
+  ASSERT_NE(load_local_map, std::string::npos);
+  ASSERT_NE(apply_forced_local_map, std::string::npos);
+  ASSERT_NE(force_need_local_map_update, std::string::npos);
+  ASSERT_NE(clear_forced_local_map, std::string::npos);
+  ASSERT_NE(add_local_map, std::string::npos);
+  EXPECT_LT(force_local_map_rebuild, load_local_map);
+  EXPECT_LT(load_local_map, apply_forced_local_map);
+  EXPECT_LT(apply_forced_local_map, force_need_local_map_update);
+  EXPECT_LT(force_need_local_map_update, clear_forced_local_map);
+  EXPECT_LT(apply_forced_local_map, clear_forced_local_map);
+  EXPECT_LT(clear_forced_local_map, add_local_map);
+
+  EXPECT_NE(initialization_body.find(
+    "NavStateData initialized_nav_state = last_nav_state_"),
+    std::string::npos);
+  EXPECT_NE(initialization_body.find(
+    "NavStateData initialized_odom_state = last_odom_state_"),
+    std::string::npos);
+  EXPECT_EQ(initialization_body.find("initialized_odom_state.bg_ ="),
+    std::string::npos);
+  EXPECT_EQ(initialization_body.find("initialized_odom_state.ba_ ="),
+    std::string::npos);
+  EXPECT_EQ(initialization_body.find("initialized_nav_state.bg_ ="),
+    std::string::npos);
+  EXPECT_EQ(initialization_body.find("initialized_nav_state.ba_ ="),
+    std::string::npos);
+
+  const std::size_t initialization_complete = initialization_body.find(
+    "Complete(initialization_commit_now_us, false)");
+  const std::size_t initialized_lidar_cloud = initialization_body.find(
+    "const auto initialized_lidar_cloud");
+  const std::size_t initialization_ground_estimate = initialization_body.find(
+    "EstimateMapGroundZ(");
+  const std::array<std::string, 7> initialization_atomic_commit_tokens = {
+    "curr_pose_ =",
+    "last_nav_state_ =",
+    "delta_pose_ =",
+    "last_pose_ =",
+    "last_odom_state_ =",
+    "CacheResultToSystem(",
+    "UpdateCurrentLidarCloud(",
+  };
+  ASSERT_NE(initialization_complete, std::string::npos);
+  ASSERT_NE(initialized_lidar_cloud, std::string::npos);
+  ASSERT_NE(initialization_ground_estimate, std::string::npos);
+  EXPECT_LT(initialization_ground_estimate, initialization_complete);
+  EXPECT_LT(initialized_lidar_cloud, initialization_complete);
+  for (const auto & token : initialization_atomic_commit_tokens) {
+    const std::size_t commit = initialization_body.find(token);
+    ASSERT_NE(commit, std::string::npos) << token;
+    EXPECT_LT(initialization_complete, commit);
+  }
+
+  const std::size_t tracking_complete = localization_run.find(
+    "Complete(tracking_commit_now_us, false)");
+  const std::size_t tracking_lidar_cloud = localization_run.find(
+    "const auto current_lidar_cloud");
+  const std::size_t tracking_ground_estimate = localization_run.find(
+    "EstimateMapGroundZ(", tracking_lidar_cloud == std::string::npos ? 0 :
+      localization_run.rfind("if (ConfigParameters::Instance()", tracking_lidar_cloud));
+  const std::array<std::string, 6> tracking_atomic_commit_tokens = {
+    "CacheResultToSystem(result)",
+    "UpdateCurrentLidarCloud(",
+    "delta_pose_ = delta_pose",
+    "last_pose_ = curr_pose",
+    "last_nav_state_ = curr_nav_state",
+    "last_odom_state_ = predict_odom_state",
+  };
+  ASSERT_NE(tracking_complete, std::string::npos);
+  ASSERT_NE(tracking_lidar_cloud, std::string::npos);
+  ASSERT_NE(tracking_ground_estimate, std::string::npos);
+  EXPECT_LT(tracking_ground_estimate, tracking_complete);
+  EXPECT_LT(tracking_lidar_cloud, tracking_complete);
+  for (const auto & token : tracking_atomic_commit_tokens) {
+    const std::size_t commit = localization_run.find(token);
+    ASSERT_NE(commit, std::string::npos) << token;
+    EXPECT_LT(tracking_complete, commit);
+  }
+  const std::string initialization_commit_and_after = initialization_body.substr(
+    initialization_complete +
+    std::string("Complete(initialization_commit_now_us, false)").size());
+  EXPECT_EQ(initialization_commit_and_after.find(
+    "DiscardTimedOutFrameIfNeeded"), std::string::npos);
+  EXPECT_EQ(initialization_commit_and_after.find(
+    "frame_processing_watchdog_.Complete("), std::string::npos);
+
+  const std::string tracking_commit_and_after = localization_run.substr(
+    tracking_complete +
+    std::string("Complete(tracking_commit_now_us, false)").size());
+  EXPECT_EQ(tracking_commit_and_after.find(
+    "DiscardTimedOutFrameIfNeeded"), std::string::npos);
+  EXPECT_EQ(tracking_commit_and_after.find(
+    "frame_processing_watchdog_.Complete("), std::string::npos);
 
   const std::array<std::string, 8> diagnostic_keys = {
     "preprocessing_last_frame_duration_ms",
