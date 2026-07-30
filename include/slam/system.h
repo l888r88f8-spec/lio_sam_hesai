@@ -61,6 +61,9 @@ class System : public rclcpp::Node {
 
   void PublishLocalizationPath();
   void PublishLocalizationHealth();
+  void PublishRuntimeDiagnostics();
+  void AppendRuntimeDiagnostics(
+      diagnostic_msgs::msg::DiagnosticStatus& status) const;
   void PublishTF(const Mat4d& map_base_pose, TimeStampUs timestamp);
 
   void LidarMsgCallBack(

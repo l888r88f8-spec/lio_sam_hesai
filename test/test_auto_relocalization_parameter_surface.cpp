@@ -298,11 +298,30 @@ TEST(SystemRuntimeResourceSurface, ConfiguresWorkersBeforeTheirRunLoops) {
     "localization_affinity_applied",
     "localization_affinity_errno",
   };
+  ExpectToken("include/slam/system.h", "void PublishRuntimeDiagnostics()");
+  ExpectToken("include/slam/system.h", "void AppendRuntimeDiagnostics(");
+
   const std::string diagnostics_body = ReadFunctionBody(
     "src/slam/system.cpp", "void System::PublishLocalizationHealth()");
+  const std::size_t health_disabled = diagnostics_body.find(
+    "if (!config.health_enable_)");
+  const std::size_t publish_runtime = diagnostics_body.find(
+    "PublishRuntimeDiagnostics();", health_disabled);
+  ASSERT_NE(health_disabled, std::string::npos);
+  ASSERT_NE(publish_runtime, std::string::npos);
+  EXPECT_LT(health_disabled, publish_runtime);
+
+  const std::string runtime_diagnostics_body = ReadFunctionBody(
+    "src/slam/system.cpp", "void System::PublishRuntimeDiagnostics()");
+  EXPECT_NE(runtime_diagnostics_body.find("diagnostics_pub_"), std::string::npos);
+  EXPECT_NE(
+    runtime_diagnostics_body.find("AppendRuntimeDiagnostics(status);"),
+    std::string::npos);
+
+  const std::string append_runtime_body = ReadFunctionBody(
+    "src/slam/system.cpp", "void System::AppendRuntimeDiagnostics(");
   for (const auto & key : diagnostic_keys) {
-    ExpectToken("src/slam/system.cpp", "add_value(\"" + key + "\"");
-    EXPECT_NE(diagnostics_body.find(key), std::string::npos);
+    EXPECT_NE(append_runtime_body.find(key), std::string::npos);
   }
 }
 

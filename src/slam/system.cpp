@@ -870,21 +870,18 @@ bool System::ProcessLocalizationResultCache(bool& had_new_result) {
 
 void System::PublishLocalizationHealth() {
   const auto& config = ConfigParameters::Instance();
-  if (!config.health_enable_ || !data_stream_watchdog_ ||
-      !localization_recovery_coordinator_ ||
-      !diagnostics_pub_) {
+  if (!diagnostics_pub_) {
+    return;
+  }
+  if (!config.health_enable_) {
+    PublishRuntimeDiagnostics();
+    return;
+  }
+  if (!data_stream_watchdog_ || !localization_recovery_coordinator_) {
     return;
   }
 
   const std::uint64_t steady_now_us = SteadyNowMicroseconds();
-  const runtime::ThreadRuntimeStatus preprocessing_runtime_status =
-      preprocessing_thread_runtime_
-          ? preprocessing_thread_runtime_->Snapshot()
-          : runtime::ThreadRuntimeStatus{};
-  const runtime::ThreadRuntimeStatus localization_runtime_status =
-      localization_thread_runtime_
-          ? localization_thread_runtime_->Snapshot()
-          : runtime::ThreadRuntimeStatus{};
 
   localization_health::HealthInputs inputs;
   inputs.has_imu_init = has_imu_init_.load();
@@ -976,6 +973,53 @@ void System::PublishLocalizationHealth() {
   add_value("map_ready", BoolString(inputs.map_ready));
   add_value("map_preparation_duration_ms",
             std::to_string(map_preparation_duration_ms));
+  AppendRuntimeDiagnostics(status);
+  add_value("rates_known", BoolString(inputs.stream.rates_known));
+  add_value("lidar_stalled", BoolString(inputs.stream.lidar_stalled));
+  add_value("imu_stalled", BoolString(inputs.stream.imu_stalled));
+  add_value("timestamp_monotonic",
+            BoolString(inputs.stream.timestamp_monotonic));
+  add_value("timestamp_jump", BoolString(inputs.stream.timestamp_jump));
+  diagnostics.status.emplace_back(std::move(status));
+  diagnostics_pub_->publish(diagnostics);
+}
+
+void System::PublishRuntimeDiagnostics() {
+  if (!diagnostics_pub_) {
+    return;
+  }
+
+  diagnostic_msgs::msg::DiagnosticArray diagnostics;
+  diagnostics.header.stamp = get_clock()->now();
+  diagnostic_msgs::msg::DiagnosticStatus status;
+  status.name = "lio_sam_hesai: runtime";
+  status.hardware_id = "lio_sam_hesai_relocalization";
+  status.level = diagnostic_msgs::msg::DiagnosticStatus::OK;
+  status.message = "runtime resource diagnostics";
+  AppendRuntimeDiagnostics(status);
+  diagnostics.status.emplace_back(std::move(status));
+  diagnostics_pub_->publish(diagnostics);
+}
+
+void System::AppendRuntimeDiagnostics(
+    diagnostic_msgs::msg::DiagnosticStatus& status) const {
+  const auto& config = ConfigParameters::Instance();
+  const runtime::ThreadRuntimeStatus preprocessing_runtime_status =
+      preprocessing_thread_runtime_
+          ? preprocessing_thread_runtime_->Snapshot()
+          : runtime::ThreadRuntimeStatus{};
+  const runtime::ThreadRuntimeStatus localization_runtime_status =
+      localization_thread_runtime_
+          ? localization_thread_runtime_->Snapshot()
+          : runtime::ThreadRuntimeStatus{};
+
+  const auto add_value = [&status](const std::string& key,
+                                   const std::string& value) {
+    diagnostic_msgs::msg::KeyValue item;
+    item.key = key;
+    item.value = value;
+    status.values.emplace_back(std::move(item));
+  };
   add_value("preprocessing_fifo_priority",
             std::to_string(config.runtime_preprocessing_fifo_priority_));
   add_value("preprocessing_cpu_core",
@@ -1000,14 +1044,6 @@ void System::PublishLocalizationHealth() {
             BoolString(localization_runtime_status.affinity_applied));
   add_value("localization_affinity_errno",
             std::to_string(localization_runtime_status.affinity_errno));
-  add_value("rates_known", BoolString(inputs.stream.rates_known));
-  add_value("lidar_stalled", BoolString(inputs.stream.lidar_stalled));
-  add_value("imu_stalled", BoolString(inputs.stream.imu_stalled));
-  add_value("timestamp_monotonic",
-            BoolString(inputs.stream.timestamp_monotonic));
-  add_value("timestamp_jump", BoolString(inputs.stream.timestamp_jump));
-  diagnostics.status.emplace_back(std::move(status));
-  diagnostics_pub_->publish(diagnostics);
 }
 
 void System::ApplyLocalizationZOffset(PCLPointCloudXYZI& cloud) const {
