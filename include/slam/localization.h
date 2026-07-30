@@ -95,7 +95,7 @@ private:
      * @param pose
      * @return local map cloud
      */
-    PCLPointCloudXYZI::Ptr LoadLocalMap(const Mat4d& pose);
+    PCLPointCloudXYZI::Ptr LoadLocalMap(const Mat4d& pose, bool force_rebuild = false);
 
     PCLPointCloudXYZI::Ptr LoadCandidateLocalMap(const Mat4d& pose);
 

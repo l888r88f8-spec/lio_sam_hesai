@@ -434,25 +434,38 @@ TEST(FrameProcessingPipelineSurface, DropsOverdueFramesBeforeStateCommit) {
   const std::size_t force_local_map_rebuild = localization_run.find(
     "const bool force_local_map_rebuild = force_local_map_rebuild_");
   const std::size_t load_local_map = localization_run.find("LoadLocalMap(");
-  const std::size_t apply_forced_local_map = localization_run.find(
-    "if (force_local_map_rebuild)", load_local_map);
-  const std::size_t force_need_local_map_update = localization_run.find(
-    "need_update_local_map_ = true", apply_forced_local_map);
+  const std::size_t force_rebuild_argument = localization_run.find(
+    "force_local_map_rebuild);", load_local_map);
   const std::size_t clear_forced_local_map = localization_run.find(
-    "force_local_map_rebuild_ = false", apply_forced_local_map);
+    "force_local_map_rebuild_ = false", load_local_map);
   const std::size_t add_local_map = localization_run.find(
-    "matcher_->AddCloudToLocalMap({*local_map})", apply_forced_local_map);
+    "matcher_->AddCloudToLocalMap({*local_map})", load_local_map);
   ASSERT_NE(force_local_map_rebuild, std::string::npos);
   ASSERT_NE(load_local_map, std::string::npos);
-  ASSERT_NE(apply_forced_local_map, std::string::npos);
-  ASSERT_NE(force_need_local_map_update, std::string::npos);
+  ASSERT_NE(force_rebuild_argument, std::string::npos);
   ASSERT_NE(clear_forced_local_map, std::string::npos);
   ASSERT_NE(add_local_map, std::string::npos);
   EXPECT_LT(force_local_map_rebuild, load_local_map);
-  EXPECT_LT(load_local_map, apply_forced_local_map);
-  EXPECT_LT(apply_forced_local_map, force_need_local_map_update);
-  EXPECT_LT(force_need_local_map_update, add_local_map);
+  EXPECT_LT(load_local_map, force_rebuild_argument);
+  EXPECT_LT(force_rebuild_argument, add_local_map);
   EXPECT_LT(add_local_map, clear_forced_local_map);
+
+  ExpectToken(
+    "include/slam/localization.h",
+    "LoadLocalMap(const Mat4d& pose, bool force_rebuild");
+  const std::string load_local_map_body = ReadFunctionBody(
+    "src/slam/localization.cpp",
+    "PCLPointCloudXYZI::Ptr Localization::LoadLocalMap(");
+  const std::size_t force_rebuild_input = load_local_map_body.find(
+    "need_update_local_map_ = force_rebuild");
+  const std::size_t global_map_early_return = load_local_map_body.find(
+    "if (!need_update_local_map_)");
+  const std::size_t global_crop = load_local_map_body.find("crop_box.filter(");
+  ASSERT_NE(force_rebuild_input, std::string::npos);
+  ASSERT_NE(global_map_early_return, std::string::npos);
+  ASSERT_NE(global_crop, std::string::npos);
+  EXPECT_LT(force_rebuild_input, global_map_early_return);
+  EXPECT_LT(global_map_early_return, global_crop);
 
   EXPECT_NE(initialization_body.find(
     "NavStateData initialized_nav_state = last_nav_state_"),

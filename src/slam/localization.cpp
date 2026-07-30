@@ -336,7 +336,7 @@ Localization::InitializationResult Localization::Init() {
   // with a fresh local-map matcher for both automatic and manual poses.
   InitMatcher();
   const auto local_map =
-      LoadLocalMap(MapImuPoseToMapLidarPose(init_pose));
+      LoadLocalMap(MapImuPoseToMapLidarPose(init_pose), false);
 
   if (!local_map || local_map->empty()) {
     LOG(WARNING) << "Initial local map is empty, please check localization map "
@@ -582,12 +582,10 @@ void Localization::Run() {
 
     const bool force_local_map_rebuild = force_local_map_rebuild_;
     Timer timer_load_map;
-    auto local_map = LoadLocalMap(MapImuPoseToMapLidarPose(last_pose_));
+    auto local_map = LoadLocalMap(
+        MapImuPoseToMapLidarPose(last_pose_), force_local_map_rebuild);
     if (DiscardTimedOutFrameIfNeeded()) {
       continue;
-    }
-    if (force_local_map_rebuild) {
-      need_update_local_map_ = true;
     }
     if (need_update_local_map_) {
       if (!local_map || local_map->empty()) {
@@ -992,8 +990,9 @@ std::optional<Mat4d> Localization::TryAutoRelocalize(
   return best_pose;
 }
 
-PCLPointCloudXYZI::Ptr Localization::LoadLocalMap(const Mat4d& pose) {
-  need_update_local_map_ = false;
+PCLPointCloudXYZI::Ptr Localization::LoadLocalMap(const Mat4d& pose,
+                                                   bool force_rebuild) {
+  need_update_local_map_ = force_rebuild;
 
   if (use_tile_map_) {
     const Vec2d position_xy = pose.block<2, 1>(0, 3);
