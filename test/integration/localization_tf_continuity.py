@@ -101,8 +101,6 @@ class FaultSchedule:
 class TfContinuityCollector:
     """Collect replay observations and return every TF-continuity violation."""
 
-    _ACTIVE_MODES = frozenset(("measured", "extrapolated"))
-
     def __init__(self, max_active_tf_spacing_seconds, schedule=None):
         max_spacing = _finite_seconds(max_active_tf_spacing_seconds)
         if max_spacing is None or max_spacing <= 0.0:
@@ -117,7 +115,6 @@ class TfContinuityCollector:
         self.path_events = []
         self._errors = []
         self._last_tf_timestamp = None
-        self._last_active_tf_timestamp = None
         self._last_auto_trigger = None
         self._stream_recovery_auto_trigger_count = 0
 
@@ -141,24 +138,20 @@ class TfContinuityCollector:
         hold_reason = str(hold_reason).strip().lower()
         if mode not in {"measured", "extrapolated", "held"}:
             self._errors.append(f"TF mode is not recognized: {mode!r}")
-        if self._last_tf_timestamp is not None and timestamp < self._last_tf_timestamp:
-            self._errors.append(
-                "TF timestamp regressed: "
-                f"{timestamp:.6f} < {self._last_tf_timestamp:.6f}"
-            )
+        if self._last_tf_timestamp is not None:
+            spacing = timestamp - self._last_tf_timestamp
+            if spacing < 0.0:
+                self._errors.append(
+                    "TF timestamp regressed: "
+                    f"{timestamp:.6f} < {self._last_tf_timestamp:.6f}"
+                )
+            elif spacing > self.max_active_tf_spacing_seconds:
+                self._errors.append(
+                    "TF spacing "
+                    f"{spacing:.6f}s exceeds {self.max_active_tf_spacing_seconds:.6f}s "
+                    f"(mode={mode})"
+                )
         self._last_tf_timestamp = timestamp
-
-        if mode in self._ACTIVE_MODES:
-            if self._last_active_tf_timestamp is not None:
-                spacing = timestamp - self._last_active_tf_timestamp
-                if spacing > self.max_active_tf_spacing_seconds:
-                    self._errors.append(
-                        "TF active-mode spacing "
-                        f"{spacing:.6f}s exceeds {self.max_active_tf_spacing_seconds:.6f}s"
-                    )
-            self._last_active_tf_timestamp = timestamp
-        else:
-            self._last_active_tf_timestamp = None
 
         self.tf_events.append(
             {
@@ -226,19 +219,24 @@ class TfContinuityCollector:
                 "missing extrapolated map->base_link TF within "
                 f"{lidar_start:.1f}-{lidar_start + _EXTRAPOLATION_DEADLINE_SECONDS:.1f}s"
             )
-        if not self._has_tf(
+        lidar_held = self._matching_tf(
             lambda event: event["mode"] == "held"
             and lidar_start <= event["replay_seconds"] < lidar_end
-        ):
-            errors.append(f"missing held map->base_link TF before {lidar_end:.1f}s")
-        if not self._has_tf(
+        )
+        if len(lidar_held) < 2:
+            errors.append(
+                "missing sustained held map->base_link TF during "
+                f"{lidar_start:.1f}-{lidar_end:.1f}s (observed {len(lidar_held)}, need 2)"
+            )
+        all_held = self._matching_tf(
             lambda event: event["mode"] == "held"
             and event["hold_reason"] == "imu_unavailable"
             and all_start <= event["replay_seconds"] < all_end
-        ):
+        )
+        if len(all_held) < 2:
             errors.append(
-                "missing held map->base_link TF with imu_unavailable during "
-                f"{all_start:.1f}-{all_end:.1f}s"
+                "missing sustained held map->base_link TF with imu_unavailable during "
+                f"{all_start:.1f}-{all_end:.1f}s (observed {len(all_held)}, need 2)"
             )
         if not self._has_tf(
             lambda event: event["mode"] == "measured" and event["replay_seconds"] >= all_end
@@ -274,6 +272,9 @@ class TfContinuityCollector:
 
     def _has_tf(self, predicate):
         return any(predicate(event) for event in self.tf_events)
+
+    def _matching_tf(self, predicate):
+        return [event for event in self.tf_events if predicate(event)]
 
 
 def _finite_vector(values):

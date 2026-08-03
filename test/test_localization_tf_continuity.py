@@ -30,7 +30,9 @@ class TfContinuityCollectorTest(unittest.TestCase):
         collector.tf(29.0, "measured")
         collector.tf(30.1, "extrapolated")
         collector.tf(31.0, "held")
+        collector.tf(39.0, "held")
         collector.tf(55.0, "held", "imu_unavailable")
+        collector.tf(55.1, "held", "imu_unavailable")
         collector.tf(65.0, "measured")
 
         self.assertEqual(collector.assert_contracts(), [])
@@ -44,13 +46,36 @@ class TfContinuityCollectorTest(unittest.TestCase):
             any("TF timestamp regressed" in error for error in collector.assert_contracts())
         )
 
-    def test_collector_reports_too_large_active_tf_spacing(self):
+    def test_collector_reports_too_large_tf_spacing(self):
         collector = TfContinuityCollector(0.10)
         collector.tf(29.0, "measured")
         collector.tf(29.11, "measured")
 
         self.assertTrue(
-            any("active-mode spacing" in error for error in collector.assert_contracts())
+            any("TF spacing" in error for error in collector.assert_contracts())
+        )
+
+    def test_collector_reports_too_large_held_tf_spacing(self):
+        collector = TfContinuityCollector(0.10)
+        collector.tf(29.0, "measured")
+        collector.tf(29.05, "measured")
+        collector.tf(30.0, "held")
+        collector.tf(30.20, "held")
+
+        self.assertTrue(
+            any("mode=held" in error for error in collector.assert_contracts())
+        )
+
+    def test_collector_requires_sustained_held_tf_in_each_outage(self):
+        collector = TfContinuityCollector(20.0)
+        collector.tf(29.0, "measured")
+        collector.tf(30.1, "extrapolated")
+        collector.tf(31.0, "held")
+        collector.tf(55.0, "held", "imu_unavailable")
+        collector.tf(65.0, "measured")
+
+        self.assertTrue(
+            any("sustained held" in error for error in collector.assert_contracts())
         )
 
     def test_collector_limits_stream_recovery_auto_trigger_to_one(self):
@@ -58,7 +83,9 @@ class TfContinuityCollectorTest(unittest.TestCase):
         collector.tf(29.0, "measured")
         collector.tf(30.1, "extrapolated")
         collector.tf(31.0, "held")
+        collector.tf(39.0, "held")
         collector.tf(55.0, "held", "imu_unavailable")
+        collector.tf(55.1, "held", "imu_unavailable")
         collector.tf(65.0, "measured")
         collector.diagnostic(61.0, {"auto_relocalization_trigger": "stream_recovered"})
         collector.diagnostic(61.5, {"auto_relocalization_trigger": "none"})
