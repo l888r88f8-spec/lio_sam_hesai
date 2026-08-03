@@ -29,6 +29,8 @@ _RUNTIME_PARAMETER_LINE = re.compile(
     r"^(?P<indent>\s*)(?P<key>map_path|ground_map_path|sc_db_path)\s*:"
     r"(?P<value>.*)$"
 )
+_SENSOR_TOPIC_HEADER_LINE = re.compile(r"^(?P<indent>\s*)sensor_topic\s*:(?P<value>.*)$")
+_YAML_SCALAR_LINE = re.compile(r"^(?P<indent>\s*)(?P<key>[^\s:#][^:#]*)\s*:(?P<value>.*)$")
 _PCD_HEADER_LIMIT_BYTES = 64 * 1024
 _PCD_DATA_ENCODINGS = frozenset((b"ascii", b"binary", b"binary_compressed"))
 
@@ -75,7 +77,7 @@ def validate_dataset(bag_dir: Path, map_dir: Path) -> DatasetIdentity:
     )
 
 
-def write_runtime_parameters(template, map_dir, output_dir):
+def write_runtime_parameters(template, map_dir, output_dir, topic_overrides=None):
     template_path = Path(template)
     if not template_path.is_file():
         raise DatasetError(f"Runtime parameter template is missing: {template_path}")
@@ -91,12 +93,37 @@ def write_runtime_parameters(template, map_dir, output_dir):
         "ground_map_path": map_path / "GroundMap.pcd",
         "sc_db_path": map_path / "sc_db.bin",
     }
+    topic_overrides = _validate_topic_overrides(topic_overrides)
     replacement_counts = {key: 0 for key in replacements}
+    topic_override_counts = {key: 0 for key in topic_overrides}
+    sensor_topic_indent = None
     rendered_lines = []
 
     for line in template_text.splitlines(keepends=True):
         content = line.rstrip("\r\n")
         line_ending = line[len(content) :]
+
+        sensor_topic_header = _SENSOR_TOPIC_HEADER_LINE.fullmatch(content)
+        if sensor_topic_header is not None:
+            sensor_topic_indent = len(sensor_topic_header.group("indent"))
+            rendered_lines.append(line)
+            continue
+
+        scalar_line = _YAML_SCALAR_LINE.fullmatch(content)
+        if sensor_topic_indent is not None and scalar_line is not None:
+            indentation = len(scalar_line.group("indent"))
+            if indentation <= sensor_topic_indent:
+                sensor_topic_indent = None
+            elif scalar_line.group("key").strip() in topic_overrides:
+                key = scalar_line.group("key").strip()
+                topic_override_counts[key] += 1
+                _, comment = _split_inline_yaml_comment(scalar_line.group("value"))
+                rendered_lines.append(
+                    f"{scalar_line.group('indent')}{key}: "
+                    f"{json.dumps(topic_overrides[key])}{comment}{line_ending}"
+                )
+                continue
+
         match = _RUNTIME_PARAMETER_LINE.fullmatch(content)
         if match is None:
             rendered_lines.append(line)
@@ -117,6 +144,17 @@ def write_runtime_parameters(template, map_dir, output_dir):
             f"Runtime parameter keys must each occur exactly once ({counts})"
         )
 
+    invalid_topics = [key for key, count in topic_override_counts.items() if count != 1]
+    if invalid_topics:
+        counts = ", ".join(
+            f"sensor_topic.{key}={topic_override_counts[key]}"
+            for key in topic_override_counts
+        )
+        raise DatasetError(
+            "Runtime parameter sensor_topic leaves must each occur exactly once "
+            f"({counts})"
+        )
+
     output_path = Path(output_dir) / "relocalization.runtime.yaml"
     try:
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -124,6 +162,22 @@ def write_runtime_parameters(template, map_dir, output_dir):
     except OSError as error:
         raise DatasetError(f"Unable to write runtime parameters {output_path}: {error}") from error
     return output_path
+
+
+def _validate_topic_overrides(topic_overrides) -> dict[str, str]:
+    if topic_overrides is None:
+        return {}
+    if not isinstance(topic_overrides, Mapping):
+        raise DatasetError("topic_overrides must be a mapping")
+
+    validated = {}
+    for leaf, topic in topic_overrides.items():
+        if not isinstance(leaf, str) or not leaf:
+            raise DatasetError("topic_overrides keys must be non-empty strings")
+        if not isinstance(topic, str) or not topic:
+            raise DatasetError("topic_overrides values must be non-empty strings")
+        validated[leaf] = topic
+    return validated
 
 
 def terminate_process_group(pid, timeout_seconds=10.0):

@@ -1,0 +1,676 @@
+#!/usr/bin/env python3
+"""Fault-injected rosbag acceptance harness for localization TF continuity.
+
+The collector and fault schedule deliberately have no ROS imports so their
+acceptance contract can run in ordinary Python CI.  ROS is imported only by
+the bounded replay runner.
+"""
+
+from __future__ import annotations
+
+import argparse
+from collections.abc import Mapping
+from dataclasses import asdict, dataclass
+import json
+import math
+import os
+from pathlib import Path
+import signal
+import subprocess
+import sys
+import time
+
+from stability_common import DatasetError, validate_dataset, write_runtime_parameters
+
+
+_TARGET_DIAGNOSTIC = "lio_sam_hesai: localization"
+_RAW_LIDAR_TOPIC = "/lidar_points"
+_RAW_IMU_TOPIC = "/imu"
+_RELAY_LIDAR_TOPIC = "/tf_continuity_test/lidar_points"
+_RELAY_IMU_TOPIC = "/tf_continuity_test/imu"
+_LOCALIZATION_ODOM_TOPIC = "/lio_sam/localization/odometry"
+_LOCALIZATION_PATH_TOPIC = "/lio_sam/localization/path"
+_MAX_ACTIVE_TF_SPACING_SECONDS = 0.10
+_EXTRAPOLATION_DEADLINE_SECONDS = 0.5
+_STARTUP_TIMEOUT_SECONDS = 10.0
+_PROCESS_STOP_TIMEOUT_SECONDS = 10.0
+_PLAYBACK_TIMEOUT_ALLOWANCE_SECONDS = 45.0
+_FINAL_CALLBACK_DRAIN_COUNT = 128
+
+
+def _finite_seconds(value):
+    if isinstance(value, bool):
+        return None
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return seconds if math.isfinite(seconds) else None
+
+
+@dataclass(frozen=True)
+class FaultSchedule:
+    """Replay-relative outage windows; the end of every window is exclusive."""
+
+    lidar_outage: tuple[float, float] = (30.0, 40.0)
+    all_outage: tuple[float, float] = (50.0, 60.0)
+
+    def __post_init__(self):
+        lidar_outage = self._validated_window("lidar_outage", self.lidar_outage)
+        all_outage = self._validated_window("all_outage", self.all_outage)
+        if max(lidar_outage[0], all_outage[0]) < min(lidar_outage[1], all_outage[1]):
+            raise ValueError("lidar_outage and all_outage must not overlap")
+        object.__setattr__(self, "lidar_outage", lidar_outage)
+        object.__setattr__(self, "all_outage", all_outage)
+
+    @staticmethod
+    def _validated_window(name, window):
+        if not isinstance(window, tuple) or len(window) != 2:
+            raise ValueError(f"{name} must be a (start, end) tuple")
+        start = _finite_seconds(window[0])
+        end = _finite_seconds(window[1])
+        if start is None or end is None or start < 0.0 or end <= start:
+            raise ValueError(f"{name} must have finite non-negative start < end")
+        return (start, end)
+
+    @staticmethod
+    def _in_window(seconds, window):
+        return window[0] <= seconds < window[1]
+
+    def forward_lidar(self, replay_seconds):
+        seconds = _finite_seconds(replay_seconds)
+        if seconds is None:
+            return False
+        return not (
+            self._in_window(seconds, self.lidar_outage)
+            or self._in_window(seconds, self.all_outage)
+        )
+
+    def forward_imu(self, replay_seconds):
+        seconds = _finite_seconds(replay_seconds)
+        return seconds is not None and not self._in_window(seconds, self.all_outage)
+
+    def in_any_outage(self, replay_seconds):
+        seconds = _finite_seconds(replay_seconds)
+        return seconds is not None and (
+            self._in_window(seconds, self.lidar_outage)
+            or self._in_window(seconds, self.all_outage)
+        )
+
+
+class TfContinuityCollector:
+    """Collect replay observations and return every TF-continuity violation."""
+
+    _ACTIVE_MODES = frozenset(("measured", "extrapolated"))
+
+    def __init__(self, max_active_tf_spacing_seconds, schedule=None):
+        max_spacing = _finite_seconds(max_active_tf_spacing_seconds)
+        if max_spacing is None or max_spacing <= 0.0:
+            raise ValueError("max_active_tf_spacing_seconds must be positive and finite")
+        self.max_active_tf_spacing_seconds = max_spacing
+        self.schedule = schedule if schedule is not None else FaultSchedule()
+        if not isinstance(self.schedule, FaultSchedule):
+            raise ValueError("schedule must be a FaultSchedule")
+        self.tf_events = []
+        self.diagnostic_events = []
+        self.odom_events = []
+        self.path_events = []
+        self._errors = []
+        self._last_tf_timestamp = None
+        self._last_active_tf_timestamp = None
+        self._last_auto_trigger = None
+        self._stream_recovery_auto_trigger_count = 0
+
+    def tf(
+        self,
+        timestamp_seconds,
+        mode,
+        hold_reason="none",
+        replay_seconds=None,
+        translation=None,
+        rotation=None,
+    ):
+        timestamp = _finite_seconds(timestamp_seconds)
+        replay_time = _finite_seconds(
+            timestamp_seconds if replay_seconds is None else replay_seconds
+        )
+        if timestamp is None or replay_time is None:
+            self._errors.append("TF observation has a non-finite timestamp")
+            return
+        mode = str(mode).strip().lower()
+        hold_reason = str(hold_reason).strip().lower()
+        if mode not in {"measured", "extrapolated", "held"}:
+            self._errors.append(f"TF mode is not recognized: {mode!r}")
+        if self._last_tf_timestamp is not None and timestamp < self._last_tf_timestamp:
+            self._errors.append(
+                "TF timestamp regressed: "
+                f"{timestamp:.6f} < {self._last_tf_timestamp:.6f}"
+            )
+        self._last_tf_timestamp = timestamp
+
+        if mode in self._ACTIVE_MODES:
+            if self._last_active_tf_timestamp is not None:
+                spacing = timestamp - self._last_active_tf_timestamp
+                if spacing > self.max_active_tf_spacing_seconds:
+                    self._errors.append(
+                        "TF active-mode spacing "
+                        f"{spacing:.6f}s exceeds {self.max_active_tf_spacing_seconds:.6f}s"
+                    )
+            self._last_active_tf_timestamp = timestamp
+        else:
+            self._last_active_tf_timestamp = None
+
+        self.tf_events.append(
+            {
+                "replay_seconds": replay_time,
+                "stamp_seconds": timestamp,
+                "mode": mode,
+                "hold_reason": hold_reason,
+                "translation": _finite_vector(translation),
+                "rotation": _finite_vector(rotation),
+            }
+        )
+
+    def diagnostic(self, replay_seconds, values, health_state=None, level=None):
+        replay_time = _finite_seconds(replay_seconds)
+        if replay_time is None:
+            self._errors.append("diagnostic observation has a non-finite replay timestamp")
+            return
+        if not isinstance(values, Mapping):
+            self._errors.append("diagnostic values must be a mapping")
+            return
+        relevant = {
+            key: str(values[key])
+            for key in ("tf_mode", "tf_hold_reason", "auto_relocalization_trigger")
+            if key in values
+        }
+        trigger = relevant.get("auto_relocalization_trigger", "none").strip().lower()
+        if trigger == "stream_recovered" and self._last_auto_trigger != "stream_recovered":
+            self._stream_recovery_auto_trigger_count += 1
+        self._last_auto_trigger = trigger
+        self.diagnostic_events.append(
+            {
+                "replay_seconds": replay_time,
+                "health_state": None if health_state is None else str(health_state),
+                "level": level,
+                "values": relevant,
+            }
+        )
+
+    def odom(self, replay_seconds):
+        self._record_output_event(self.odom_events, "odometry", replay_seconds)
+
+    def path(self, replay_seconds):
+        self._record_output_event(self.path_events, "path", replay_seconds)
+
+    def _record_output_event(self, events, label, replay_seconds):
+        replay_time = _finite_seconds(replay_seconds)
+        if replay_time is None:
+            self._errors.append(f"{label} observation has a non-finite replay timestamp")
+            return
+        events.append({"replay_seconds": replay_time})
+
+    def assert_contracts(self):
+        """Return clear failures instead of raising, so the JSON artifact is complete."""
+        errors = list(self._errors)
+        lidar_start, lidar_end = self.schedule.lidar_outage
+        all_start, all_end = self.schedule.all_outage
+
+        if not self._has_tf(lambda event: event["mode"] == "measured" and event["replay_seconds"] < lidar_start):
+            errors.append(f"missing measured map->base_link TF before {lidar_start:.1f}s")
+        if not self._has_tf(
+            lambda event: event["mode"] == "extrapolated"
+            and lidar_start <= event["replay_seconds"] < lidar_start + _EXTRAPOLATION_DEADLINE_SECONDS
+        ):
+            errors.append(
+                "missing extrapolated map->base_link TF within "
+                f"{lidar_start:.1f}-{lidar_start + _EXTRAPOLATION_DEADLINE_SECONDS:.1f}s"
+            )
+        if not self._has_tf(
+            lambda event: event["mode"] == "held"
+            and lidar_start <= event["replay_seconds"] < lidar_end
+        ):
+            errors.append(f"missing held map->base_link TF before {lidar_end:.1f}s")
+        if not self._has_tf(
+            lambda event: event["mode"] == "held"
+            and event["hold_reason"] == "imu_unavailable"
+            and all_start <= event["replay_seconds"] < all_end
+        ):
+            errors.append(
+                "missing held map->base_link TF with imu_unavailable during "
+                f"{all_start:.1f}-{all_end:.1f}s"
+            )
+        if not self._has_tf(
+            lambda event: event["mode"] == "measured" and event["replay_seconds"] >= all_end
+        ):
+            errors.append(f"missing measured map->base_link TF after {all_end:.1f}s")
+
+        for label, events in (("odometry", self.odom_events), ("path", self.path_events)):
+            for event in events:
+                replay_time = event["replay_seconds"]
+                if self.schedule.in_any_outage(replay_time):
+                    errors.append(
+                        f"{label} message emitted during injected outage at {replay_time:.6f}s"
+                    )
+
+        if self._stream_recovery_auto_trigger_count > 1:
+            errors.append(
+                "auto_relocalization_trigger=stream_recovered occurred "
+                f"{self._stream_recovery_auto_trigger_count} times (maximum 1)"
+            )
+        return errors
+
+    def report(self, violations):
+        return {
+            "fault_schedule": asdict(self.schedule),
+            "max_active_tf_spacing_seconds": self.max_active_tf_spacing_seconds,
+            "tf": self.tf_events,
+            "diagnostics": self.diagnostic_events,
+            "odometry": self.odom_events,
+            "path": self.path_events,
+            "stream_recovery_auto_trigger_count": self._stream_recovery_auto_trigger_count,
+            "violations": list(violations),
+        }
+
+    def _has_tf(self, predicate):
+        return any(predicate(event) for event in self.tf_events)
+
+
+def _finite_vector(values):
+    if values is None:
+        return None
+    try:
+        vector = tuple(_finite_seconds(value) for value in values)
+    except TypeError:
+        return None
+    return list(vector) if all(value is not None for value in vector) else None
+
+
+class ReplayError(RuntimeError):
+    pass
+
+
+def build_argument_parser():
+    parser = argparse.ArgumentParser(
+        description="Verify map->base_link TF continuity through deterministic sensor outages."
+    )
+    parser.add_argument("--bag", required=True, type=Path)
+    parser.add_argument("--map", required=True, type=Path)
+    parser.add_argument("--params-template", required=True, type=Path)
+    parser.add_argument("--output-dir", required=True, type=Path)
+    parser.add_argument(
+        "--post-recovery-seconds",
+        type=float,
+        default=10.0,
+        help="Replay time to observe after the all-sensor outage (default: 10).",
+    )
+    return parser
+
+
+def main(argv=None):
+    arguments = build_argument_parser().parse_args(argv)
+    schedule = FaultSchedule()
+    collector = TfContinuityCollector(_MAX_ACTIVE_TF_SPACING_SECONDS, schedule)
+    output_dir = arguments.output_dir
+    identity = None
+    runtime_parameters = None
+    error_message = None
+    violations = []
+    exit_code = 0
+
+    try:
+        post_recovery_seconds = _positive_seconds(
+            arguments.post_recovery_seconds, "--post-recovery-seconds"
+        )
+        output_dir.mkdir(parents=True, exist_ok=True)
+        identity = validate_dataset(arguments.bag, arguments.map)
+        runtime_parameters = write_runtime_parameters(
+            arguments.params_template,
+            arguments.map,
+            output_dir,
+            topic_overrides={
+                "lidar_topic": _RELAY_LIDAR_TOPIC,
+                "imu_topic": _RELAY_IMU_TOPIC,
+            },
+        )
+        _run_replay(arguments, runtime_parameters, collector, schedule, post_recovery_seconds)
+        violations = collector.assert_contracts()
+        if violations:
+            exit_code = 1
+            for violation in violations:
+                print(f"TF continuity violation: {violation}", file=sys.stderr)
+    except KeyboardInterrupt:
+        exit_code = 130
+        error_message = "interrupted"
+    except (DatasetError, ReplayError, OSError, ValueError) as error:
+        exit_code = 2
+        error_message = str(error)
+        print(f"TF continuity replay failed: {error_message}", file=sys.stderr)
+    except Exception as error:
+        exit_code = 2
+        error_message = f"unexpected {type(error).__name__}: {error}"
+        print(f"TF continuity replay failed: {error_message}", file=sys.stderr)
+    finally:
+        if error_message is not None:
+            violations = list(violations) + [f"harness error: {error_message}"]
+        _write_artifact(
+            output_dir,
+            collector,
+            identity,
+            runtime_parameters,
+            violations,
+            error_message,
+        )
+    return exit_code
+
+
+def _positive_seconds(value, label):
+    seconds = _finite_seconds(value)
+    if seconds is None or seconds <= 0.0:
+        raise ValueError(f"{label} must be positive and finite")
+    return seconds
+
+
+def _write_artifact(output_dir, collector, identity, runtime_parameters, violations, error_message):
+    try:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        artifact = collector.report(violations)
+        artifact["dataset"] = None if identity is None else {
+            "duration_ns": identity.duration_ns,
+            "message_count": identity.message_count,
+            "topic_counts": dict(identity.topic_counts),
+            "map_points": identity.map_points,
+        }
+        artifact["runtime_parameters"] = (
+            None if runtime_parameters is None else str(runtime_parameters)
+        )
+        artifact["error"] = error_message
+        (output_dir / "tf-continuity.json").write_text(
+            json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+    except OSError as error:
+        print(f"unable to write TF continuity artifact: {error}", file=sys.stderr)
+
+
+def _run_replay(arguments, runtime_parameters, collector, schedule, post_recovery_seconds):
+    """Run the ROS relay, launch, and player until post-outage recovery is observable."""
+    import rclpy
+    from rclpy.parameter import Parameter
+
+    domain_id = str(230 + (os.getpid() % 20))
+    environment = os.environ.copy()
+    environment["ROS_DOMAIN_ID"] = domain_id
+    previous_domain_id = os.environ.get("ROS_DOMAIN_ID")
+    os.environ["ROS_DOMAIN_ID"] = domain_id
+
+    launch_command = [
+        "ros2",
+        "launch",
+        "lio_sam_hesai",
+        "localization_with_nonground.launch.py",
+        "use_sim:=true",
+        "use_rviz:=false",
+        "publish_static_tf:=true",
+        f"params_file:={runtime_parameters}",
+    ]
+    player_command = [
+        "ros2",
+        "bag",
+        "play",
+        str(arguments.bag),
+        "--clock",
+        "100",
+        "--rate",
+        "1.0",
+        "--start-offset",
+        "0",
+        "--disable-keyboard-controls",
+    ]
+
+    launch_process = None
+    player_process = None
+    node = None
+    rclpy_initialized = False
+    launch_log = None
+    player_log = None
+    try:
+        arguments.output_dir.mkdir(parents=True, exist_ok=True)
+        launch_log = (arguments.output_dir / "launch.log").open("w", encoding="utf-8")
+        player_log = (arguments.output_dir / "bag-play.log").open("w", encoding="utf-8")
+        rclpy.init(args=None)
+        rclpy_initialized = True
+        node = rclpy.create_node(
+            "localization_tf_continuity_harness",
+            parameter_overrides=[Parameter("use_sim_time", value=True)],
+        )
+        relay = _TfContinuityRelay(node, collector, schedule)
+        launch_process = subprocess.Popen(
+            launch_command,
+            stdout=launch_log,
+            stderr=subprocess.STDOUT,
+            env=environment,
+            start_new_session=True,
+        )
+        _wait_for_launch(node, launch_process)
+        player_process = subprocess.Popen(
+            player_command,
+            stdout=player_log,
+            stderr=subprocess.STDOUT,
+            env=environment,
+            start_new_session=True,
+        )
+        _spin_fault_window(
+            node,
+            launch_process,
+            player_process,
+            relay,
+            schedule.all_outage[1] + post_recovery_seconds,
+        )
+    finally:
+        cleanup_error = None
+        for process in (player_process, launch_process):
+            try:
+                _stop_process_group(process)
+            except ReplayError as error:
+                if cleanup_error is None:
+                    cleanup_error = error
+        if node is not None:
+            node.destroy_node()
+        if rclpy_initialized:
+            rclpy.shutdown()
+        if launch_log is not None:
+            launch_log.close()
+        if player_log is not None:
+            player_log.close()
+        if previous_domain_id is None:
+            os.environ.pop("ROS_DOMAIN_ID", None)
+        else:
+            os.environ["ROS_DOMAIN_ID"] = previous_domain_id
+        if cleanup_error is not None and sys.exc_info()[0] is None:
+            raise cleanup_error
+
+
+class _TfContinuityRelay:
+    """One ROS node that gates raw inputs and records output at replay time."""
+
+    def __init__(self, node, collector, schedule):
+        from diagnostic_msgs.msg import DiagnosticArray
+        from nav_msgs.msg import Odometry, Path
+        from rclpy.qos import QoSProfile, QoSReliabilityPolicy, qos_profile_sensor_data
+        from rosgraph_msgs.msg import Clock
+        from sensor_msgs.msg import Imu, PointCloud2
+        from tf2_msgs.msg import TFMessage
+
+        self.node = node
+        self.collector = collector
+        self.schedule = schedule
+        self._first_clock_seconds = None
+        self._latest_clock_seconds = None
+        self._last_tf_mode = "unknown"
+        self._last_tf_hold_reason = "unknown"
+        sensor_qos = qos_profile_sensor_data
+        reliable_qos = QoSProfile(depth=100, reliability=QoSReliabilityPolicy.RELIABLE)
+        self._lidar_publisher = node.create_publisher(PointCloud2, _RELAY_LIDAR_TOPIC, sensor_qos)
+        self._imu_publisher = node.create_publisher(Imu, _RELAY_IMU_TOPIC, sensor_qos)
+        node.create_subscription(Clock, "/clock", self._clock_callback, sensor_qos)
+        node.create_subscription(PointCloud2, _RAW_LIDAR_TOPIC, self._lidar_callback, sensor_qos)
+        node.create_subscription(Imu, _RAW_IMU_TOPIC, self._imu_callback, sensor_qos)
+        node.create_subscription(TFMessage, "/tf", self._tf_callback, reliable_qos)
+        node.create_subscription(DiagnosticArray, "/diagnostics", self._diagnostics_callback, reliable_qos)
+        node.create_subscription(Odometry, _LOCALIZATION_ODOM_TOPIC, self._odom_callback, reliable_qos)
+        node.create_subscription(Path, _LOCALIZATION_PATH_TOPIC, self._path_callback, reliable_qos)
+
+    @property
+    def replay_seconds(self):
+        if self._first_clock_seconds is None or self._latest_clock_seconds is None:
+            return None
+        return self._latest_clock_seconds - self._first_clock_seconds
+
+    def _clock_callback(self, message):
+        seconds = _ros_time_seconds(message.clock)
+        if seconds is None:
+            return
+        if self._first_clock_seconds is None:
+            self._first_clock_seconds = seconds
+        self._latest_clock_seconds = seconds
+
+    def _lidar_callback(self, message):
+        replay_seconds = self._sensor_replay_seconds(message)
+        if replay_seconds is not None and self.schedule.forward_lidar(replay_seconds):
+            self._lidar_publisher.publish(message)
+
+    def _imu_callback(self, message):
+        replay_seconds = self._sensor_replay_seconds(message)
+        if replay_seconds is not None and self.schedule.forward_imu(replay_seconds):
+            self._imu_publisher.publish(message)
+
+    def _sensor_replay_seconds(self, message):
+        if self._first_clock_seconds is None:
+            return None
+        header_stamp = _ros_time_seconds(getattr(getattr(message, "header", None), "stamp", None))
+        if header_stamp is not None and header_stamp >= self._first_clock_seconds - 1.0:
+            return header_stamp - self._first_clock_seconds
+        return self.replay_seconds
+
+    def _tf_callback(self, message):
+        replay_seconds = self.replay_seconds
+        if replay_seconds is None:
+            return
+        for transform in message.transforms:
+            if not _is_map_to_base_link(transform):
+                continue
+            translation = transform.transform.translation
+            rotation = transform.transform.rotation
+            self.collector.tf(
+                _ros_time_seconds(transform.header.stamp),
+                self._last_tf_mode,
+                self._last_tf_hold_reason,
+                replay_seconds,
+                (translation.x, translation.y, translation.z),
+                (rotation.x, rotation.y, rotation.z, rotation.w),
+            )
+
+    def _diagnostics_callback(self, message):
+        replay_seconds = self.replay_seconds
+        if replay_seconds is None:
+            return
+        for status in message.status:
+            if status.name != _TARGET_DIAGNOSTIC:
+                continue
+            values = {value.key: value.value for value in status.values}
+            self.collector.diagnostic(
+                replay_seconds, values, health_state=status.message, level=int(status.level)
+            )
+            if "tf_mode" in values:
+                self._last_tf_mode = values["tf_mode"].strip().lower()
+            if "tf_hold_reason" in values:
+                self._last_tf_hold_reason = values["tf_hold_reason"].strip().lower()
+
+    def _odom_callback(self, message):
+        del message
+        if self.replay_seconds is not None:
+            self.collector.odom(self.replay_seconds)
+
+    def _path_callback(self, message):
+        del message
+        if self.replay_seconds is not None:
+            self.collector.path(self.replay_seconds)
+
+
+def _is_map_to_base_link(transform):
+    return (
+        transform.header.frame_id.lstrip("/") == "map"
+        and transform.child_frame_id.lstrip("/") == "base_link"
+    )
+
+
+def _ros_time_seconds(time_message):
+    if time_message is None:
+        return None
+    seconds = _finite_seconds(getattr(time_message, "sec", None))
+    nanoseconds = _finite_seconds(getattr(time_message, "nanosec", None))
+    if seconds is None or nanoseconds is None:
+        return None
+    return seconds + nanoseconds * 1e-9
+
+
+def _wait_for_launch(node, launch_process):
+    deadline = time.monotonic() + _STARTUP_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        if launch_process.poll() is not None:
+            raise ReplayError(
+                f"launch process exited during startup with code {launch_process.returncode}"
+            )
+        _spin_once(node, min(0.1, max(0.0, deadline - time.monotonic())))
+
+
+def _spin_fault_window(node, launch_process, player_process, relay, target_replay_seconds):
+    timeout_seconds = target_replay_seconds + _PLAYBACK_TIMEOUT_ALLOWANCE_SECONDS
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        if launch_process.poll() is not None:
+            raise ReplayError(
+                f"launch process exited during playback with code {launch_process.returncode}"
+            )
+        player_exit_code = player_process.poll()
+        if player_exit_code is not None:
+            if player_exit_code != 0:
+                raise ReplayError(f"bag player exited during playback with code {player_exit_code}")
+            raise ReplayError("bag player exited before the recovery observation window")
+        if time.monotonic() >= deadline:
+            raise ReplayError(
+                "replay timed out waiting for /clock progress through "
+                f"{target_replay_seconds:.1f}s"
+            )
+        _spin_once(node, min(0.1, max(0.0, deadline - time.monotonic())))
+        replay_seconds = relay.replay_seconds
+        if replay_seconds is not None and replay_seconds >= target_replay_seconds:
+            for _ in range(_FINAL_CALLBACK_DRAIN_COUNT):
+                _spin_once(node, 0.0)
+            return
+
+
+def _spin_once(node, timeout_seconds):
+    import rclpy
+
+    rclpy.spin_once(node, timeout_sec=timeout_seconds)
+
+
+def _stop_process_group(process):
+    if process is None:
+        return
+    for signal_number in (signal.SIGINT, signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(process.pid, signal_number)
+        except ProcessLookupError:
+            pass
+        try:
+            process.wait(timeout=_PROCESS_STOP_TIMEOUT_SECONDS)
+            return
+        except subprocess.TimeoutExpired:
+            continue
+    raise ReplayError(f"process group {process.pid} could not be reaped after SIGKILL")
+
+
+if __name__ == "__main__":
+    sys.exit(main())

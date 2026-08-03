@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: $0 {quick|record-baseline|memory}" >&2
+  echo "Usage: $0 {quick|record-baseline|memory|tf-continuity}" >&2
 }
 
 if [[ $# -ne 1 ]]; then
@@ -12,7 +12,7 @@ fi
 
 mode=$1
 case "$mode" in
-  quick|record-baseline|memory) ;;
+  quick|record-baseline|memory|tf-continuity) ;;
   *)
     usage
     exit 64
@@ -69,5 +69,9 @@ case "$mode" in
     python3 test/integration/localization_rss.py \
       "${common_args[@]}" \
       --baseline test/integration/baselines/hesai_sim.yaml
+    ;;
+  tf-continuity)
+    python3 test/integration/localization_tf_continuity.py \
+      "${common_args[@]}"
     ;;
 esac
