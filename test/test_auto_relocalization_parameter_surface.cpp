@@ -116,6 +116,13 @@ std::vector<EpochStampedResult> RetainTfContinuityEpochResults(
   return retained;
 }
 
+bool ShouldDiscardPendingRawWorkItem(
+  std::uint64_t pending_epoch,
+  std::uint64_t current_input_epoch)
+{
+  return pending_epoch != current_input_epoch;
+}
+
 std::string RemoveWhitespace(const std::string & text)
 {
   std::string compact;
@@ -357,10 +364,15 @@ TEST(TfContinuitySurface, ConfiguresAndPublishesTfOnlyFallback) {
   ExpectToken("include/slam/system.h",
     "tf_continuity_time_jump_recovery_active_");
   ExpectToken("include/slam/system.h", "tf_continuity_expected_epoch_");
+  ExpectToken("include/slam/system.h",
+    "std::atomic<std::uint64_t> tf_continuity_input_epoch_{0U}");
+  ExpectToken("include/slam/system.h", "struct RawCloudWorkItem");
+  ExpectToken("include/slam/system.h", "struct CloudClusterWorkItem");
+  ExpectToken("include/slam/system.h", "TfContinuityInputEpoch() const");
   ExpectToken("include/common/sensor_data_type.h",
     "tf_continuity_epoch_{0U}");
-  ExpectToken("include/slam/localization.h", "AdvanceTfContinuityEpoch");
-  ExpectToken("include/slam/localization.h", "tf_continuity_epoch_");
+  ExpectNoToken("include/slam/localization.h", "AdvanceTfContinuityEpoch");
+  ExpectNoToken("include/slam/localization.h", "tf_continuity_epoch_");
   ExpectToken("include/localization_health/tf_continuity_controller.h",
     "void Reset()");
   ExpectToken("CMakeLists.txt",
@@ -418,15 +430,35 @@ TEST(TfContinuitySurface, ConfiguresAndPublishesTfOnlyFallback) {
   ExpectTextToken(time_jump_body,
     "tf_continuity_time_jump_recovery_active_ = true");
   ExpectTextToken(time_jump_body,
-    "localization_ptr_->AdvanceTfContinuityEpoch()");
+    "tf_continuity_input_epoch_.fetch_add(1U)");
   ExpectTextToken(time_jump_body, "tf_continuity_expected_epoch_ =");
-  const std::size_t reset_queue_lock = time_jump_body.find(
+  const std::size_t advance_input_epoch = time_jump_body.find(
+    "tf_continuity_input_epoch_.fetch_add(1U)");
+  const std::size_t reset_raw_queue_lock = time_jump_body.find(
+    "std::lock_guard<std::mutex> lock(mutex_raw_cloud_deque_)");
+  const std::size_t reset_raw_queue_clear = time_jump_body.find(
+    "raw_cloud_deque_.clear()");
+  const std::size_t reset_cluster_queue_lock = time_jump_body.find(
+    "std::lock_guard<std::mutex> lock(mutex_cloud_cluster_deque_)");
+  const std::size_t reset_cluster_queue_clear = time_jump_body.find(
+    "cloud_cluster_deque_.clear()");
+  const std::size_t reset_result_queue_lock = time_jump_body.find(
     "std::lock_guard<std::mutex> lock(mutex_localization_results_deque_)");
-  const std::size_t reset_queue_clear = time_jump_body.find(
+  const std::size_t reset_result_queue_clear = time_jump_body.find(
     "localization_results_deque_.clear()");
-  ASSERT_NE(reset_queue_lock, std::string::npos);
-  ASSERT_NE(reset_queue_clear, std::string::npos);
-  EXPECT_LT(reset_queue_lock, reset_queue_clear);
+  ASSERT_NE(advance_input_epoch, std::string::npos);
+  ASSERT_NE(reset_raw_queue_lock, std::string::npos);
+  ASSERT_NE(reset_raw_queue_clear, std::string::npos);
+  ASSERT_NE(reset_cluster_queue_lock, std::string::npos);
+  ASSERT_NE(reset_cluster_queue_clear, std::string::npos);
+  ASSERT_NE(reset_result_queue_lock, std::string::npos);
+  ASSERT_NE(reset_result_queue_clear, std::string::npos);
+  EXPECT_LT(advance_input_epoch, reset_raw_queue_lock);
+  EXPECT_LT(reset_raw_queue_lock, reset_raw_queue_clear);
+  EXPECT_LT(reset_raw_queue_clear, reset_cluster_queue_lock);
+  EXPECT_LT(reset_cluster_queue_lock, reset_cluster_queue_clear);
+  EXPECT_LT(reset_cluster_queue_clear, reset_result_queue_lock);
+  EXPECT_LT(reset_result_queue_lock, reset_result_queue_clear);
   ExpectTextToken(time_jump_body, "RCLCPP_WARN");
   ExpectTextToken(time_jump_body, "last_ros_time_us_ = now_us");
   ExpectNoTextToken(time_jump_body, "now_us <=");
@@ -439,13 +471,6 @@ TEST(TfContinuitySurface, ConfiguresAndPublishesTfOnlyFallback) {
   ExpectTextToken(localization_header, "CacheResultToSystem(");
   ExpectTextToken(localization_header,
     "const LocalizationResult& result,");
-  ExpectTextToken(localization_header,
-    "std::atomic<std::uint64_t> tf_continuity_epoch_{0U}");
-
-  const std::string advance_epoch_body = ReadFunctionBody(
-    "src/slam/localization.cpp",
-    "std::uint64_t Localization::AdvanceTfContinuityEpoch()");
-  ExpectTextToken(advance_epoch_body, "fetch_add");
 
   const std::string initialization_body = ReadFunctionBody(
     "src/slam/localization.cpp",
@@ -455,17 +480,68 @@ TEST(TfContinuitySurface, ConfiguresAndPublishesTfOnlyFallback) {
 
   const std::string localization_run_body = ReadFunctionBody(
     "src/slam/localization.cpp", "void Localization::Run()");
-  const std::size_t epoch_snapshot = localization_run_body.find(
+  const std::size_t cloud_work_item = localization_run_body.find(
+    "System::CloudClusterWorkItem cloud_cluster_work_item");
+  const std::size_t dequeued_work_epoch = localization_run_body.find(
     "const std::uint64_t tf_continuity_epoch =");
   const std::size_t initialize = localization_run_body.find(
     "Init(tf_continuity_epoch)");
   const std::size_t tracking_cache = localization_run_body.find(
     "CacheResultToSystem(result, tf_continuity_epoch)");
-  ASSERT_NE(epoch_snapshot, std::string::npos);
+  ASSERT_NE(cloud_work_item, std::string::npos);
+  ASSERT_NE(dequeued_work_epoch, std::string::npos);
   ASSERT_NE(initialize, std::string::npos);
   ASSERT_NE(tracking_cache, std::string::npos);
-  EXPECT_LT(epoch_snapshot, initialize);
-  EXPECT_LT(epoch_snapshot, tracking_cache);
+  EXPECT_LT(cloud_work_item, dequeued_work_epoch);
+  EXPECT_LT(dequeued_work_epoch, initialize);
+  EXPECT_LT(dequeued_work_epoch, tracking_cache);
+  ExpectTextToken(localization_run_body,
+    "cloud_cluster_work_item.tf_continuity_epoch_");
+  ExpectNoTextToken(localization_run_body, "tf_continuity_epoch_.load");
+
+  const std::string lidar_callback_body = ReadFunctionBody(
+    "src/slam/system.cpp", "void System::LidarMsgCallBack(");
+  const std::size_t input_epoch_capture = lidar_callback_body.find(
+    "tf_continuity_input_epoch_.load()");
+  const std::size_t raw_work_item_enqueue = lidar_callback_body.find(
+    "raw_cloud_deque_.emplace_back(");
+  ASSERT_NE(input_epoch_capture, std::string::npos);
+  ASSERT_NE(raw_work_item_enqueue, std::string::npos);
+  EXPECT_LT(input_epoch_capture, raw_work_item_enqueue);
+  ExpectTextToken(lidar_callback_body,
+    "RawCloudWorkItem{cloud_ros_ptr, tf_continuity_epoch}");
+
+  const std::string preprocessing_run_body = ReadFunctionBody(
+    "src/slam/preprocessing.cpp", "void PreProcessing::Run()");
+  const std::size_t raw_work_item_dequeue = preprocessing_run_body.find(
+    "raw_cloud_work_item = system_ptr_->raw_cloud_deque_.front()");
+  const std::size_t pending_temp_epoch_guard = preprocessing_run_body.find(
+    "pending_raw_cloud_work_item->tf_continuity_epoch_ !=");
+  const std::size_t pending_temp_use = preprocessing_run_body.find(
+    "if (!temp_cloud_ptr_)");
+  const std::size_t cloud_work_item_enqueue = preprocessing_run_body.find(
+    "System::CloudClusterWorkItem{");
+  ASSERT_NE(raw_work_item_dequeue, std::string::npos);
+  ASSERT_NE(pending_temp_epoch_guard, std::string::npos);
+  ASSERT_NE(pending_temp_use, std::string::npos);
+  ASSERT_NE(cloud_work_item_enqueue, std::string::npos);
+  EXPECT_LT(raw_work_item_dequeue, cloud_work_item_enqueue);
+  EXPECT_LT(pending_temp_epoch_guard, pending_temp_use);
+  ExpectTextToken(preprocessing_run_body,
+    "system_ptr_->TfContinuityInputEpoch()");
+  ExpectTextToken(preprocessing_run_body, "temp_cloud_ptr_.reset()");
+  ExpectTextToken(preprocessing_run_body,
+    "pending_raw_cloud_work_item.reset()");
+  ExpectTextToken(preprocessing_run_body,
+    "pending_raw_cloud_work_item = raw_cloud_work_item");
+  ExpectTextToken(preprocessing_run_body,
+    "raw_cloud_deque_.front().cloud_ros_ptr ==");
+  ExpectTextToken(preprocessing_run_body,
+    "raw_cloud_deque_.front().tf_continuity_epoch_ ==");
+  ExpectTextToken(preprocessing_run_body,
+    "raw_cloud_work_item.tf_continuity_epoch_");
+  ExpectTextToken(preprocessing_run_body,
+    "std::move(cloud_cluster_ptr), tf_continuity_epoch");
 
   const std::string cache_result_body = ReadFunctionBody(
     "src/slam/localization.cpp", "void Localization::CacheResultToSystem(");
@@ -538,13 +614,20 @@ TEST(TfContinuitySurface, ConfiguresAndPublishesTfOnlyFallback) {
   EXPECT_LT(reject_future_result, record_measured);
   EXPECT_LT(record_measured, publish_tf);
   EXPECT_LT(publish_tf, clear_recovery_fence);
+  constexpr std::uint64_t old_work_epoch = 7U;
+  constexpr std::uint64_t current_input_epoch = old_work_epoch + 1U;
   constexpr std::uint64_t current_ros_time_us = 999000U;
+  EXPECT_TRUE(ShouldDiscardPendingRawWorkItem(
+    old_work_epoch, current_input_epoch));
+  EXPECT_FALSE(ShouldDiscardPendingRawWorkItem(
+    current_input_epoch, current_input_epoch));
   const auto retained = RetainTfContinuityEpochResults(
-    {{0U, 998000U}, {1U, 997000U}}, 1U);
+    {{old_work_epoch, 998000U}, {current_input_epoch, 997000U}},
+    current_input_epoch);
   ASSERT_EQ(retained.size(), 1U);
   EXPECT_LE(998000U, current_ros_time_us);
   EXPECT_LE(997000U, current_ros_time_us);
-  EXPECT_EQ(retained.front().epoch, 1U);
+  EXPECT_EQ(retained.front().epoch, current_input_epoch);
   EXPECT_EQ(retained.front().timestamp_us, 997000U);
 }
 

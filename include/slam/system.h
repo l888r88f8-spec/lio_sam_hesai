@@ -55,6 +55,20 @@ class System : public rclcpp::Node {
   static constexpr std::size_t kMaxLocalizationResultQueueSize = 5;
   static constexpr std::size_t kMaxLocalizationPathSize = 2000;
 
+  struct RawCloudWorkItem {
+    sensor_msgs::msg::PointCloud2::ConstSharedPtr cloud_ros_ptr;
+    std::uint64_t tf_continuity_epoch_{0U};
+  };
+
+  struct CloudClusterWorkItem {
+    PointcloudClusterPtr cloud_cluster_ptr;
+    std::uint64_t tf_continuity_epoch_{0U};
+  };
+
+  [[nodiscard]] std::uint64_t TfContinuityInputEpoch() const {
+    return tf_continuity_input_epoch_.load();
+  }
+
  private:
   static void InitLidarModel();
 
@@ -151,8 +165,8 @@ class System : public rclcpp::Node {
   // deque
   std::deque<LocalizationResult, Eigen::aligned_allocator<LocalizationResult>>
       localization_results_deque_;
-  std::deque<PointcloudClusterPtr> cloud_cluster_deque_;
-  std::deque<sensor_msgs::msg::PointCloud2::ConstSharedPtr> raw_cloud_deque_;
+  std::deque<CloudClusterWorkItem> cloud_cluster_deque_;
+  std::deque<RawCloudWorkItem> raw_cloud_deque_;
 
   // localization ros path
   nav_msgs::msg::Path localization_path_;
@@ -164,6 +178,7 @@ class System : public rclcpp::Node {
   TimeStampUs last_tf_extrapolation_duration_us_ = 0U;
   std::optional<TimeStampUs> last_ros_time_us_;
   bool tf_continuity_time_jump_recovery_active_{false};
+  std::atomic<std::uint64_t> tf_continuity_input_epoch_{0U};
   std::uint64_t tf_continuity_expected_epoch_{0U};
 
   TimeStampUs last_health_result_stamp_ = 0U;

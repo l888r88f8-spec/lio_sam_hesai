@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cstring>
 #include <limits>
+#include <optional>
 
 #include "common/constant_variable.h"
 #include "common/pointcloud_utility.h"
@@ -238,12 +239,28 @@ void PreProcessing::InitVoxelGridFilter() {
 void PreProcessing::Run() {
   LOG(INFO) << "\033[1;32m----> PreProcessing Started.\033[0m";
 
+  std::optional<System::RawCloudWorkItem> pending_raw_cloud_work_item;
+  const auto pop_raw_cloud_work_item_if_front_matches =
+      [this](const System::RawCloudWorkItem& work_item) {
+        std::unique_lock<std::mutex> lock(
+            system_ptr_->mutex_raw_cloud_deque_);
+        if (!system_ptr_->raw_cloud_deque_.empty() &&
+            system_ptr_->raw_cloud_deque_.front().cloud_ros_ptr ==
+                work_item.cloud_ros_ptr &&
+            system_ptr_->raw_cloud_deque_.front().tf_continuity_epoch_ ==
+                work_item.tf_continuity_epoch_) {
+          system_ptr_->raw_cloud_deque_.pop_front();
+        }
+      };
+
   while (rclcpp::ok()) {
+    System::RawCloudWorkItem raw_cloud_work_item;
     sensor_msgs::msg::PointCloud2::ConstSharedPtr raw_cloud_ros;
 
     static bool imu_data_blocked = false;
     static TimeStampUs last_cloud_timestamp =
         std::numeric_limits<TimeStampUs>::max();
+    static std::optional<std::uint64_t> last_tf_continuity_epoch;
 
     {
       // wait new data
@@ -256,11 +273,36 @@ void PreProcessing::Run() {
         system_ptr_->cv_preprocessing_.wait(lock);
       }
 
-      raw_cloud_ros = system_ptr_->raw_cloud_deque_.front();
+      if (pending_raw_cloud_work_item.has_value()) {
+        raw_cloud_work_item = pending_raw_cloud_work_item.value();
+      } else {
+        raw_cloud_work_item = system_ptr_->raw_cloud_deque_.front();
+      }
     }
+
+    if (pending_raw_cloud_work_item.has_value() &&
+        pending_raw_cloud_work_item->tf_continuity_epoch_ !=
+            system_ptr_->TfContinuityInputEpoch()) {
+      temp_cloud_ptr_.reset();
+      pending_raw_cloud_work_item.reset();
+      imu_data_blocked = false;
+      continue;
+    }
+
+    raw_cloud_ros = raw_cloud_work_item.cloud_ros_ptr;
 
     if (!raw_cloud_ros) {
       continue;
+    }
+
+    const std::uint64_t tf_continuity_epoch =
+        raw_cloud_work_item.tf_continuity_epoch_;
+
+    if (!last_tf_continuity_epoch.has_value() ||
+        raw_cloud_work_item.tf_continuity_epoch_ !=
+            last_tf_continuity_epoch.value()) {
+      last_cloud_timestamp = std::numeric_limits<TimeStampUs>::max();
+      last_tf_continuity_epoch = raw_cloud_work_item.tf_continuity_epoch_;
     }
 
     frame_processing_watchdog_.Begin(
@@ -313,9 +355,9 @@ void PreProcessing::Run() {
 
     // Make sure the pointcloud is not empty
     if (raw_cloud_ptr->empty()) {
-      std::unique_lock<std::mutex> lock(system_ptr_->mutex_raw_cloud_deque_);
-      system_ptr_->raw_cloud_deque_.pop_front();
-      temp_cloud_ptr_ = nullptr;
+      pop_raw_cloud_work_item_if_front_matches(raw_cloud_work_item);
+      temp_cloud_ptr_.reset();
+      pending_raw_cloud_work_item.reset();
       LOG(WARNING) << "Lidar cloud data empty";
       complete_frame_without_timeout();
       continue;
@@ -323,9 +365,9 @@ void PreProcessing::Run() {
 
     if (last_cloud_timestamp != std::numeric_limits<TimeStampUs>::max() &&
         curr_cloud_timestamp <= last_cloud_timestamp) {
-      std::unique_lock<std::mutex> lock(system_ptr_->mutex_raw_cloud_deque_);
-      system_ptr_->raw_cloud_deque_.pop_front();
-      temp_cloud_ptr_ = nullptr;
+      pop_raw_cloud_work_item_if_front_matches(raw_cloud_work_item);
+      temp_cloud_ptr_.reset();
+      pending_raw_cloud_work_item.reset();
       LOG(WARNING) << std::setprecision(15)
                    << "Drop lidar cloud with non-increasing timestamp: current="
                    << static_cast<double>(curr_cloud_timestamp) *
@@ -342,9 +384,9 @@ void PreProcessing::Run() {
         system_ptr_->imu_data_searcher_ptr_->OldestData();
     if (!oldest_imu_data.has_value() ||
         oldest_imu_data.value().timestamp_ > cloud_start_timestamp) {
-      std::unique_lock<std::mutex> lock(system_ptr_->mutex_raw_cloud_deque_);
-      system_ptr_->raw_cloud_deque_.pop_front();
-      temp_cloud_ptr_ = nullptr;
+      pop_raw_cloud_work_item_if_front_matches(raw_cloud_work_item);
+      temp_cloud_ptr_.reset();
+      pending_raw_cloud_work_item.reset();
       // When the system lags and there is no time to process lidar data,
       // the following warning may be displayed.
       LOG(WARNING) << "Lidar data queue may be blocked";
@@ -358,17 +400,16 @@ void PreProcessing::Run() {
     if (!latest_imu_data.has_value() ||
         latest_imu_data.value().timestamp_ < cloud_end_timestamp) {
       temp_cloud_ptr_ = raw_cloud_ptr;
+      pending_raw_cloud_work_item = raw_cloud_work_item;
       imu_data_blocked = true;
       complete_frame_without_timeout();
       continue;
     }
 
     // Pop out the data to be processed
-    {
-      std::unique_lock<std::mutex> lock(system_ptr_->mutex_raw_cloud_deque_);
-      system_ptr_->raw_cloud_deque_.pop_front();
-      temp_cloud_ptr_ = nullptr;
-    }
+    pop_raw_cloud_work_item_if_front_matches(raw_cloud_work_item);
+    temp_cloud_ptr_.reset();
+    pending_raw_cloud_work_item.reset();
 
     const auto imu_data_segment =
         system_ptr_->imu_data_searcher_ptr_->GetDataSegment(
@@ -537,7 +578,8 @@ void PreProcessing::Run() {
         system_ptr_->cloud_cluster_deque_.pop_front();
       }
       system_ptr_->cloud_cluster_deque_.emplace_back(
-          std::move(cloud_cluster_ptr));
+          System::CloudClusterWorkItem{
+              std::move(cloud_cluster_ptr), tf_continuity_epoch});
 
       system_ptr_->cv_localization_.notify_one();
     }

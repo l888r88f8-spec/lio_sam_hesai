@@ -601,7 +601,10 @@ void System::LidarMsgCallBack(
   while (raw_cloud_deque_.size() >= kMaxRawCloudQueueSize) {
     raw_cloud_deque_.pop_front();
   }
-  raw_cloud_deque_.push_back(cloud_ros_ptr);
+  const std::uint64_t tf_continuity_epoch =
+      tf_continuity_input_epoch_.load();
+  raw_cloud_deque_.emplace_back(
+      RawCloudWorkItem{cloud_ros_ptr, tf_continuity_epoch});
   cv_preprocessing_.notify_one();
 }
 
@@ -793,15 +796,25 @@ void System::ResetTfContinuityOnTimeJump(TimeStampUs now_us) {
   if (last_ros_time_us_.has_value() &&
       now_us < last_ros_time_us_.value()) {
     tf_continuity_expected_epoch_ =
-        localization_ptr_->AdvanceTfContinuityEpoch();
+        tf_continuity_input_epoch_.fetch_add(1U) + 1U;
     if (tf_continuity_controller_) {
       tf_continuity_controller_->Reset();
       last_tf_extrapolation_duration_us_ = 0U;
     }
     {
+      std::lock_guard<std::mutex> lock(mutex_raw_cloud_deque_);
+      raw_cloud_deque_.clear();
+    }
+    {
+      std::lock_guard<std::mutex> lock(mutex_cloud_cluster_deque_);
+      cloud_cluster_deque_.clear();
+    }
+    {
       std::lock_guard<std::mutex> lock(mutex_localization_results_deque_);
       localization_results_deque_.clear();
     }
+    cv_preprocessing_.notify_all();
+    cv_localization_.notify_all();
     tf_continuity_time_jump_recovery_active_ = true;
     RCLCPP_WARN(get_logger(),
                 "ROS time moved backward; resetting localization TF continuity.");

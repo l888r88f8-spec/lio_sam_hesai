@@ -104,10 +104,6 @@ void Localization::RequestAutomaticRelocalization() {
   reinitialization_control_.RequestAutomaticRelocalization();
 }
 
-std::uint64_t Localization::AdvanceTfContinuityEpoch() {
-  return tf_continuity_epoch_.fetch_add(1U) + 1U;
-}
-
 Mat4d Localization::MapLidarPoseToMapImuPose(
     const Mat4d& map_lidar_pose) const {
   return map_lidar_pose *
@@ -587,6 +583,7 @@ void Localization::Run() {
   LOG(INFO) << "\033[1;32m----> Localization Started.\033[0m";
 
   while (rclcpp::ok()) {
+    System::CloudClusterWorkItem cloud_cluster_work_item;
     {
       std::unique_lock<std::mutex> lock(
           system_ptr_->mutex_cloud_cluster_deque_);
@@ -597,12 +594,14 @@ void Localization::Run() {
         system_ptr_->cv_localization_.wait(lock);
       }
 
-      curr_cloud_cluster_ptr_ = system_ptr_->cloud_cluster_deque_.front();
+      cloud_cluster_work_item =
+          system_ptr_->cloud_cluster_deque_.front();
       system_ptr_->cloud_cluster_deque_.pop_front();
     }
 
+    curr_cloud_cluster_ptr_ = cloud_cluster_work_item.cloud_cluster_ptr;
     const std::uint64_t tf_continuity_epoch =
-        tf_continuity_epoch_.load();
+        cloud_cluster_work_item.tf_continuity_epoch_;
     frame_processing_watchdog_.Begin(
         runtime::FrameProcessingWatchdog::SteadyNowMicroseconds());
     const auto complete_frame_without_timeout = [this] {

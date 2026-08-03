@@ -38,8 +38,6 @@ public:
 
     void RequestAutomaticRelocalization();
 
-    std::uint64_t AdvanceTfContinuityEpoch();
-
     bool PrepareMap();
 
     void Run();
@@ -156,7 +154,6 @@ private:
 
     System* system_ptr_ = nullptr;
     runtime::FrameProcessingWatchdog frame_processing_watchdog_;
-    std::atomic<std::uint64_t> tf_continuity_epoch_{0U};
 
     mutable std::mutex mutex_tf_prediction_anchor_;
     std::optional<TfPredictionAnchor> tf_prediction_anchor_;
