@@ -795,6 +795,11 @@ void System::ResetTfContinuityOnTimeJump(TimeStampUs now_us) {
       tf_continuity_controller_->Reset();
       last_tf_extrapolation_duration_us_ = 0U;
     }
+    {
+      std::lock_guard<std::mutex> lock(mutex_localization_results_deque_);
+      localization_results_deque_.clear();
+    }
+    tf_continuity_time_jump_recovery_active_ = true;
     RCLCPP_WARN(get_logger(),
                 "ROS time moved backward; resetting localization TF continuity.");
   }
@@ -892,6 +897,18 @@ bool System::ProcessLocalizationResultCache(bool& had_new_result) {
   }
   had_new_result = true;
 
+  const LocalizationResult& result = localization_results.back();
+  if (tf_continuity_time_jump_recovery_active_) {
+    const TimeStampUs current_ros_time_us =
+        RosTimeToMicroseconds(get_clock()->now());
+    if (result.timestamp_ > current_ros_time_us) {
+      RCLCPP_WARN(get_logger(),
+                  "Discarding pre-jump localization result during TF recovery.");
+      had_new_result = false;
+      return false;
+    }
+  }
+
   for (const auto& health_result : localization_results) {
     {
       std::lock_guard<std::mutex> lock(mutex_health_result_);
@@ -909,8 +926,6 @@ bool System::ProcessLocalizationResultCache(bool& had_new_result) {
     }
     PublishLocalizationHealth();
   }
-
-  const LocalizationResult& result = localization_results.back();
 
   const rclcpp::Time stamp(result.timestamp_ * 1000ULL);
 
@@ -950,6 +965,7 @@ bool System::ProcessLocalizationResultCache(bool& had_new_result) {
       measured_decision.extrapolation_duration_us;
   PublishTF(measured_decision.sample.map_base_pose,
             measured_decision.sample.timestamp_us);
+  tf_continuity_time_jump_recovery_active_ = false;
 
   const Eigen::Quaterniond q(map_base_pose.block<3, 3>(0, 0));
   const Vec3d& t = map_base_pose.block<3, 1>(0, 3);

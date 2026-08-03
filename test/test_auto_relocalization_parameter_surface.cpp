@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cctype>
+#include <cstdint>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -94,6 +95,14 @@ bool IsTfOnlyFallbackBody(const std::string & body)
          body.find("PublishTF(decision->sample", publish_tf) !=
              std::string::npos &&
          body.find("PublishTF(", publish_tf + 1) == std::string::npos;
+}
+
+bool ShouldRejectTimeJumpRecoveryResult(
+  bool recovery_active,
+  std::uint64_t result_timestamp_us,
+  std::uint64_t current_ros_time_us)
+{
+  return recovery_active && result_timestamp_us > current_ros_time_us;
 }
 
 std::string RemoveWhitespace(const std::string & text)
@@ -334,6 +343,8 @@ TEST(TfContinuitySurface, ConfiguresAndPublishesTfOnlyFallback) {
   ExpectToken("include/slam/system.h", "PublishTfFallback");
   ExpectToken("include/slam/system.h", "ResetTfContinuityOnTimeJump");
   ExpectToken("include/slam/system.h", "last_ros_time_us_");
+  ExpectToken("include/slam/system.h",
+    "tf_continuity_time_jump_recovery_active_");
   ExpectToken("include/localization_health/tf_continuity_controller.h",
     "void Reset()");
   ExpectToken("CMakeLists.txt",
@@ -388,6 +399,15 @@ TEST(TfContinuitySurface, ConfiguresAndPublishesTfOnlyFallback) {
     "src/slam/system.cpp", "void System::ResetTfContinuityOnTimeJump(");
   ExpectTextToken(time_jump_body, "now_us < last_ros_time_us_.value()");
   ExpectTextToken(time_jump_body, "tf_continuity_controller_->Reset()");
+  ExpectTextToken(time_jump_body,
+    "tf_continuity_time_jump_recovery_active_ = true");
+  const std::size_t reset_queue_lock = time_jump_body.find(
+    "std::lock_guard<std::mutex> lock(mutex_localization_results_deque_)");
+  const std::size_t reset_queue_clear = time_jump_body.find(
+    "localization_results_deque_.clear()");
+  ASSERT_NE(reset_queue_lock, std::string::npos);
+  ASSERT_NE(reset_queue_clear, std::string::npos);
+  EXPECT_LT(reset_queue_lock, reset_queue_clear);
   ExpectTextToken(time_jump_body, "RCLCPP_WARN");
   ExpectTextToken(time_jump_body, "last_ros_time_us_ = now_us");
   ExpectNoTextToken(time_jump_body, "now_us <=");
@@ -432,11 +452,25 @@ TEST(TfContinuitySurface, ConfiguresAndPublishesTfOnlyFallback) {
 
   const std::string cache_body = ReadFunctionBody(
     "src/slam/system.cpp", "bool System::ProcessLocalizationResultCache(");
+  ExpectTextToken(cache_body, "tf_continuity_time_jump_recovery_active_");
+  ExpectTextToken(cache_body, "RosTimeToMicroseconds(get_clock()->now())");
+  ExpectTextToken(cache_body, "result.timestamp_ > current_ros_time_us");
   const std::size_t record_measured = cache_body.find("RecordMeasured(");
   const std::size_t publish_tf = cache_body.find("PublishTF(", record_measured);
+  const std::size_t reject_future_result = cache_body.find(
+    "result.timestamp_ > current_ros_time_us");
+  const std::size_t clear_recovery_fence = cache_body.find(
+    "tf_continuity_time_jump_recovery_active_ = false", publish_tf);
+  ASSERT_NE(reject_future_result, std::string::npos);
   ASSERT_NE(record_measured, std::string::npos);
   ASSERT_NE(publish_tf, std::string::npos);
+  ASSERT_NE(clear_recovery_fence, std::string::npos);
+  EXPECT_LT(reject_future_result, record_measured);
   EXPECT_LT(record_measured, publish_tf);
+  EXPECT_LT(publish_tf, clear_recovery_fence);
+  EXPECT_TRUE(ShouldRejectTimeJumpRecoveryResult(true, 101U, 100U));
+  EXPECT_FALSE(ShouldRejectTimeJumpRecoveryResult(true, 100U, 100U));
+  EXPECT_FALSE(ShouldRejectTimeJumpRecoveryResult(false, 101U, 100U));
 }
 
 TEST(SystemRuntimeResourceSurface, ConfiguresWorkersBeforeTheirRunLoops) {
