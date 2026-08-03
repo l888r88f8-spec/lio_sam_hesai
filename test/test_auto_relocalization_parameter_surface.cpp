@@ -41,6 +41,18 @@ void ExpectNoToken(const std::string & file, const std::string & token)
     << token << " must not appear in " << file;
 }
 
+void ExpectTextToken(const std::string & text, const std::string & token)
+{
+  EXPECT_NE(text.find(token), std::string::npos)
+    << token << " is missing from extracted source";
+}
+
+void ExpectNoTextToken(const std::string & text, const std::string & token)
+{
+  EXPECT_EQ(text.find(token), std::string::npos)
+    << token << " must not appear in extracted source";
+}
+
 std::string ReadFunctionBody(
   const std::string & file,
   const std::string & signature)
@@ -820,4 +832,55 @@ TEST(SystemIntegration, WiresLocalizationHealthObservability) {
 
   ExpectToken("package.xml", "<build_depend>diagnostic_msgs</build_depend>");
   ExpectToken("package.xml", "<exec_depend>diagnostic_msgs</exec_depend>");
+}
+
+TEST(LocalizationTfPredictionSurface, UsesReadOnlyPredictionSnapshot) {
+  const std::array<std::string, 3> header_tokens = {
+    "PredictMapLidarPose",
+    "TfPredictionAnchor",
+    "mutex_tf_prediction_anchor_",
+  };
+  for (const auto& token : header_tokens) {
+    ExpectToken("include/slam/localization.h", token);
+  }
+
+  const std::string discard_body = ReadFunctionBody(
+    "src/slam/localization.cpp",
+    "bool Localization::DiscardTimedOutFrameIfNeeded(std::uint64_t now_us)");
+  ExpectNoTextToken(discard_body, "UpdateTfPredictionAnchor");
+
+  const std::string init_body = ReadFunctionBody(
+    "src/slam/localization.cpp", "Localization::InitializationResult Localization::Init()");
+  const std::size_t initialization_complete = init_body.find(
+    "frame_processing_watchdog_.Complete(initialization_commit_now_us, false);");
+  const std::size_t initialization_anchor = init_body.find(
+    "UpdateTfPredictionAnchor(initialized_nav_state);");
+  const std::size_t initialization_cache = init_body.find(
+    "CacheResultToSystem(init_result);");
+  ASSERT_NE(initialization_complete, std::string::npos);
+  ASSERT_NE(initialization_anchor, std::string::npos);
+  ASSERT_NE(initialization_cache, std::string::npos);
+  EXPECT_LT(initialization_complete, initialization_anchor);
+  EXPECT_LT(initialization_anchor, initialization_cache);
+
+  const std::string run_body = ReadFunctionBody(
+    "src/slam/localization.cpp", "void Localization::Run()");
+  const std::size_t tracking_complete = run_body.find(
+    "frame_processing_watchdog_.Complete(tracking_commit_now_us, false);");
+  const std::size_t tracking_anchor = run_body.find(
+    "UpdateTfPredictionAnchor(curr_nav_state);");
+  const std::size_t tracking_cache = run_body.find("CacheResultToSystem(result);");
+  ASSERT_NE(tracking_complete, std::string::npos);
+  ASSERT_NE(tracking_anchor, std::string::npos);
+  ASSERT_NE(tracking_cache, std::string::npos);
+  EXPECT_LT(tracking_complete, tracking_anchor);
+  EXPECT_LT(tracking_anchor, tracking_cache);
+
+  const std::string predict_body = ReadFunctionBody(
+    "src/slam/localization.cpp", "Localization::PredictMapLidarPose(");
+  ExpectTextToken(predict_body, "PreIntegration predictor");
+  ExpectTextToken(predict_body, "predictor.SetGyroAccBias(");
+  ExpectTextToken(predict_body, "predictor.IntegrateDataSegment(");
+  ExpectNoTextToken(predict_body, "pre_integration_ptr_->");
+  ExpectNoTextToken(predict_body, "odom_pre_integration_ptr_->");
 }

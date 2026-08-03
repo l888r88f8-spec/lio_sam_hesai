@@ -52,6 +52,16 @@ public:
         return frame_processing_watchdog_.Snapshot();
     }
 
+    struct MapLidarPrediction {
+        EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
+        Mat4d map_lidar_pose{Mat4d::Identity()};
+        TimeStampUs timestamp_{0U};
+    };
+
+    [[nodiscard]] std::optional<MapLidarPrediction> PredictMapLidarPose(
+        const std::vector<IMUData>& imu_segment) const;
+
 private:
     enum class InitializationResult {
         kInitialized,
@@ -67,6 +77,10 @@ private:
         float* best_fitness_out = nullptr);
 
     void InitPreintegration();
+
+    [[nodiscard]] PreIntegration::ConfigPara MakePreIntegrationConfig() const;
+
+    void UpdateTfPredictionAnchor(const NavStateData& nav_state);
 
     void InitMatcher();
 
@@ -123,6 +137,14 @@ private:
         const Mat4d& map_lidar_pose);
 
 private:
+    struct TfPredictionAnchor {
+        EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
+        NavStateData nav_state;
+        Mat4d map_lidar_pose{Mat4d::Identity()};
+        TimeStampUs timestamp{0U};
+    };
+
     std::shared_ptr<PreIntegration> pre_integration_ptr_ = nullptr;
     std::shared_ptr<PreIntegration> odom_pre_integration_ptr_ = nullptr;
     std::shared_ptr<RegistrationInterface> matcher_ = nullptr;
@@ -130,6 +152,9 @@ private:
 
     System* system_ptr_ = nullptr;
     runtime::FrameProcessingWatchdog frame_processing_watchdog_;
+
+    mutable std::mutex mutex_tf_prediction_anchor_;
+    std::optional<TfPredictionAnchor> tf_prediction_anchor_;
 
     std::map<Vec2i, PCLPointCloudXYZI::Ptr, LessVec2i> local_map_data_;
     std::set<Vec2i, LessVec2i> map_data_indices_;

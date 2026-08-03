@@ -115,6 +115,50 @@ Mat4d Localization::MapImuPoseToMapLidarPose(
   return map_imu_pose * ConfigParameters::Instance().calibration_lidar_to_imu_;
 }
 
+std::optional<Localization::MapLidarPrediction>
+Localization::PredictMapLidarPose(
+    const std::vector<IMUData>& imu_segment) const {
+  std::optional<TfPredictionAnchor> anchor;
+  {
+    std::lock_guard<std::mutex> lock(mutex_tf_prediction_anchor_);
+    anchor = tf_prediction_anchor_;
+  }
+
+  if (!anchor.has_value() || imu_segment.size() < 2) {
+    return std::nullopt;
+  }
+
+  for (std::size_t index = 1; index < imu_segment.size(); ++index) {
+    if (imu_segment[index].timestamp_ <= imu_segment[index - 1].timestamp_) {
+      return std::nullopt;
+    }
+  }
+
+  if (imu_segment.front().timestamp_ > anchor->timestamp ||
+      imu_segment.back().timestamp_ <= anchor->timestamp) {
+    return std::nullopt;
+  }
+
+  PreIntegration predictor(MakePreIntegrationConfig());
+  predictor.SetGyroAccBias(anchor->nav_state.bg_, anchor->nav_state.ba_);
+  predictor.IntegrateDataSegment(imu_segment);
+  if (!std::isfinite(predictor.GetTotalIntegrationTime()) ||
+      predictor.GetTotalIntegrationTime() <= 0.0) {
+    return std::nullopt;
+  }
+
+  NavStateData predicted = predictor.Predict(anchor->nav_state);
+  predicted.timestamp_ = imu_segment.back().timestamp_;
+  if (predicted.timestamp_ <= anchor->timestamp ||
+      !predicted.P_.allFinite() || !predicted.V_.allFinite() ||
+      !predicted.R_.allFinite()) {
+    return std::nullopt;
+  }
+
+  return MapLidarPrediction{
+      MapImuPoseToMapLidarPose(predicted.Pose()), predicted.timestamp_};
+}
+
 void Localization::SetLidarPoseInformation() {
   const auto& lidar_rot_std =
       ConfigParameters::Instance().lidar_rotation_noise_std_;
@@ -220,7 +264,7 @@ bool Localization::DiscardTimedOutFrameIfNeeded() {
       runtime::FrameProcessingWatchdog::SteadyNowMicroseconds());
 }
 
-void Localization::InitPreintegration() {
+PreIntegration::ConfigPara Localization::MakePreIntegrationConfig() const {
   PreIntegration::ConfigPara config_para;
   config_para.init_acc_bias_ =
       Vec3d(ConfigParameters::Instance().imu_init_acc_bias_,
@@ -241,8 +285,23 @@ void Localization::InitPreintegration() {
             ConfigParameters::Instance().imu_gyro_noise_std_);
   config_para.integration_noise_cov_ = Vec3d(1.0e-8, 1.0e-8, 1.0e-8);
 
+  return config_para;
+}
+
+void Localization::InitPreintegration() {
+  const auto config_para = MakePreIntegrationConfig();
   pre_integration_ptr_ = std::make_shared<PreIntegration>(config_para);
   odom_pre_integration_ptr_ = std::make_shared<PreIntegration>(config_para);
+}
+
+void Localization::UpdateTfPredictionAnchor(const NavStateData& nav_state) {
+  TfPredictionAnchor anchor;
+  anchor.nav_state = nav_state;
+  anchor.map_lidar_pose = MapImuPoseToMapLidarPose(nav_state.Pose());
+  anchor.timestamp = nav_state.timestamp_;
+
+  std::lock_guard<std::mutex> lock(mutex_tf_prediction_anchor_);
+  tf_prediction_anchor_ = std::move(anchor);
 }
 
 Localization::InitializationResult Localization::Init() {
@@ -411,6 +470,7 @@ Localization::InitializationResult Localization::Init() {
     return InitializationResult::kFailed;
   }
   frame_processing_watchdog_.Complete(initialization_commit_now_us, false);
+  UpdateTfPredictionAnchor(initialized_nav_state);
   curr_pose_ = init_pose;
   last_nav_state_ = initialized_nav_state;
   delta_pose_ = Mat4d::Identity();
@@ -724,6 +784,7 @@ void Localization::Run() {
       continue;
     }
     frame_processing_watchdog_.Complete(tracking_commit_now_us, false);
+    UpdateTfPredictionAnchor(curr_nav_state);
     CacheResultToSystem(result);
     UpdateCurrentLidarCloud(*current_lidar_cloud);
 
