@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <array>
+#include <cctype>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -51,6 +52,18 @@ void ExpectNoTextToken(const std::string & text, const std::string & token)
 {
   EXPECT_EQ(text.find(token), std::string::npos)
     << token << " must not appear in extracted source";
+}
+
+std::string RemoveWhitespace(const std::string & text)
+{
+  std::string compact;
+  compact.reserve(text.size());
+  for (const unsigned char character : text) {
+    if (!std::isspace(character)) {
+      compact.push_back(static_cast<char>(character));
+    }
+  }
+  return compact;
 }
 
 std::string ReadFunctionBody(
@@ -835,14 +848,30 @@ TEST(SystemIntegration, WiresLocalizationHealthObservability) {
 }
 
 TEST(LocalizationTfPredictionSurface, UsesReadOnlyPredictionSnapshot) {
-  const std::array<std::string, 3> header_tokens = {
-    "PredictMapLidarPose",
-    "TfPredictionAnchor",
-    "mutex_tf_prediction_anchor_",
-  };
-  for (const auto& token : header_tokens) {
-    ExpectToken("include/slam/localization.h", token);
-  }
+  const std::string header = RemoveWhitespace(
+    ReadProjectFile("include/slam/localization.h"));
+  const std::string map_prediction = RemoveWhitespace(ReadFunctionBody(
+    "include/slam/localization.h", "struct MapLidarPrediction"));
+  ExpectTextToken(
+    map_prediction, "Mat4dmap_lidar_pose{Mat4d::Identity()};");
+  ExpectTextToken(map_prediction, "TimeStampUstimestamp_{0U};");
+  ExpectTextToken(
+    header,
+    "std::optional<MapLidarPrediction>PredictMapLidarPose("
+    "conststd::vector<IMUData>&imu_segment)const;");
+
+  const std::string prediction_anchor = RemoveWhitespace(ReadFunctionBody(
+    "include/slam/localization.h", "struct TfPredictionAnchor"));
+  ExpectTextToken(prediction_anchor, "NavStateDatanav_state;");
+  ExpectTextToken(
+    prediction_anchor, "Mat4dmap_lidar_pose{Mat4d::Identity()};");
+  ExpectTextToken(prediction_anchor, "TimeStampUstimestamp{0U};");
+  ExpectTextToken(header, "mutablestd::mutexmutex_tf_prediction_anchor_;");
+  ExpectTextToken(header, "std::optional<TfPredictionAnchor>tf_prediction_anchor_;");
+  ExpectTextToken(header, "voidUpdateTfPredictionAnchor(constNavStateData&nav_state);");
+  ExpectTextToken(
+    header,
+    "[[nodiscard]]PreIntegration::ConfigParaMakePreIntegrationConfig()const;");
 
   const std::string discard_body = ReadFunctionBody(
     "src/slam/localization.cpp",
@@ -883,4 +912,15 @@ TEST(LocalizationTfPredictionSurface, UsesReadOnlyPredictionSnapshot) {
   ExpectTextToken(predict_body, "predictor.IntegrateDataSegment(");
   ExpectNoTextToken(predict_body, "pre_integration_ptr_->");
   ExpectNoTextToken(predict_body, "odom_pre_integration_ptr_->");
+  const std::size_t exact_anchor_start = predict_body.find(
+    "imu_segment.front().timestamp_ != anchor->timestamp");
+  const std::size_t final_timestamp_advance = predict_body.find(
+    "imu_segment.back().timestamp_ <= anchor->timestamp");
+  const std::size_t integration = predict_body.find(
+    "predictor.IntegrateDataSegment(");
+  ASSERT_NE(exact_anchor_start, std::string::npos);
+  ASSERT_NE(final_timestamp_advance, std::string::npos);
+  ASSERT_NE(integration, std::string::npos);
+  EXPECT_LT(exact_anchor_start, integration);
+  EXPECT_LT(final_timestamp_advance, integration);
 }

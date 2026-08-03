@@ -134,7 +134,7 @@ Localization::PredictMapLidarPose(
     }
   }
 
-  if (imu_segment.front().timestamp_ > anchor->timestamp ||
+  if (imu_segment.front().timestamp_ != anchor->timestamp ||
       imu_segment.back().timestamp_ <= anchor->timestamp) {
     return std::nullopt;
   }
