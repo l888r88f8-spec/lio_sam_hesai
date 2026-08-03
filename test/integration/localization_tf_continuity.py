@@ -121,8 +121,8 @@ class TfContinuityCollector:
     def tf(
         self,
         timestamp_seconds,
-        mode,
-        hold_reason="none",
+        mode=None,
+        hold_reason=None,
         replay_seconds=None,
         translation=None,
         rotation=None,
@@ -134,10 +134,7 @@ class TfContinuityCollector:
         if timestamp is None or replay_time is None:
             self._errors.append("TF observation has a non-finite timestamp")
             return
-        mode = str(mode).strip().lower()
-        hold_reason = str(hold_reason).strip().lower()
-        if mode not in {"measured", "extrapolated", "held"}:
-            self._errors.append(f"TF mode is not recognized: {mode!r}")
+        del mode, hold_reason
         if self._last_tf_timestamp is not None:
             spacing = timestamp - self._last_tf_timestamp
             if spacing < 0.0:
@@ -148,8 +145,7 @@ class TfContinuityCollector:
             elif spacing > self.max_active_tf_spacing_seconds:
                 self._errors.append(
                     "TF spacing "
-                    f"{spacing:.6f}s exceeds {self.max_active_tf_spacing_seconds:.6f}s "
-                    f"(mode={mode})"
+                    f"{spacing:.6f}s exceeds {self.max_active_tf_spacing_seconds:.6f}s"
                 )
         self._last_tf_timestamp = timestamp
 
@@ -157,8 +153,6 @@ class TfContinuityCollector:
             {
                 "replay_seconds": replay_time,
                 "stamp_seconds": timestamp,
-                "mode": mode,
-                "hold_reason": hold_reason,
                 "translation": _finite_vector(translation),
                 "rotation": _finite_vector(rotation),
             }
@@ -209,39 +203,62 @@ class TfContinuityCollector:
         lidar_start, lidar_end = self.schedule.lidar_outage
         all_start, all_end = self.schedule.all_outage
 
-        if not self._has_tf(lambda event: event["mode"] == "measured" and event["replay_seconds"] < lidar_start):
-            errors.append(f"missing measured map->base_link TF before {lidar_start:.1f}s")
-        if not self._has_tf(
-            lambda event: event["mode"] == "extrapolated"
-            and lidar_start <= event["replay_seconds"] < lidar_start + _EXTRAPOLATION_DEADLINE_SECONDS
-        ):
-            errors.append(
-                "missing extrapolated map->base_link TF within "
-                f"{lidar_start:.1f}-{lidar_start + _EXTRAPOLATION_DEADLINE_SECONDS:.1f}s"
-            )
+        self._require_tf_and_diagnostic(
+            errors,
+            "measured map->base_link TF before",
+            lambda replay_time: replay_time < lidar_start,
+            {"tf_mode": "measured"},
+        )
+        self._require_tf_and_diagnostic(
+            errors,
+            "extrapolated map->base_link TF within",
+            lambda replay_time: lidar_start
+            <= replay_time
+            < lidar_start + _EXTRAPOLATION_DEADLINE_SECONDS,
+            {"tf_mode": "extrapolated"},
+        )
         lidar_held = self._matching_tf(
-            lambda event: event["mode"] == "held"
-            and lidar_start <= event["replay_seconds"] < lidar_end
+            lambda event: lidar_start <= event["replay_seconds"] < lidar_end
         )
         if len(lidar_held) < 2:
             errors.append(
-                "missing sustained held map->base_link TF during "
+                "missing sustained map->base_link TF during "
                 f"{lidar_start:.1f}-{lidar_end:.1f}s (observed {len(lidar_held)}, need 2)"
             )
-        all_held = self._matching_tf(
-            lambda event: event["mode"] == "held"
-            and event["hold_reason"] == "imu_unavailable"
-            and all_start <= event["replay_seconds"] < all_end
+        lidar_held_diagnostics = self._matching_diagnostic(
+            lambda replay_time: lidar_start <= replay_time < lidar_end,
+            {"tf_mode": "held"},
         )
-        if len(all_held) < 2:
+        if len(lidar_held_diagnostics) < 2:
             errors.append(
-                "missing sustained held map->base_link TF with imu_unavailable during "
-                f"{all_start:.1f}-{all_end:.1f}s (observed {len(all_held)}, need 2)"
+                "missing sustained tf_mode=held diagnostics during "
+                f"{lidar_start:.1f}-{lidar_end:.1f}s "
+                f"(observed {len(lidar_held_diagnostics)}, need 2)"
             )
-        if not self._has_tf(
-            lambda event: event["mode"] == "measured" and event["replay_seconds"] >= all_end
-        ):
-            errors.append(f"missing measured map->base_link TF after {all_end:.1f}s")
+        all_tf = self._matching_tf(
+            lambda event: all_start <= event["replay_seconds"] < all_end
+        )
+        if len(all_tf) < 2:
+            errors.append(
+                "missing sustained map->base_link TF during "
+                f"{all_start:.1f}-{all_end:.1f}s (observed {len(all_tf)}, need 2)"
+            )
+        all_held_diagnostics = self._matching_diagnostic(
+            lambda replay_time: all_start <= replay_time < all_end,
+            {"tf_mode": "held", "tf_hold_reason": "imu_unavailable"},
+        )
+        if len(all_held_diagnostics) < 2:
+            errors.append(
+                "missing sustained tf_mode=held, tf_hold_reason=imu_unavailable "
+                f"diagnostics during {all_start:.1f}-{all_end:.1f}s "
+                f"(observed {len(all_held_diagnostics)}, need 2)"
+            )
+        self._require_tf_and_diagnostic(
+            errors,
+            "measured map->base_link TF after",
+            lambda replay_time: replay_time >= all_end,
+            {"tf_mode": "measured"},
+        )
 
         for label, events in (("odometry", self.odom_events), ("path", self.path_events)):
             for event in events:
@@ -275,6 +292,21 @@ class TfContinuityCollector:
 
     def _matching_tf(self, predicate):
         return [event for event in self.tf_events if predicate(event)]
+
+    def _require_tf_and_diagnostic(self, errors, label, time_predicate, values):
+        if not self._has_tf(lambda event: time_predicate(event["replay_seconds"])):
+            errors.append(f"missing {label} required replay window")
+        if not self._matching_diagnostic(time_predicate, values):
+            values_text = ", ".join(f"{key}={value}" for key, value in values.items())
+            errors.append(f"missing diagnostic {values_text} for {label} required replay window")
+
+    def _matching_diagnostic(self, time_predicate, expected_values):
+        return [
+            event
+            for event in self.diagnostic_events
+            if time_predicate(event["replay_seconds"])
+            and all(event["values"].get(key) == value for key, value in expected_values.items())
+        ]
 
 
 def _finite_vector(values):
@@ -354,14 +386,18 @@ def main(argv=None):
     finally:
         if error_message is not None:
             violations = list(violations) + [f"harness error: {error_message}"]
-        _write_artifact(
-            output_dir,
-            collector,
-            identity,
-            runtime_parameters,
-            violations,
-            error_message,
-        )
+        try:
+            _write_artifact(
+                output_dir,
+                collector,
+                identity,
+                runtime_parameters,
+                violations,
+                error_message,
+            )
+        except OSError as error:
+            exit_code = 2
+            print(f"unable to write TF continuity artifact: {error}", file=sys.stderr)
     return exit_code
 
 
@@ -373,24 +409,21 @@ def _positive_seconds(value, label):
 
 
 def _write_artifact(output_dir, collector, identity, runtime_parameters, violations, error_message):
-    try:
-        output_dir.mkdir(parents=True, exist_ok=True)
-        artifact = collector.report(violations)
-        artifact["dataset"] = None if identity is None else {
-            "duration_ns": identity.duration_ns,
-            "message_count": identity.message_count,
-            "topic_counts": dict(identity.topic_counts),
-            "map_points": identity.map_points,
-        }
-        artifact["runtime_parameters"] = (
-            None if runtime_parameters is None else str(runtime_parameters)
-        )
-        artifact["error"] = error_message
-        (output_dir / "tf-continuity.json").write_text(
-            json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-        )
-    except OSError as error:
-        print(f"unable to write TF continuity artifact: {error}", file=sys.stderr)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    artifact = collector.report(violations)
+    artifact["dataset"] = None if identity is None else {
+        "duration_ns": identity.duration_ns,
+        "message_count": identity.message_count,
+        "topic_counts": dict(identity.topic_counts),
+        "map_points": identity.map_points,
+    }
+    artifact["runtime_parameters"] = (
+        None if runtime_parameters is None else str(runtime_parameters)
+    )
+    artifact["error"] = error_message
+    (output_dir / "tf-continuity.json").write_text(
+        json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
 
 def _run_replay(arguments, runtime_parameters, collector, schedule, post_recovery_seconds):
@@ -507,8 +540,6 @@ class _TfContinuityRelay:
         self.schedule = schedule
         self._first_clock_seconds = None
         self._latest_clock_seconds = None
-        self._last_tf_mode = "unknown"
-        self._last_tf_hold_reason = "unknown"
         sensor_qos = qos_profile_sensor_data
         reliable_qos = QoSProfile(depth=100, reliability=QoSReliabilityPolicy.RELIABLE)
         self._lidar_publisher = node.create_publisher(PointCloud2, _RELAY_LIDAR_TOPIC, sensor_qos)
@@ -548,7 +579,14 @@ class _TfContinuityRelay:
     def _sensor_replay_seconds(self, message):
         if self._first_clock_seconds is None:
             return None
-        header_stamp = _ros_time_seconds(getattr(getattr(message, "header", None), "stamp", None))
+        return self._message_replay_seconds(message)
+
+    def _message_replay_seconds(self, message):
+        if self._first_clock_seconds is None:
+            return None
+        header_stamp = _ros_time_seconds(
+            getattr(getattr(message, "header", None), "stamp", None)
+        )
         if header_stamp is not None and header_stamp >= self._first_clock_seconds - 1.0:
             return header_stamp - self._first_clock_seconds
         return self.replay_seconds
@@ -564,15 +602,13 @@ class _TfContinuityRelay:
             rotation = transform.transform.rotation
             self.collector.tf(
                 _ros_time_seconds(transform.header.stamp),
-                self._last_tf_mode,
-                self._last_tf_hold_reason,
-                replay_seconds,
-                (translation.x, translation.y, translation.z),
-                (rotation.x, rotation.y, rotation.z, rotation.w),
+                replay_seconds=replay_seconds,
+                translation=(translation.x, translation.y, translation.z),
+                rotation=(rotation.x, rotation.y, rotation.z, rotation.w),
             )
 
     def _diagnostics_callback(self, message):
-        replay_seconds = self.replay_seconds
+        replay_seconds = self._message_replay_seconds(message)
         if replay_seconds is None:
             return
         for status in message.status:
@@ -582,10 +618,6 @@ class _TfContinuityRelay:
             self.collector.diagnostic(
                 replay_seconds, values, health_state=status.message, level=int(status.level)
             )
-            if "tf_mode" in values:
-                self._last_tf_mode = values["tf_mode"].strip().lower()
-            if "tf_hold_reason" in values:
-                self._last_tf_hold_reason = values["tf_hold_reason"].strip().lower()
 
     def _odom_callback(self, message):
         del message
