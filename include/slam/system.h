@@ -67,6 +67,7 @@ class System : public rclcpp::Node {
   void PublishRuntimeDiagnostics();
   void AppendRuntimeDiagnostics(
       diagnostic_msgs::msg::DiagnosticStatus& status) const;
+  void ResetTfContinuityOnTimeJump(TimeStampUs now_us);
   void PublishTfFallback();
   void PublishTF(const Mat4d& map_base_pose, TimeStampUs timestamp);
 
@@ -161,6 +162,7 @@ class System : public rclcpp::Node {
   double last_localization_z_offset_ = 0.0;
   bool has_localization_z_offset_ = false;
   TimeStampUs last_tf_extrapolation_duration_us_ = 0U;
+  std::optional<TimeStampUs> last_ros_time_us_;
 
   TimeStampUs last_health_result_stamp_ = 0U;
   TimeStampUs last_health_result_arrival_steady_us_ = 0U;

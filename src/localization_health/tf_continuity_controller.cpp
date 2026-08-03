@@ -14,6 +14,14 @@ void TfContinuityController::Validate(const Config& config) {
   }
 }
 
+void TfContinuityController::Reset() {
+  anchor_.reset();
+  last_publish_us_ = 0U;
+  last_emitted_timestamp_us_ = 0U;
+  mode_ = TfPublicationMode::kNoAnchor;
+  hold_reason_ = TfHoldReason::kNoAnchor;
+}
+
 TfPublicationDecision TfContinuityController::RecordMeasured(
     const TfPoseSample& measured) {
   anchor_ = measured;

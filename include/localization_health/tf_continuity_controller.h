@@ -39,6 +39,7 @@ class TfContinuityController {
   explicit TfContinuityController(Config config);
 
   static void Validate(const Config& config);
+  void Reset();
 
   TfPublicationDecision RecordMeasured(const TfPoseSample& measured);
   std::optional<TfPublicationDecision> Select(

@@ -332,6 +332,10 @@ TEST(TfContinuitySurface, ConfiguresAndPublishesTfOnlyFallback) {
     "localization_health/tf_continuity_controller.h");
   ExpectToken("include/slam/system.h", "TfContinuityController");
   ExpectToken("include/slam/system.h", "PublishTfFallback");
+  ExpectToken("include/slam/system.h", "ResetTfContinuityOnTimeJump");
+  ExpectToken("include/slam/system.h", "last_ros_time_us_");
+  ExpectToken("include/localization_health/tf_continuity_controller.h",
+    "void Reset()");
   ExpectToken("CMakeLists.txt",
     "src/localization_health/tf_continuity_controller.cpp");
 
@@ -363,15 +367,31 @@ TEST(TfContinuitySurface, ConfiguresAndPublishesTfOnlyFallback) {
 
   const std::string run_body = ReadFunctionBody(
     "src/slam/system.cpp", "void System::Run()");
+  const std::size_t reset_for_time_jump = run_body.find(
+    "ResetTfContinuityOnTimeJump(");
+  const std::size_t process_result_cache = run_body.find(
+    "ProcessLocalizationResultCache(");
   const std::size_t no_new_result = run_body.find("if (!had_new_result)");
   const std::size_t publish_health = run_body.find(
     "PublishLocalizationHealth();", no_new_result);
   const std::size_t publish_fallback = run_body.find(
     "PublishTfFallback();", no_new_result);
+  ASSERT_NE(reset_for_time_jump, std::string::npos);
+  ASSERT_NE(process_result_cache, std::string::npos);
   ASSERT_NE(no_new_result, std::string::npos);
   ASSERT_NE(publish_health, std::string::npos);
   ASSERT_NE(publish_fallback, std::string::npos);
+  EXPECT_LT(reset_for_time_jump, process_result_cache);
   EXPECT_LT(publish_health, publish_fallback);
+
+  const std::string time_jump_body = ReadFunctionBody(
+    "src/slam/system.cpp", "void System::ResetTfContinuityOnTimeJump(");
+  ExpectTextToken(time_jump_body, "now_us < last_ros_time_us_.value()");
+  ExpectTextToken(time_jump_body, "tf_continuity_controller_->Reset()");
+  ExpectTextToken(time_jump_body, "RCLCPP_WARN");
+  ExpectTextToken(time_jump_body, "last_ros_time_us_ = now_us");
+  ExpectNoTextToken(time_jump_body, "now_us <=");
+  ExpectNoTextToken(time_jump_body, "RecordMeasured");
 
   const std::string fallback_body = ReadFunctionBody(
     "src/slam/system.cpp", "void System::PublishTfFallback()");

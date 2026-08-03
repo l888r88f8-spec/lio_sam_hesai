@@ -147,4 +147,26 @@ TEST(TfContinuityController, HoldsWhenPredictionPredatesLastEmittedTimestamp) {
   EXPECT_DOUBLE_EQ(decision->sample.map_base_pose(0, 3), 1.0);
 }
 
+TEST(TfContinuityController, ResetAcceptsLowerEpochMeasurementAndFallback) {
+  auto controller = MakeController();
+  controller.RecordMeasured(Sample(1000000U, 1.0));
+  ASSERT_TRUE(controller.Select(1100000U, std::nullopt).has_value());
+
+  controller.Reset();
+
+  EXPECT_FALSE(controller.anchor_timestamp_us().has_value());
+  EXPECT_EQ(controller.mode(), TfPublicationMode::kNoAnchor);
+  EXPECT_EQ(controller.hold_reason(), TfHoldReason::kNoAnchor);
+
+  const auto measured = controller.RecordMeasured(Sample(100000U, 2.0));
+  EXPECT_EQ(measured.mode, TfPublicationMode::kMeasured);
+  EXPECT_EQ(measured.sample.timestamp_us, 100000U);
+
+  const auto fallback = controller.Select(200000U, Sample(200000U, 3.0));
+  ASSERT_TRUE(fallback.has_value());
+  EXPECT_EQ(fallback->mode, TfPublicationMode::kExtrapolated);
+  EXPECT_EQ(fallback->sample.timestamp_us, 200000U);
+  EXPECT_DOUBLE_EQ(fallback->sample.map_base_pose(0, 3), 3.0);
+}
+
 }  // namespace

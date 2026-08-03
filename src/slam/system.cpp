@@ -788,8 +788,22 @@ std::optional<Mat4d> System::GetBaseToLidarTransform() {
   return T_base_to_lidar_;
 }
 
+void System::ResetTfContinuityOnTimeJump(TimeStampUs now_us) {
+  if (last_ros_time_us_.has_value() &&
+      now_us < last_ros_time_us_.value()) {
+    if (tf_continuity_controller_) {
+      tf_continuity_controller_->Reset();
+      last_tf_extrapolation_duration_us_ = 0U;
+    }
+    RCLCPP_WARN(get_logger(),
+                "ROS time moved backward; resetting localization TF continuity.");
+  }
+  last_ros_time_us_ = now_us;
+}
+
 void System::Run() {
   // publish localization path and odometry
+  ResetTfContinuityOnTimeJump(RosTimeToMicroseconds(get_clock()->now()));
   bool had_new_result = false;
   if (ProcessLocalizationResultCache(had_new_result)) {
     PublishLocalizationPath();
