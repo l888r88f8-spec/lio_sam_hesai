@@ -164,6 +164,7 @@ class System : public rclcpp::Node {
   TimeStampUs last_tf_extrapolation_duration_us_ = 0U;
   std::optional<TimeStampUs> last_ros_time_us_;
   bool tf_continuity_time_jump_recovery_active_{false};
+  std::uint64_t tf_continuity_expected_epoch_{0U};
 
   TimeStampUs last_health_result_stamp_ = 0U;
   TimeStampUs last_health_result_arrival_steady_us_ = 0U;

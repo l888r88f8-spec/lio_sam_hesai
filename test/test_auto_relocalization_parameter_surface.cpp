@@ -98,24 +98,19 @@ bool IsTfOnlyFallbackBody(const std::string & body)
          body.find("PublishTF(", publish_tf + 1) == std::string::npos;
 }
 
-bool ShouldRejectTimeJumpRecoveryResult(
-  bool recovery_active,
-  std::uint64_t result_timestamp_us,
-  std::uint64_t current_ros_time_us)
-{
-  return recovery_active && result_timestamp_us > current_ros_time_us;
-}
+struct EpochStampedResult {
+  std::uint64_t epoch;
+  std::uint64_t timestamp_us;
+};
 
-std::vector<std::uint64_t> RetainTimeJumpRecoveryTimestamps(
-  const std::vector<std::uint64_t> & timestamps,
-  bool recovery_active,
-  std::uint64_t current_ros_time_us)
+std::vector<EpochStampedResult> RetainTfContinuityEpochResults(
+  const std::vector<EpochStampedResult> & results,
+  std::uint64_t expected_epoch)
 {
-  std::vector<std::uint64_t> retained;
-  for (const std::uint64_t timestamp : timestamps) {
-    if (!ShouldRejectTimeJumpRecoveryResult(
-          recovery_active, timestamp, current_ros_time_us)) {
-      retained.push_back(timestamp);
+  std::vector<EpochStampedResult> retained;
+  for (const auto & result : results) {
+    if (result.epoch == expected_epoch) {
+      retained.push_back(result);
     }
   }
   return retained;
@@ -361,6 +356,11 @@ TEST(TfContinuitySurface, ConfiguresAndPublishesTfOnlyFallback) {
   ExpectToken("include/slam/system.h", "last_ros_time_us_");
   ExpectToken("include/slam/system.h",
     "tf_continuity_time_jump_recovery_active_");
+  ExpectToken("include/slam/system.h", "tf_continuity_expected_epoch_");
+  ExpectToken("include/common/sensor_data_type.h",
+    "tf_continuity_epoch_{0U}");
+  ExpectToken("include/slam/localization.h", "AdvanceTfContinuityEpoch");
+  ExpectToken("include/slam/localization.h", "tf_continuity_epoch_");
   ExpectToken("include/localization_health/tf_continuity_controller.h",
     "void Reset()");
   ExpectToken("CMakeLists.txt",
@@ -417,6 +417,9 @@ TEST(TfContinuitySurface, ConfiguresAndPublishesTfOnlyFallback) {
   ExpectTextToken(time_jump_body, "tf_continuity_controller_->Reset()");
   ExpectTextToken(time_jump_body,
     "tf_continuity_time_jump_recovery_active_ = true");
+  ExpectTextToken(time_jump_body,
+    "localization_ptr_->AdvanceTfContinuityEpoch()");
+  ExpectTextToken(time_jump_body, "tf_continuity_expected_epoch_ =");
   const std::size_t reset_queue_lock = time_jump_body.find(
     "std::lock_guard<std::mutex> lock(mutex_localization_results_deque_)");
   const std::size_t reset_queue_clear = time_jump_body.find(
@@ -428,6 +431,47 @@ TEST(TfContinuitySurface, ConfiguresAndPublishesTfOnlyFallback) {
   ExpectTextToken(time_jump_body, "last_ros_time_us_ = now_us");
   ExpectNoTextToken(time_jump_body, "now_us <=");
   ExpectNoTextToken(time_jump_body, "RecordMeasured");
+
+  const std::string localization_header =
+    ReadProjectFile("include/slam/localization.h");
+  ExpectTextToken(localization_header,
+    "Init(std::uint64_t tf_continuity_epoch)");
+  ExpectTextToken(localization_header, "CacheResultToSystem(");
+  ExpectTextToken(localization_header,
+    "const LocalizationResult& result,");
+  ExpectTextToken(localization_header,
+    "std::atomic<std::uint64_t> tf_continuity_epoch_{0U}");
+
+  const std::string advance_epoch_body = ReadFunctionBody(
+    "src/slam/localization.cpp",
+    "std::uint64_t Localization::AdvanceTfContinuityEpoch()");
+  ExpectTextToken(advance_epoch_body, "fetch_add");
+
+  const std::string initialization_body = ReadFunctionBody(
+    "src/slam/localization.cpp",
+    "Localization::InitializationResult Localization::Init(");
+  ExpectTextToken(initialization_body,
+    "CacheResultToSystem(init_result, tf_continuity_epoch)");
+
+  const std::string localization_run_body = ReadFunctionBody(
+    "src/slam/localization.cpp", "void Localization::Run()");
+  const std::size_t epoch_snapshot = localization_run_body.find(
+    "const std::uint64_t tf_continuity_epoch =");
+  const std::size_t initialize = localization_run_body.find(
+    "Init(tf_continuity_epoch)");
+  const std::size_t tracking_cache = localization_run_body.find(
+    "CacheResultToSystem(result, tf_continuity_epoch)");
+  ASSERT_NE(epoch_snapshot, std::string::npos);
+  ASSERT_NE(initialize, std::string::npos);
+  ASSERT_NE(tracking_cache, std::string::npos);
+  EXPECT_LT(epoch_snapshot, initialize);
+  EXPECT_LT(epoch_snapshot, tracking_cache);
+
+  const std::string cache_result_body = ReadFunctionBody(
+    "src/slam/localization.cpp", "void Localization::CacheResultToSystem(");
+  ExpectTextToken(cache_result_body,
+    "queued_result.tf_continuity_epoch_ = tf_continuity_epoch");
+  ExpectNoTextToken(cache_result_body, "tf_continuity_epoch_.load");
 
   const std::string fallback_body = ReadFunctionBody(
     "src/slam/system.cpp", "void System::PublishTfFallback()");
@@ -469,8 +513,8 @@ TEST(TfContinuitySurface, ConfiguresAndPublishesTfOnlyFallback) {
   const std::string cache_body = ReadFunctionBody(
     "src/slam/system.cpp", "bool System::ProcessLocalizationResultCache(");
   ExpectTextToken(cache_body, "tf_continuity_time_jump_recovery_active_");
-  ExpectTextToken(cache_body, "RosTimeToMicroseconds(get_clock()->now())");
-  ExpectTextToken(cache_body, "result.timestamp_ > current_ros_time_us");
+  ExpectTextToken(cache_body,
+    "result.tf_continuity_epoch_ != tf_continuity_expected_epoch_");
   const std::size_t filter_pre_jump_results = cache_body.find("std::remove_if(");
   const std::size_t erase_pre_jump_results = cache_body.find(
     "localization_results.erase(", filter_pre_jump_results);
@@ -479,7 +523,7 @@ TEST(TfContinuitySurface, ConfiguresAndPublishesTfOnlyFallback) {
   const std::size_t record_measured = cache_body.find("RecordMeasured(");
   const std::size_t publish_tf = cache_body.find("PublishTF(", record_measured);
   const std::size_t reject_future_result = cache_body.find(
-    "result.timestamp_ > current_ros_time_us");
+    "result.tf_continuity_epoch_ != tf_continuity_expected_epoch_");
   const std::size_t clear_recovery_fence = cache_body.find(
     "tf_continuity_time_jump_recovery_active_ = false", publish_tf);
   ASSERT_NE(filter_pre_jump_results, std::string::npos);
@@ -494,13 +538,14 @@ TEST(TfContinuitySurface, ConfiguresAndPublishesTfOnlyFallback) {
   EXPECT_LT(reject_future_result, record_measured);
   EXPECT_LT(record_measured, publish_tf);
   EXPECT_LT(publish_tf, clear_recovery_fence);
-  EXPECT_TRUE(ShouldRejectTimeJumpRecoveryResult(true, 101U, 100U));
-  EXPECT_FALSE(ShouldRejectTimeJumpRecoveryResult(true, 100U, 100U));
-  EXPECT_FALSE(ShouldRejectTimeJumpRecoveryResult(false, 101U, 100U));
-  const auto retained = RetainTimeJumpRecoveryTimestamps(
-    {101U, 100U}, true, 100U);
+  constexpr std::uint64_t current_ros_time_us = 999000U;
+  const auto retained = RetainTfContinuityEpochResults(
+    {{0U, 998000U}, {1U, 997000U}}, 1U);
   ASSERT_EQ(retained.size(), 1U);
-  EXPECT_EQ(retained.front(), 100U);
+  EXPECT_LE(998000U, current_ros_time_us);
+  EXPECT_LE(997000U, current_ros_time_us);
+  EXPECT_EQ(retained.front().epoch, 1U);
+  EXPECT_EQ(retained.front().timestamp_us, 997000U);
 }
 
 TEST(SystemRuntimeResourceSurface, ConfiguresWorkersBeforeTheirRunLoops) {
@@ -686,7 +731,7 @@ TEST(FrameProcessingPipelineSurface, DropsOverdueFramesBeforeStateCommit) {
 
   const std::string initialization_body = ReadFunctionBody(
     "src/slam/localization.cpp",
-    "Localization::InitializationResult Localization::Init()");
+    "Localization::InitializationResult Localization::Init(");
   const std::size_t initialization_deadline = initialization_body.find(
     "DiscardTimedOutFrameIfNeeded(initialization_commit_now_us)");
   ASSERT_NE(initialization_deadline, std::string::npos);
@@ -707,7 +752,7 @@ TEST(FrameProcessingPipelineSurface, DropsOverdueFramesBeforeStateCommit) {
   }
 
   const std::size_t initialization_branch = localization_run.find(
-    "const InitializationResult initialization_result = Init()");
+    "Init(tf_continuity_epoch)");
   const std::size_t tracking_branch = localization_run.find(
     "if (curr_cloud_cluster_ptr_->imu_data_.size() < 2)");
   ASSERT_NE(initialization_branch, std::string::npos);
@@ -807,7 +852,7 @@ TEST(FrameProcessingPipelineSurface, DropsOverdueFramesBeforeStateCommit) {
     "EstimateMapGroundZ(", tracking_lidar_cloud == std::string::npos ? 0 :
       localization_run.rfind("if (ConfigParameters::Instance()", tracking_lidar_cloud));
   const std::array<std::string, 6> tracking_atomic_commit_tokens = {
-    "CacheResultToSystem(result)",
+    "CacheResultToSystem(result, tf_continuity_epoch)",
     "UpdateCurrentLidarCloud(",
     "delta_pose_ = delta_pose",
     "last_pose_ = curr_pose",
@@ -1129,13 +1174,13 @@ TEST(LocalizationTfPredictionSurface, UsesReadOnlyPredictionSnapshot) {
   ExpectNoTextToken(discard_body, "UpdateTfPredictionAnchor");
 
   const std::string init_body = ReadFunctionBody(
-    "src/slam/localization.cpp", "Localization::InitializationResult Localization::Init()");
+    "src/slam/localization.cpp", "Localization::InitializationResult Localization::Init(");
   const std::size_t initialization_complete = init_body.find(
     "frame_processing_watchdog_.Complete(initialization_commit_now_us, false);");
   const std::size_t initialization_anchor = init_body.find(
     "UpdateTfPredictionAnchor(initialized_nav_state);");
   const std::size_t initialization_cache = init_body.find(
-    "CacheResultToSystem(init_result);");
+    "CacheResultToSystem(init_result, tf_continuity_epoch);");
   ASSERT_NE(initialization_complete, std::string::npos);
   ASSERT_NE(initialization_anchor, std::string::npos);
   ASSERT_NE(initialization_cache, std::string::npos);
@@ -1148,7 +1193,8 @@ TEST(LocalizationTfPredictionSurface, UsesReadOnlyPredictionSnapshot) {
     "frame_processing_watchdog_.Complete(tracking_commit_now_us, false);");
   const std::size_t tracking_anchor = run_body.find(
     "UpdateTfPredictionAnchor(curr_nav_state);");
-  const std::size_t tracking_cache = run_body.find("CacheResultToSystem(result);");
+  const std::size_t tracking_cache = run_body.find(
+    "CacheResultToSystem(result, tf_continuity_epoch);");
   ASSERT_NE(tracking_complete, std::string::npos);
   ASSERT_NE(tracking_anchor, std::string::npos);
   ASSERT_NE(tracking_cache, std::string::npos);

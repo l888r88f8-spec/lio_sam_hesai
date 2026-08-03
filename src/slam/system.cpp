@@ -792,6 +792,8 @@ std::optional<Mat4d> System::GetBaseToLidarTransform() {
 void System::ResetTfContinuityOnTimeJump(TimeStampUs now_us) {
   if (last_ros_time_us_.has_value() &&
       now_us < last_ros_time_us_.value()) {
+    tf_continuity_expected_epoch_ =
+        localization_ptr_->AdvanceTfContinuityEpoch();
     if (tf_continuity_controller_) {
       tf_continuity_controller_->Reset();
       last_tf_extrapolation_duration_us_ = 0U;
@@ -897,17 +899,15 @@ bool System::ProcessLocalizationResultCache(bool& had_new_result) {
     localization_results.swap(localization_results_deque_);
   }
   if (tf_continuity_time_jump_recovery_active_) {
-    const TimeStampUs current_ros_time_us =
-        RosTimeToMicroseconds(get_clock()->now());
-    const auto first_future_result = std::remove_if(
+    const auto first_mismatched_epoch_result = std::remove_if(
         localization_results.begin(), localization_results.end(),
-        [current_ros_time_us](const LocalizationResult& result) {
-          return result.timestamp_ > current_ros_time_us;
+        [this](const LocalizationResult& result) {
+          return result.tf_continuity_epoch_ != tf_continuity_expected_epoch_;
         });
-    if (first_future_result != localization_results.end()) {
+    if (first_mismatched_epoch_result != localization_results.end()) {
       RCLCPP_WARN(get_logger(),
-                  "Discarding pre-jump localization results during TF recovery.");
-      localization_results.erase(first_future_result,
+                  "Discarding mismatched-epoch localization results during TF recovery.");
+      localization_results.erase(first_mismatched_epoch_result,
                                  localization_results.end());
     }
   }

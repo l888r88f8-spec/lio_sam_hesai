@@ -104,6 +104,10 @@ void Localization::RequestAutomaticRelocalization() {
   reinitialization_control_.RequestAutomaticRelocalization();
 }
 
+std::uint64_t Localization::AdvanceTfContinuityEpoch() {
+  return tf_continuity_epoch_.fetch_add(1U) + 1U;
+}
+
 Mat4d Localization::MapLidarPoseToMapImuPose(
     const Mat4d& map_lidar_pose) const {
   return map_lidar_pose *
@@ -304,7 +308,8 @@ void Localization::UpdateTfPredictionAnchor(const NavStateData& nav_state) {
   tf_prediction_anchor_ = std::move(anchor);
 }
 
-Localization::InitializationResult Localization::Init() {
+Localization::InitializationResult Localization::Init(
+    std::uint64_t tf_continuity_epoch) {
   Mat4d init_pose;
   bool has_manual_init_pose = false;
   int result_consistency_hit = 0;
@@ -476,7 +481,7 @@ Localization::InitializationResult Localization::Init() {
   delta_pose_ = Mat4d::Identity();
   last_pose_ = init_pose;
   last_odom_state_ = initialized_odom_state;
-  CacheResultToSystem(init_result);
+  CacheResultToSystem(init_result, tf_continuity_epoch);
   UpdateCurrentLidarCloud(*initialized_lidar_cloud);
 
   return InitializationResult::kInitialized;
@@ -596,6 +601,8 @@ void Localization::Run() {
       system_ptr_->cloud_cluster_deque_.pop_front();
     }
 
+    const std::uint64_t tf_continuity_epoch =
+        tf_continuity_epoch_.load();
     frame_processing_watchdog_.Begin(
         runtime::FrameProcessingWatchdog::SteadyNowMicroseconds());
     const auto complete_frame_without_timeout = [this] {
@@ -623,7 +630,8 @@ void Localization::Run() {
           continue;
         }
 
-        const InitializationResult initialization_result = Init();
+        const InitializationResult initialization_result =
+            Init(tf_continuity_epoch);
         has_init_ = initialization_result == InitializationResult::kInitialized;
         if (initialization_result ==
             InitializationResult::kAutomaticConsistencyPending) {
@@ -785,7 +793,7 @@ void Localization::Run() {
     }
     frame_processing_watchdog_.Complete(tracking_commit_now_us, false);
     UpdateTfPredictionAnchor(curr_nav_state);
-    CacheResultToSystem(result);
+    CacheResultToSystem(result, tf_continuity_epoch);
     UpdateCurrentLidarCloud(*current_lidar_cloud);
 
     delta_pose_ = delta_pose;
@@ -1521,9 +1529,12 @@ std::optional<double> Localization::EstimateMapGroundZ(
   return nearby_z[index];
 }
 
-void Localization::CacheResultToSystem(const LocalizationResult& result) const {
+void Localization::CacheResultToSystem(
+    const LocalizationResult& result,
+    std::uint64_t tf_continuity_epoch) const {
   LocalizationResult queued_result = result;
   queued_result.health_arrival_steady_us = SteadyNowMicroseconds();
+  queued_result.tf_continuity_epoch_ = tf_continuity_epoch;
 
   std::lock_guard<std::mutex> lg(
       system_ptr_->mutex_localization_results_deque_);

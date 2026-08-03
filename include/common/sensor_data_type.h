@@ -75,6 +75,7 @@ struct LocalizationResult : DataBase {
     int consistency_required = 0;
     bool is_tracking = false;
     TimeStampUs health_arrival_steady_us = 0U;
+    std::uint64_t tf_continuity_epoch_{0U};
 };
 
 #endif //FUNNY_LIDAR_SLAM_SENSOR_DATA_TYPE_H

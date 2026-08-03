@@ -38,6 +38,8 @@ public:
 
     void RequestAutomaticRelocalization();
 
+    std::uint64_t AdvanceTfContinuityEpoch();
+
     bool PrepareMap();
 
     void Run();
@@ -69,7 +71,7 @@ private:
         kFailed,
     };
 
-    InitializationResult Init();
+    InitializationResult Init(std::uint64_t tf_continuity_epoch);
 
     void LoadScanContextDb();
 
@@ -100,7 +102,9 @@ private:
     [[nodiscard]] Mat4d MapImuPoseToMapLidarPose(
         const Mat4d& map_imu_pose) const;
 
-    void CacheResultToSystem(const LocalizationResult& result) const;
+    void CacheResultToSystem(
+        const LocalizationResult& result,
+        std::uint64_t tf_continuity_epoch) const;
 
     void UpdateCurrentLidarCloud(const PCLPointCloudXYZI& lidar_cloud);
 
@@ -152,6 +156,7 @@ private:
 
     System* system_ptr_ = nullptr;
     runtime::FrameProcessingWatchdog frame_processing_watchdog_;
+    std::atomic<std::uint64_t> tf_continuity_epoch_{0U};
 
     mutable std::mutex mutex_tf_prediction_anchor_;
     std::optional<TfPredictionAnchor> tf_prediction_anchor_;
