@@ -54,6 +54,46 @@ void ExpectNoTextToken(const std::string & text, const std::string & token)
     << token << " must not appear in extracted source";
 }
 
+bool IsTfOnlyFallbackBody(const std::string & body)
+{
+  const std::array<std::string, 6> prohibited_tokens = {
+    "PublishRosCloud",
+    "localization_current_lidar_cloud_pub_",
+    "localization_global_cloud_map_pub_",
+    "localization_path_.poses.emplace_back",
+    "CacheResultToSystem",
+    "localization_odom_pub_->publish",
+  };
+  for (const auto & token : prohibited_tokens) {
+    if (body.find(token) != std::string::npos) {
+      return false;
+    }
+  }
+  if (body.find("PublishLocalizationPath") != std::string::npos) {
+    return false;
+  }
+
+  const std::size_t select = body.find("tf_continuity_controller_->Select(");
+  const std::size_t guard = body.find("if (!decision.has_value())", select);
+  const std::size_t guard_open = body.find('{', guard);
+  const std::size_t guard_return = body.find("return;", guard_open);
+  const std::size_t guard_close = body.find('}', guard_return);
+  const std::size_t publish_tf = body.find("PublishTF(", guard_close);
+  return select != std::string::npos &&
+         guard != std::string::npos &&
+         guard_open != std::string::npos &&
+         guard_return != std::string::npos &&
+         guard_close != std::string::npos &&
+         publish_tf != std::string::npos &&
+         select < guard &&
+         guard_open < guard_return &&
+         guard_return < guard_close &&
+         guard_close < publish_tf &&
+         body.find("PublishTF(decision->sample", publish_tf) !=
+             std::string::npos &&
+         body.find("PublishTF(", publish_tf + 1) == std::string::npos;
+}
+
 std::string RemoveWhitespace(const std::string & text)
 {
   std::string compact;
@@ -336,8 +376,30 @@ TEST(TfContinuitySurface, ConfiguresAndPublishesTfOnlyFallback) {
   ExpectTextToken(fallback_body, "PublishTF");
   ExpectTextToken(fallback_body, "Select(");
   ExpectTextToken(fallback_body, "PredictMapLidarPose");
+  ExpectNoTextToken(fallback_body, "PublishRosCloud");
+  ExpectNoTextToken(fallback_body, "localization_current_lidar_cloud_pub_");
+  ExpectNoTextToken(fallback_body, "localization_global_cloud_map_pub_");
+  ExpectNoTextToken(fallback_body, "localization_path_.poses.emplace_back");
+  ExpectNoTextToken(fallback_body, "CacheResultToSystem");
   ExpectNoTextToken(fallback_body, "localization_odom_pub_->publish");
   ExpectNoTextToken(fallback_body, "PublishLocalizationPath");
+  EXPECT_TRUE(IsTfOnlyFallbackBody(fallback_body))
+    << "TF fallback must publish only a controller-selected decision";
+
+  const std::string guarded_tf_only_fallback = R"(
+    const auto decision = tf_continuity_controller_->Select(now_us, extrapolated);
+    if (!decision.has_value()) {
+      return;
+    }
+    PublishTF(decision->sample.map_base_pose, decision->sample.timestamp_us);
+  )";
+  EXPECT_TRUE(IsTfOnlyFallbackBody(guarded_tf_only_fallback));
+  EXPECT_FALSE(IsTfOnlyFallbackBody(
+    guarded_tf_only_fallback + "\nPublishRosCloud(cloud_pub, cloud, frame);"));
+  EXPECT_FALSE(IsTfOnlyFallbackBody(R"(
+    const auto decision = tf_continuity_controller_->Select(now_us, extrapolated);
+    PublishTF(decision->sample.map_base_pose, decision->sample.timestamp_us);
+  )"));
 
   const std::string cache_body = ReadFunctionBody(
     "src/slam/system.cpp", "bool System::ProcessLocalizationResultCache(");
