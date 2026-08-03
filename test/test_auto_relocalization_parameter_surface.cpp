@@ -78,6 +78,7 @@ bool IsTfOnlyFallbackBody(const std::string & body)
   const std::size_t guard_open = body.find('{', guard);
   const std::size_t guard_return = body.find("return;", guard_open);
   const std::size_t guard_close = body.find('}', guard_return);
+  const std::size_t first_publish_tf = body.find("PublishTF(");
   const std::size_t publish_tf = body.find("PublishTF(", guard_close);
   return select != std::string::npos &&
          guard != std::string::npos &&
@@ -89,6 +90,7 @@ bool IsTfOnlyFallbackBody(const std::string & body)
          guard_open < guard_return &&
          guard_return < guard_close &&
          guard_close < publish_tf &&
+         first_publish_tf == publish_tf &&
          body.find("PublishTF(decision->sample", publish_tf) !=
              std::string::npos &&
          body.find("PublishTF(", publish_tf + 1) == std::string::npos;
@@ -396,6 +398,13 @@ TEST(TfContinuitySurface, ConfiguresAndPublishesTfOnlyFallback) {
   EXPECT_TRUE(IsTfOnlyFallbackBody(guarded_tf_only_fallback));
   EXPECT_FALSE(IsTfOnlyFallbackBody(
     guarded_tf_only_fallback + "\nPublishRosCloud(cloud_pub, cloud, frame);"));
+  EXPECT_FALSE(IsTfOnlyFallbackBody(
+    "PublishTF(early_pose, early_stamp);\n" + guarded_tf_only_fallback));
+  EXPECT_FALSE(IsTfOnlyFallbackBody(
+    guarded_tf_only_fallback +
+    "\nlocalization_path_.poses.emplace_back(pose_stamped);"));
+  EXPECT_FALSE(IsTfOnlyFallbackBody(
+    guarded_tf_only_fallback + "\nCacheResultToSystem(result);"));
   EXPECT_FALSE(IsTfOnlyFallbackBody(R"(
     const auto decision = tf_continuity_controller_->Select(now_us, extrapolated);
     PublishTF(decision->sample.map_base_pose, decision->sample.timestamp_us);
