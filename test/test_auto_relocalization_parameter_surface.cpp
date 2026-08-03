@@ -393,6 +393,22 @@ TEST(FrameProcessingPipelineSurface, DropsOverdueFramesBeforeStateCommit) {
     EXPECT_NE(discard_body.find(token), std::string::npos);
   }
 
+  const std::size_t rebuild_preintegration = discard_body.find(
+    "InitPreintegration()");
+  const std::size_t restore_navigation_bias = discard_body.find(
+    "pre_integration_ptr_->SetGyroAccBias(last_nav_state_.bg_,");
+  const std::size_t restore_odometry_bias = discard_body.find(
+    "odom_pre_integration_ptr_->SetGyroAccBias(last_odom_state_.bg_,");
+  ASSERT_NE(rebuild_preintegration, std::string::npos);
+  ASSERT_NE(restore_navigation_bias, std::string::npos);
+  ASSERT_NE(restore_odometry_bias, std::string::npos);
+  EXPECT_LT(rebuild_preintegration, restore_navigation_bias);
+  EXPECT_LT(rebuild_preintegration, restore_odometry_bias);
+  EXPECT_NE(discard_body.find("last_nav_state_.ba_", restore_navigation_bias),
+    std::string::npos);
+  EXPECT_NE(discard_body.find("last_odom_state_.ba_", restore_odometry_bias),
+    std::string::npos);
+
   const std::string initialization_body = ReadFunctionBody(
     "src/slam/localization.cpp",
     "Localization::InitializationResult Localization::Init()");

@@ -200,6 +200,14 @@ bool Localization::DiscardTimedOutFrameIfNeeded(std::uint64_t now_us) {
   frame_processing_watchdog_.Complete(now_us, true);
   InitMatcher();
   InitPreintegration();
+  if (pre_integration_ptr_) {
+    pre_integration_ptr_->SetGyroAccBias(last_nav_state_.bg_,
+                                         last_nav_state_.ba_);
+  }
+  if (odom_pre_integration_ptr_) {
+    odom_pre_integration_ptr_->SetGyroAccBias(last_odom_state_.bg_,
+                                              last_odom_state_.ba_);
+  }
   need_update_local_map_ = true;
   force_local_map_rebuild_ = true;
   delta_pose_ = Mat4d::Identity();
