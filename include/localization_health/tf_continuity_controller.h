@@ -52,6 +52,7 @@ class TfContinuityController {
   Config config_;
   std::optional<TfPoseSample> anchor_;
   TimeStampUs last_publish_us_{0U};
+  TimeStampUs last_emitted_timestamp_us_{0U};
   TfPublicationMode mode_{TfPublicationMode::kNoAnchor};
   TfHoldReason hold_reason_{TfHoldReason::kNoAnchor};
 };

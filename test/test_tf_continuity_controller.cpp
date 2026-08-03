@@ -89,4 +89,62 @@ TEST(TfContinuityController, RateLimitsFallbackAndReplacesAnchorWithMeasurement)
   EXPECT_EQ(held->anchor_timestamp_us, 1100000U);
 }
 
+TEST(TfContinuityController, HoldsWhenAnchorAgeExceedsExtrapolationLimit) {
+  auto controller = MakeController();
+  controller.RecordMeasured(Sample(1000000U, 1.0));
+
+  const auto decision = controller.Select(10000000U, Sample(1400000U, 2.0));
+
+  ASSERT_TRUE(decision.has_value());
+  EXPECT_EQ(decision->mode, TfPublicationMode::kHeld);
+  EXPECT_EQ(decision->hold_reason, TfHoldReason::kExtrapolationLimit);
+  EXPECT_EQ(decision->sample.timestamp_us, 10000000U);
+  EXPECT_DOUBLE_EQ(decision->sample.map_base_pose(0, 3), 1.0);
+}
+
+TEST(TfContinuityController, HoldsWhenPredictionTimestampIsInTheFuture) {
+  auto controller = MakeController();
+  controller.RecordMeasured(Sample(1000000U, 1.0));
+
+  const auto decision = controller.Select(1200000U, Sample(1300000U, 2.0));
+
+  ASSERT_TRUE(decision.has_value());
+  EXPECT_EQ(decision->mode, TfPublicationMode::kHeld);
+  EXPECT_EQ(decision->hold_reason, TfHoldReason::kExtrapolationLimit);
+  EXPECT_EQ(decision->sample.timestamp_us, 1200000U);
+  EXPECT_DOUBLE_EQ(decision->sample.map_base_pose(0, 3), 1.0);
+}
+
+TEST(TfContinuityController, ClampsLateMeasurementToLastEmittedTimestamp) {
+  auto controller = MakeController();
+  controller.RecordMeasured(Sample(1000000U, 1.0));
+  const auto held = controller.Select(1100000U, std::nullopt);
+  ASSERT_TRUE(held.has_value());
+  ASSERT_EQ(held->sample.timestamp_us, 1100000U);
+
+  const auto measured = controller.RecordMeasured(Sample(1050000U, 2.0));
+
+  EXPECT_EQ(measured.mode, TfPublicationMode::kMeasured);
+  EXPECT_EQ(measured.sample.timestamp_us, 1100000U);
+  EXPECT_DOUBLE_EQ(measured.sample.map_base_pose(0, 3), 2.0);
+  ASSERT_TRUE(controller.anchor_timestamp_us().has_value());
+  EXPECT_EQ(*controller.anchor_timestamp_us(), 1050000U);
+}
+
+TEST(TfContinuityController, HoldsWhenPredictionPredatesLastEmittedTimestamp) {
+  auto controller = MakeController();
+  controller.RecordMeasured(Sample(1000000U, 1.0));
+  const auto held = controller.Select(1100000U, std::nullopt);
+  ASSERT_TRUE(held.has_value());
+  ASSERT_EQ(held->sample.timestamp_us, 1100000U);
+
+  const auto decision = controller.Select(1200000U, Sample(1050000U, 2.0));
+
+  ASSERT_TRUE(decision.has_value());
+  EXPECT_EQ(decision->mode, TfPublicationMode::kHeld);
+  EXPECT_EQ(decision->hold_reason, TfHoldReason::kExtrapolationLimit);
+  EXPECT_EQ(decision->sample.timestamp_us, 1200000U);
+  EXPECT_DOUBLE_EQ(decision->sample.map_base_pose(0, 3), 1.0);
+}
+
 }  // namespace

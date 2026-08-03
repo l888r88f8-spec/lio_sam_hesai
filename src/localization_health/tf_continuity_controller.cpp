@@ -17,10 +17,17 @@ void TfContinuityController::Validate(const Config& config) {
 TfPublicationDecision TfContinuityController::RecordMeasured(
     const TfPoseSample& measured) {
   anchor_ = measured;
-  last_publish_us_ = measured.timestamp_us;
+  TfPoseSample emitted = measured;
+  if (emitted.timestamp_us < last_emitted_timestamp_us_) {
+    emitted.timestamp_us = last_emitted_timestamp_us_;
+  }
+  if (last_publish_us_ < emitted.timestamp_us) {
+    last_publish_us_ = emitted.timestamp_us;
+  }
+  last_emitted_timestamp_us_ = emitted.timestamp_us;
   mode_ = TfPublicationMode::kMeasured;
   hold_reason_ = TfHoldReason::kNone;
-  return {mode_, hold_reason_, measured, measured.timestamp_us, 0U};
+  return {mode_, hold_reason_, emitted, measured.timestamp_us, 0U};
 }
 
 std::optional<TfPublicationDecision> TfContinuityController::Select(
@@ -35,16 +42,19 @@ std::optional<TfPublicationDecision> TfContinuityController::Select(
   }
 
   const TfPoseSample& anchor = *anchor_;
-  if (extrapolated && extrapolated->timestamp_us >= anchor.timestamp_us) {
+  if (extrapolated && now_us >= anchor.timestamp_us &&
+      now_us - anchor.timestamp_us <= config_.max_extrapolation_us &&
+      extrapolated->timestamp_us >= anchor.timestamp_us &&
+      extrapolated->timestamp_us <= now_us &&
+      extrapolated->timestamp_us >= last_emitted_timestamp_us_) {
     const TimeStampUs span_us =
         extrapolated->timestamp_us - anchor.timestamp_us;
-    if (span_us <= config_.max_extrapolation_us) {
-      mode_ = TfPublicationMode::kExtrapolated;
-      hold_reason_ = TfHoldReason::kNone;
-      last_publish_us_ = now_us;
-      return TfPublicationDecision{mode_, hold_reason_, *extrapolated,
-                                   anchor.timestamp_us, span_us};
-    }
+    mode_ = TfPublicationMode::kExtrapolated;
+    hold_reason_ = TfHoldReason::kNone;
+    last_publish_us_ = now_us;
+    last_emitted_timestamp_us_ = extrapolated->timestamp_us;
+    return TfPublicationDecision{mode_, hold_reason_, *extrapolated,
+                                 anchor.timestamp_us, span_us};
   }
 
   mode_ = TfPublicationMode::kHeld;
@@ -53,6 +63,7 @@ std::optional<TfPublicationDecision> TfContinuityController::Select(
   last_publish_us_ = now_us;
   TfPoseSample held = anchor;
   held.timestamp_us = now_us;
+  last_emitted_timestamp_us_ = held.timestamp_us;
   return TfPublicationDecision{mode_, hold_reason_, held, anchor.timestamp_us,
                                0U};
 }
