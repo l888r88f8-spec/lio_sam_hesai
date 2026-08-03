@@ -287,6 +287,12 @@ if(BUILD_TESTING)
   ament_add_gtest(test_code_hygiene test/test_code_hygiene.cpp)
   ament_add_gtest(test_data_stream_watchdog test/test_data_stream_watchdog.cpp src/localization_health/data_stream_watchdog.cpp)
   target_include_directories(test_data_stream_watchdog PRIVATE include)
+  ament_add_gtest(test_tf_continuity_controller
+    test/test_tf_continuity_controller.cpp
+    src/localization_health/tf_continuity_controller.cpp)
+  target_include_directories(test_tf_continuity_controller PRIVATE
+    include ${PCL_INCLUDE_DIRS})
+  target_link_libraries(test_tf_continuity_controller ${LIO_SAM_EIGEN_TARGET})
   ament_add_gtest(test_recovery_attempt_gate
     test/test_recovery_attempt_gate.cpp
     src/localization_health/recovery_attempt_gate.cpp
