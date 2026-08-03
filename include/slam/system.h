@@ -29,6 +29,7 @@
 #include "lidar/pointcloud_cluster.h"
 #include "localization_health/data_stream_watchdog.h"
 #include "localization_health/localization_recovery_coordinator.h"
+#include "localization_health/tf_continuity_controller.h"
 #include "runtime/thread_runtime_controller.h"
 
 class PreProcessing;
@@ -66,6 +67,7 @@ class System : public rclcpp::Node {
   void PublishRuntimeDiagnostics();
   void AppendRuntimeDiagnostics(
       diagnostic_msgs::msg::DiagnosticStatus& status) const;
+  void PublishTfFallback();
   void PublishTF(const Mat4d& map_base_pose, TimeStampUs timestamp);
 
   void LidarMsgCallBack(
@@ -122,6 +124,8 @@ class System : public rclcpp::Node {
       data_stream_watchdog_;
   std::unique_ptr<localization_health::LocalizationRecoveryCoordinator>
       localization_recovery_coordinator_;
+  std::unique_ptr<localization_health::TfContinuityController>
+      tf_continuity_controller_;
 
   std::shared_ptr<std::thread> pre_processing_thread_ptr_ = nullptr;
   std::shared_ptr<std::thread> localization_thread_ptr_ = nullptr;
@@ -156,6 +160,7 @@ class System : public rclcpp::Node {
   bool has_base_to_lidar_ = false;
   double last_localization_z_offset_ = 0.0;
   bool has_localization_z_offset_ = false;
+  TimeStampUs last_tf_extrapolation_duration_us_ = 0U;
 
   TimeStampUs last_health_result_stamp_ = 0U;
   TimeStampUs last_health_result_arrival_steady_us_ = 0U;

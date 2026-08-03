@@ -51,6 +51,11 @@
       base_covariance: 0.05                                     # 健康时基础协方差
       max_covariance_scale: 100.0                               # 最大协方差放大倍率
 
+    localization_tf:
+      publish_rate_hz: 20.0
+      max_extrapolation_seconds: 0.5
+      enable_imu_extrapolation: true
+
     runtime:
       enable_realtime_scheduling: true
       preprocessing_fifo_priority: 70

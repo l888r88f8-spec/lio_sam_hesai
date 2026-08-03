@@ -153,6 +153,11 @@ public:
     double health_base_covariance_{0.05};
     double health_max_covariance_scale_{100.0};
 
+    // localization TF continuity
+    double localization_tf_publish_rate_hz_{20.0};
+    double localization_tf_max_extrapolation_seconds_{0.5};
+    bool localization_tf_enable_imu_extrapolation_{true};
+
     // runtime resource governance
     bool runtime_enable_realtime_scheduling_{true};
     int runtime_preprocessing_fifo_priority_{70};

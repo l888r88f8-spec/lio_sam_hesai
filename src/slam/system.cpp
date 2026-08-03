@@ -87,6 +87,42 @@ std::uint64_t SteadyNowMicroseconds() {
       std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count());
 }
 
+TimeStampUs RosTimeToMicroseconds(const rclcpp::Time& time) {
+  const auto nanoseconds = time.nanoseconds();
+  if (nanoseconds <= 0) {
+    return 0U;
+  }
+  return static_cast<TimeStampUs>(nanoseconds / 1000LL);
+}
+
+const char* TfModeString(localization_health::TfPublicationMode mode) {
+  switch (mode) {
+    case localization_health::TfPublicationMode::kMeasured:
+      return "measured";
+    case localization_health::TfPublicationMode::kExtrapolated:
+      return "extrapolated";
+    case localization_health::TfPublicationMode::kHeld:
+      return "held";
+    case localization_health::TfPublicationMode::kNoAnchor:
+      return "no_anchor";
+  }
+  return "no_anchor";
+}
+
+const char* TfHoldReasonString(localization_health::TfHoldReason reason) {
+  switch (reason) {
+    case localization_health::TfHoldReason::kNone:
+      return "none";
+    case localization_health::TfHoldReason::kImuUnavailable:
+      return "imu_unavailable";
+    case localization_health::TfHoldReason::kExtrapolationLimit:
+      return "extrapolation_limit";
+    case localization_health::TfHoldReason::kNoAnchor:
+      return "no_anchor";
+  }
+  return "no_anchor";
+}
+
 }  // namespace
 
 System::System(const rclcpp::NodeOptions& options)
@@ -141,8 +177,9 @@ System::System(const rclcpp::NodeOptions& options)
   state_config.nominal_lidar_rate_hz = config.health_nominal_lidar_rate_hz_;
   state_config.nominal_imu_rate_hz = config.health_nominal_imu_rate_hz_;
   state_config.min_stream_rate_ratio = config.health_min_rate_ratio_;
-  state_config.result_timeout_us = SecondsToMicroseconds(
+  const TimeStampUs health_result_timeout_us = SecondsToMicroseconds(
       config.health_result_timeout_, "localization_health.result_timeout");
+  state_config.result_timeout_us = health_result_timeout_us;
   state_config.base_covariance = config.health_base_covariance_;
   state_config.max_covariance_scale = config.health_max_covariance_scale_;
 
@@ -154,6 +191,22 @@ System::System(const rclcpp::NodeOptions& options)
   localization_recovery_coordinator_ =
       std::make_unique<localization_health::LocalizationRecoveryCoordinator>(
           state_config, recovery_gate_config);
+
+  localization_health::TfContinuityController::Config tf_config;
+  tf_config.publish_period_us = RateToPeriodMicroseconds(
+      config.localization_tf_publish_rate_hz_,
+      "localization_tf.publish_rate_hz");
+  tf_config.max_extrapolation_us = SecondsToMicroseconds(
+      config.localization_tf_max_extrapolation_seconds_,
+      "localization_tf.max_extrapolation_seconds");
+  if (tf_config.max_extrapolation_us > health_result_timeout_us) {
+    throw std::invalid_argument(
+        "localization_tf.max_extrapolation_seconds must not exceed "
+        "localization_health.result_timeout");
+  }
+  localization_health::TfContinuityController::Validate(tf_config);
+  tf_continuity_controller_ =
+      std::make_unique<localization_health::TfContinuityController>(tf_config);
 
   InitLidarModel();
 
@@ -307,6 +360,14 @@ void System::InitConfigParameters() {
               config.health_base_covariance_, 0.05);
   util::param(this, "localization_health.max_covariance_scale",
               config.health_max_covariance_scale_, 100.0);
+
+  // localization TF continuity parameters
+  util::param(this, "localization_tf.publish_rate_hz",
+              config.localization_tf_publish_rate_hz_, 20.0);
+  util::param(this, "localization_tf.max_extrapolation_seconds",
+              config.localization_tf_max_extrapolation_seconds_, 0.5);
+  util::param(this, "localization_tf.enable_imu_extrapolation",
+              config.localization_tf_enable_imu_extrapolation_, true);
 
   // runtime resource governance parameters
   util::param(this, "runtime.enable_realtime_scheduling",
@@ -741,6 +802,7 @@ void System::Run() {
   }
   if (!had_new_result) {
     PublishLocalizationHealth();
+    PublishTfFallback();
   }
 
   // publish global cloud map
@@ -756,6 +818,49 @@ void System::Run() {
       first_global_map_visualization = false;
     }
   }
+}
+
+void System::PublishTfFallback() {
+  if (!tf_continuity_controller_) {
+    return;
+  }
+
+  const auto& config = ConfigParameters::Instance();
+  std::optional<localization_health::TfPoseSample> extrapolated;
+  const auto anchor_timestamp_us =
+      tf_continuity_controller_->anchor_timestamp_us();
+  if (config.localization_tf_enable_imu_extrapolation_ &&
+      anchor_timestamp_us.has_value() && imu_data_searcher_ptr_ &&
+      localization_ptr_) {
+    const auto latest_imu = imu_data_searcher_ptr_->LatestData();
+    if (latest_imu.has_value() &&
+        latest_imu->timestamp_ > anchor_timestamp_us.value()) {
+      const auto imu_segment = imu_data_searcher_ptr_->GetDataSegment(
+          anchor_timestamp_us.value(), latest_imu->timestamp_);
+      const auto map_lidar_prediction =
+          localization_ptr_->PredictMapLidarPose(imu_segment);
+      const auto base_to_lidar = GetBaseToLidarTransform();
+      if (map_lidar_prediction.has_value() && base_to_lidar.has_value()) {
+        Mat4d map_base_pose =
+            map_lidar_prediction->map_lidar_pose * base_to_lidar.value();
+        if (config.localization_enable_ground_height_constraint_ &&
+            has_localization_z_offset_) {
+          map_base_pose(2, 3) += last_localization_z_offset_;
+        }
+        extrapolated = localization_health::TfPoseSample{
+            map_base_pose, map_lidar_prediction->timestamp_};
+      }
+    }
+  }
+
+  const TimeStampUs now_us = RosTimeToMicroseconds(get_clock()->now());
+  const auto decision = tf_continuity_controller_->Select(now_us, extrapolated);
+  if (!decision.has_value()) {
+    return;
+  }
+
+  last_tf_extrapolation_duration_us_ = decision->extrapolation_duration_us;
+  PublishTF(decision->sample.map_base_pose, decision->sample.timestamp_us);
 }
 
 bool System::ProcessLocalizationResultCache(bool& had_new_result) {
@@ -825,7 +930,12 @@ bool System::ProcessLocalizationResultCache(bool& had_new_result) {
     last_localization_z_offset_ = 0.0;
     has_localization_z_offset_ = false;
   }
-  PublishTF(map_base_pose, result.timestamp_);
+  const auto measured_decision = tf_continuity_controller_->RecordMeasured(
+      localization_health::TfPoseSample{map_base_pose, result.timestamp_});
+  last_tf_extrapolation_duration_us_ =
+      measured_decision.extrapolation_duration_us;
+  PublishTF(measured_decision.sample.map_base_pose,
+            measured_decision.sample.timestamp_us);
 
   const Eigen::Quaterniond q(map_base_pose.block<3, 3>(0, 0));
   const Vec3d& t = map_base_pose.block<3, 1>(0, 3);
@@ -977,6 +1087,35 @@ void System::PublishLocalizationHealth() {
   add_value("map_ready", BoolString(inputs.map_ready));
   add_value("map_preparation_duration_ms",
             std::to_string(map_preparation_duration_ms));
+
+  localization_health::TfPublicationMode tf_mode =
+      localization_health::TfPublicationMode::kNoAnchor;
+  localization_health::TfHoldReason tf_hold_reason =
+      localization_health::TfHoldReason::kNoAnchor;
+  TimeStampUs tf_anchor_age_us = 0U;
+  TimeStampUs tf_extrapolation_age_us = 0U;
+  if (tf_continuity_controller_) {
+    tf_mode = tf_continuity_controller_->mode();
+    tf_hold_reason = tf_continuity_controller_->hold_reason();
+    const auto anchor_timestamp_us =
+        tf_continuity_controller_->anchor_timestamp_us();
+    const TimeStampUs now_us = RosTimeToMicroseconds(get_clock()->now());
+    if (anchor_timestamp_us.has_value() && now_us >= anchor_timestamp_us.value()) {
+      tf_anchor_age_us = now_us - anchor_timestamp_us.value();
+    }
+    if (tf_mode == localization_health::TfPublicationMode::kExtrapolated) {
+      tf_extrapolation_age_us = last_tf_extrapolation_duration_us_;
+    }
+  }
+  add_value("tf_mode", TfModeString(tf_mode));
+  add_value("tf_anchor_age_ms", std::to_string(
+      static_cast<double>(tf_anchor_age_us) /
+      static_cast<double>(kMicrosecondsPerMillisecond)));
+  add_value("tf_extrapolation_age_ms", std::to_string(
+      static_cast<double>(tf_extrapolation_age_us) /
+      static_cast<double>(kMicrosecondsPerMillisecond)));
+  add_value("tf_hold_reason", TfHoldReasonString(tf_hold_reason));
+
   AppendRuntimeDiagnostics(status);
   add_value("rates_known", BoolString(inputs.stream.rates_known));
   add_value("lidar_stalled", BoolString(inputs.stream.lidar_stalled));

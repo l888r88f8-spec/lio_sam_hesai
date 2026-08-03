@@ -154,6 +154,21 @@ void ExpectLocalizationHealthYamlParameter(const std::string & leaf)
     << " is missing from config/relocalization.yaml";
 }
 
+void ExpectLocalizationTfYamlParameter(const std::string & leaf)
+{
+  const std::string text = ReadProjectFile("config/relocalization.yaml");
+  const std::size_t localization_tf = text.find("\n    localization_tf:");
+  ASSERT_NE(localization_tf, std::string::npos)
+    << "localization_tf is missing from config/relocalization.yaml";
+  const std::size_t localization_tf_end =
+    FindYamlBlockEnd(text, localization_tf, 4);
+  const std::size_t yaml_leaf = text.find("\n      " + leaf + ":", localization_tf);
+  EXPECT_TRUE(
+    yaml_leaf != std::string::npos && yaml_leaf < localization_tf_end)
+    << "localization_tf." << leaf
+    << " is missing from config/relocalization.yaml";
+}
+
 void ExpectRuntimeYamlParameter(const std::string & leaf)
 {
   const std::string text = ReadProjectFile("config/relocalization.yaml");
@@ -251,6 +266,86 @@ TEST(AutoRelocalizationParameterSurface, ExposesLocalizationHealthParameters) {
       "src/slam/system.cpp", "localization_health." + parameter.leaf);
     ExpectLocalizationHealthYamlParameter(parameter.leaf);
   }
+}
+
+TEST(TfContinuitySurface, ConfiguresAndPublishesTfOnlyFallback) {
+  struct TfParameter {
+    std::string leaf;
+    std::string member;
+  };
+  const std::array<TfParameter, 3> parameters = {{
+    {"publish_rate_hz", "localization_tf_publish_rate_hz_"},
+    {"max_extrapolation_seconds", "localization_tf_max_extrapolation_seconds_"},
+    {"enable_imu_extrapolation", "localization_tf_enable_imu_extrapolation_"},
+  }};
+
+  for (const auto & parameter : parameters) {
+    ExpectToken("include/slam/config_parameters.h", parameter.member);
+    ExpectQuotedParameter(
+      "src/slam/system.cpp", "localization_tf." + parameter.leaf);
+    ExpectLocalizationTfYamlParameter(parameter.leaf);
+  }
+
+  ExpectToken("include/slam/system.h",
+    "localization_health/tf_continuity_controller.h");
+  ExpectToken("include/slam/system.h", "TfContinuityController");
+  ExpectToken("include/slam/system.h", "PublishTfFallback");
+  ExpectToken("CMakeLists.txt",
+    "src/localization_health/tf_continuity_controller.cpp");
+
+  const std::string system_source = ReadProjectFile("src/slam/system.cpp");
+  const std::array<std::string, 4> diagnostics_tokens = {
+    "tf_mode",
+    "tf_anchor_age_ms",
+    "tf_extrapolation_age_ms",
+    "tf_hold_reason",
+  };
+  for (const auto & token : diagnostics_tokens) {
+    ExpectTextToken(system_source, token);
+  }
+
+  const std::string constructor_body = ReadFunctionBody(
+    "src/slam/system.cpp", "System::System(const rclcpp::NodeOptions& options)");
+  const std::array<std::string, 5> configuration_tokens = {
+    "RateToPeriodMicroseconds(",
+    "SecondsToMicroseconds(",
+    "TfContinuityController::Validate",
+    "tf_config.max_extrapolation_us > health_result_timeout_us",
+    "localization_health.result_timeout",
+  };
+  for (const auto & token : configuration_tokens) {
+    ExpectTextToken(constructor_body, token);
+  }
+  ExpectTextToken(system_source, "rate_hz <= 0.0");
+  ExpectTextToken(system_source, "seconds <= 0.0");
+
+  const std::string run_body = ReadFunctionBody(
+    "src/slam/system.cpp", "void System::Run()");
+  const std::size_t no_new_result = run_body.find("if (!had_new_result)");
+  const std::size_t publish_health = run_body.find(
+    "PublishLocalizationHealth();", no_new_result);
+  const std::size_t publish_fallback = run_body.find(
+    "PublishTfFallback();", no_new_result);
+  ASSERT_NE(no_new_result, std::string::npos);
+  ASSERT_NE(publish_health, std::string::npos);
+  ASSERT_NE(publish_fallback, std::string::npos);
+  EXPECT_LT(publish_health, publish_fallback);
+
+  const std::string fallback_body = ReadFunctionBody(
+    "src/slam/system.cpp", "void System::PublishTfFallback()");
+  ExpectTextToken(fallback_body, "PublishTF");
+  ExpectTextToken(fallback_body, "Select(");
+  ExpectTextToken(fallback_body, "PredictMapLidarPose");
+  ExpectNoTextToken(fallback_body, "localization_odom_pub_->publish");
+  ExpectNoTextToken(fallback_body, "PublishLocalizationPath");
+
+  const std::string cache_body = ReadFunctionBody(
+    "src/slam/system.cpp", "bool System::ProcessLocalizationResultCache(");
+  const std::size_t record_measured = cache_body.find("RecordMeasured(");
+  const std::size_t publish_tf = cache_body.find("PublishTF(", record_measured);
+  ASSERT_NE(record_measured, std::string::npos);
+  ASSERT_NE(publish_tf, std::string::npos);
+  EXPECT_LT(record_measured, publish_tf);
 }
 
 TEST(SystemRuntimeResourceSurface, ConfiguresWorkersBeforeTheirRunLoops) {

@@ -150,6 +150,7 @@ add_library(${PROJECT_NAME}_relocalization_lib
   src/localization_health/recovery_attempt_gate.cpp
   src/localization_health/localization_recovery_coordinator.cpp
   src/localization_health/reinitialization_control.cpp
+  src/localization_health/tf_continuity_controller.cpp
   src/runtime/thread_runtime_controller.cpp
   src/runtime/frame_processing_watchdog.cpp
   src/slam/config_parameters.cpp
