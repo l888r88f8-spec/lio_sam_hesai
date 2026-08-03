@@ -5,6 +5,7 @@
 #include <tf2_eigen/tf2_eigen.hpp>
 
 #include <chrono>
+#include <algorithm>
 #include <cmath>
 #include <functional>
 #include <limits>
@@ -895,19 +896,28 @@ bool System::ProcessLocalizationResultCache(bool& had_new_result) {
 
     localization_results.swap(localization_results_deque_);
   }
-  had_new_result = true;
-
-  const LocalizationResult& result = localization_results.back();
   if (tf_continuity_time_jump_recovery_active_) {
     const TimeStampUs current_ros_time_us =
         RosTimeToMicroseconds(get_clock()->now());
-    if (result.timestamp_ > current_ros_time_us) {
+    const auto first_future_result = std::remove_if(
+        localization_results.begin(), localization_results.end(),
+        [current_ros_time_us](const LocalizationResult& result) {
+          return result.timestamp_ > current_ros_time_us;
+        });
+    if (first_future_result != localization_results.end()) {
       RCLCPP_WARN(get_logger(),
-                  "Discarding pre-jump localization result during TF recovery.");
-      had_new_result = false;
-      return false;
+                  "Discarding pre-jump localization results during TF recovery.");
+      localization_results.erase(first_future_result,
+                                 localization_results.end());
     }
   }
+
+  if (localization_results.empty()) {
+    return false;
+  }
+  had_new_result = true;
+
+  const LocalizationResult& result = localization_results.back();
 
   for (const auto& health_result : localization_results) {
     {

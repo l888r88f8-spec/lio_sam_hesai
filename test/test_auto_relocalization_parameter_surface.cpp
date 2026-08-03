@@ -6,6 +6,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <vector>
 
 namespace
 {
@@ -103,6 +104,21 @@ bool ShouldRejectTimeJumpRecoveryResult(
   std::uint64_t current_ros_time_us)
 {
   return recovery_active && result_timestamp_us > current_ros_time_us;
+}
+
+std::vector<std::uint64_t> RetainTimeJumpRecoveryTimestamps(
+  const std::vector<std::uint64_t> & timestamps,
+  bool recovery_active,
+  std::uint64_t current_ros_time_us)
+{
+  std::vector<std::uint64_t> retained;
+  for (const std::uint64_t timestamp : timestamps) {
+    if (!ShouldRejectTimeJumpRecoveryResult(
+          recovery_active, timestamp, current_ros_time_us)) {
+      retained.push_back(timestamp);
+    }
+  }
+  return retained;
 }
 
 std::string RemoveWhitespace(const std::string & text)
@@ -455,22 +471,36 @@ TEST(TfContinuitySurface, ConfiguresAndPublishesTfOnlyFallback) {
   ExpectTextToken(cache_body, "tf_continuity_time_jump_recovery_active_");
   ExpectTextToken(cache_body, "RosTimeToMicroseconds(get_clock()->now())");
   ExpectTextToken(cache_body, "result.timestamp_ > current_ros_time_us");
+  const std::size_t filter_pre_jump_results = cache_body.find("std::remove_if(");
+  const std::size_t erase_pre_jump_results = cache_body.find(
+    "localization_results.erase(", filter_pre_jump_results);
+  const std::size_t health_loop = cache_body.find(
+    "for (const auto& health_result : localization_results)");
   const std::size_t record_measured = cache_body.find("RecordMeasured(");
   const std::size_t publish_tf = cache_body.find("PublishTF(", record_measured);
   const std::size_t reject_future_result = cache_body.find(
     "result.timestamp_ > current_ros_time_us");
   const std::size_t clear_recovery_fence = cache_body.find(
     "tf_continuity_time_jump_recovery_active_ = false", publish_tf);
+  ASSERT_NE(filter_pre_jump_results, std::string::npos);
+  ASSERT_NE(erase_pre_jump_results, std::string::npos);
+  ASSERT_NE(health_loop, std::string::npos);
   ASSERT_NE(reject_future_result, std::string::npos);
   ASSERT_NE(record_measured, std::string::npos);
   ASSERT_NE(publish_tf, std::string::npos);
   ASSERT_NE(clear_recovery_fence, std::string::npos);
+  EXPECT_LT(filter_pre_jump_results, erase_pre_jump_results);
+  EXPECT_LT(erase_pre_jump_results, health_loop);
   EXPECT_LT(reject_future_result, record_measured);
   EXPECT_LT(record_measured, publish_tf);
   EXPECT_LT(publish_tf, clear_recovery_fence);
   EXPECT_TRUE(ShouldRejectTimeJumpRecoveryResult(true, 101U, 100U));
   EXPECT_FALSE(ShouldRejectTimeJumpRecoveryResult(true, 100U, 100U));
   EXPECT_FALSE(ShouldRejectTimeJumpRecoveryResult(false, 101U, 100U));
+  const auto retained = RetainTimeJumpRecoveryTimestamps(
+    {101U, 100U}, true, 100U);
+  ASSERT_EQ(retained.size(), 1U);
+  EXPECT_EQ(retained.front(), 100U);
 }
 
 TEST(SystemRuntimeResourceSurface, ConfiguresWorkersBeforeTheirRunLoops) {
