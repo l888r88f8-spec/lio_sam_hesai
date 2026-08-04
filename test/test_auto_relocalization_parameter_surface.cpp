@@ -568,10 +568,17 @@ TEST(TfContinuitySurface, ConfiguresAndPublishesTfOnlyFallback) {
   ExpectTextToken(fallback_body, "PredictMapLidarPose");
   ExpectTextToken(fallback_body, "sensor_now_us");
   ExpectTextToken(fallback_body, "publication_now_us");
+  ExpectTextToken(fallback_body, "IsImuStalled(SteadyNowMicroseconds())");
   ExpectTextToken(RemoveWhitespace(fallback_body),
     "Select(publication_now_us,sensor_now_us,extrapolated)");
   ExpectTextToken(fallback_body,
     "decision->publication_timestamp_us");
+  const std::size_t imu_stall_gate = fallback_body.find(
+    "IsImuStalled(SteadyNowMicroseconds())");
+  const std::size_t latest_imu = fallback_body.find("LatestData()");
+  ASSERT_NE(imu_stall_gate, std::string::npos);
+  ASSERT_NE(latest_imu, std::string::npos);
+  EXPECT_LT(imu_stall_gate, latest_imu);
   ExpectNoTextToken(fallback_body, "PublishRosCloud");
   ExpectNoTextToken(fallback_body, "localization_current_lidar_cloud_pub_");
   ExpectNoTextToken(fallback_body, "localization_global_cloud_map_pub_");

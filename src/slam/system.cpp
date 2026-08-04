@@ -865,7 +865,9 @@ void System::PublishTfFallback() {
   std::optional<TimeStampUs> sensor_now_us;
   const auto anchor_sensor_timestamp_us =
       tf_continuity_controller_->anchor_sensor_timestamp_us();
-  if (config.localization_tf_enable_imu_extrapolation_ &&
+  const bool imu_is_fresh = data_stream_watchdog_ &&
+      !data_stream_watchdog_->IsImuStalled(SteadyNowMicroseconds());
+  if (imu_is_fresh && config.localization_tf_enable_imu_extrapolation_ &&
       anchor_sensor_timestamp_us.has_value() && imu_data_searcher_ptr_ &&
       localization_ptr_) {
     const auto latest_imu = imu_data_searcher_ptr_->LatestData();

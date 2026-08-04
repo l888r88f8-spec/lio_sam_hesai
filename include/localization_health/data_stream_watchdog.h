@@ -28,6 +28,7 @@ class DataStreamWatchdog {
   void RecordLidar(std::uint64_t stamp_us, std::uint64_t arrival_us);
   void RecordImu(std::uint64_t stamp_us);
   void RecordImu(std::uint64_t stamp_us, std::uint64_t arrival_us);
+  [[nodiscard]] bool IsImuStalled(std::uint64_t now_us) const;
   [[nodiscard]] StreamHealth Evaluate(std::uint64_t now_us) const;
 
  private:
@@ -42,6 +43,9 @@ class DataStreamWatchdog {
 
   void Record(Channel& channel, std::uint64_t stamp_us,
               std::uint64_t arrival_us, std::uint64_t nominal_period_us);
+  [[nodiscard]] static bool IsStalled(const Channel& channel,
+                                      std::uint64_t now_us,
+                                      std::uint64_t stall_timeout_us);
   [[nodiscard]] double RateHz(const Channel& channel) const;
 
   const Config config_;

@@ -37,6 +37,11 @@ void DataStreamWatchdog::RecordImu(std::uint64_t stamp_us,
   Record(imu_, stamp_us, arrival_us, config_.nominal_imu_period_us);
 }
 
+bool DataStreamWatchdog::IsImuStalled(std::uint64_t now_us) const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return IsStalled(imu_, now_us, config_.imu_stall_timeout_us);
+}
+
 StreamHealth DataStreamWatchdog::Evaluate(std::uint64_t now_us) const {
   std::lock_guard<std::mutex> lock(mutex_);
 
@@ -44,11 +49,8 @@ StreamHealth DataStreamWatchdog::Evaluate(std::uint64_t now_us) const {
   health.lidar_rate_hz = RateHz(lidar_);
   health.imu_rate_hz = RateHz(imu_);
   health.lidar_stalled =
-      lidar_.has_last && now_us > lidar_.last_arrival_us &&
-      now_us - lidar_.last_arrival_us > config_.lidar_stall_timeout_us;
-  health.imu_stalled =
-      imu_.has_last && now_us > imu_.last_arrival_us &&
-      now_us - imu_.last_arrival_us > config_.imu_stall_timeout_us;
+      IsStalled(lidar_, now_us, config_.lidar_stall_timeout_us);
+  health.imu_stalled = IsStalled(imu_, now_us, config_.imu_stall_timeout_us);
   health.timestamp_monotonic =
       !lidar_.pending_rollback && !imu_.pending_rollback;
   health.timestamp_jump = lidar_.pending_jump || imu_.pending_jump;
@@ -61,6 +63,13 @@ StreamHealth DataStreamWatchdog::Evaluate(std::uint64_t now_us) const {
   lidar_.pending_jump = false;
   imu_.pending_jump = false;
   return health;
+}
+
+bool DataStreamWatchdog::IsStalled(const Channel& channel,
+                                   std::uint64_t now_us,
+                                   std::uint64_t stall_timeout_us) {
+  return channel.has_last && now_us > channel.last_arrival_us &&
+         now_us - channel.last_arrival_us > stall_timeout_us;
 }
 
 void DataStreamWatchdog::Record(Channel& channel, std::uint64_t stamp_us,

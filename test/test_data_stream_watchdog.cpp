@@ -56,6 +56,21 @@ TEST(DataStreamWatchdog, UsesArrivalTimeForStallWhenSensorStampIsInFuture) {
   EXPECT_TRUE(watchdog.Evaluate(1500001U).lidar_stalled);
 }
 
+TEST(DataStreamWatchdog, ReportsImuStallWithoutConsumingPendingHealthSnapshot) {
+  localization_health::DataStreamWatchdog watchdog(
+      localization_health::DataStreamWatchdog::Config{});
+  watchdog.RecordImu(0U, 0U);
+  watchdog.RecordImu(1000000U, 1000000U);
+
+  EXPECT_FALSE(watchdog.IsImuStalled(1100000U));
+  EXPECT_TRUE(watchdog.IsImuStalled(1100001U));
+
+  const auto health = watchdog.Evaluate(1100001U);
+  EXPECT_TRUE(health.imu_stalled);
+  EXPECT_TRUE(health.has_new_observation);
+  EXPECT_TRUE(health.timestamp_jump);
+}
+
 TEST(DataStreamWatchdog, RecoversMonotonicStateAfterNormalSampleFollowingRollback) {
   localization_health::DataStreamWatchdog watchdog(
       localization_health::DataStreamWatchdog::Config{});
