@@ -14,7 +14,12 @@ from unittest.mock import patch
 INTEGRATION_DIRECTORY = Path(__file__).parent / "integration"
 sys.path.insert(0, str(INTEGRATION_DIRECTORY))
 
-from localization_tf_continuity import FaultSchedule, TfContinuityCollector, main
+from localization_tf_continuity import (
+    FaultSchedule,
+    TfContinuityCollector,
+    main,
+    select_ros_domain_id,
+)
 from stability_common import DatasetError, write_runtime_parameters
 
 
@@ -26,6 +31,25 @@ class FaultScheduleTest(unittest.TestCase):
         self.assertTrue(schedule.forward_imu(35.0))
         self.assertFalse(schedule.forward_lidar(55.0))
         self.assertFalse(schedule.forward_imu(55.0))
+
+
+class RosDomainSelectionTest(unittest.TestCase):
+    def test_domain_selection_respects_explicit_valid_environment(self):
+        self.assertEqual(select_ros_domain_id({"ROS_DOMAIN_ID": "25"}, pid=999), "25")
+
+    def test_domain_selection_falls_back_for_invalid_or_out_of_range_environment(self):
+        for value in ("0", "101", "-1", "not-a-domain"):
+            with self.subTest(value=value):
+                self.assertEqual(
+                    select_ros_domain_id({"ROS_DOMAIN_ID": value}, pid=24), "25"
+                )
+
+    def test_domain_selection_fallback_stays_in_safe_range(self):
+        for pid in (0, 1, 99, 100, 12345):
+            with self.subTest(pid=pid):
+                domain = int(select_ros_domain_id({}, pid=pid))
+                self.assertGreaterEqual(domain, 1)
+                self.assertLessEqual(domain, 100)
 
 
 class TfContinuityCollectorTest(unittest.TestCase):

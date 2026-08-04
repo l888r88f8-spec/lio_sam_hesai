@@ -37,6 +37,8 @@ _STARTUP_TIMEOUT_SECONDS = 10.0
 _PROCESS_STOP_TIMEOUT_SECONDS = 10.0
 _PLAYBACK_TIMEOUT_ALLOWANCE_SECONDS = 45.0
 _FINAL_CALLBACK_DRAIN_COUNT = 128
+_MIN_SAFE_ROS_DOMAIN_ID = 1
+_MAX_SAFE_ROS_DOMAIN_ID = 100
 
 
 def _finite_seconds(value):
@@ -47,6 +49,20 @@ def _finite_seconds(value):
     except (TypeError, ValueError, OverflowError):
         return None
     return seconds if math.isfinite(seconds) else None
+
+
+def select_ros_domain_id(environment=None, pid=None):
+    """Return an explicit safe ROS domain or a deterministic safe fallback."""
+    environment = os.environ if environment is None else environment
+    raw_domain_id = environment.get("ROS_DOMAIN_ID")
+    if isinstance(raw_domain_id, str) and raw_domain_id.isdecimal():
+        explicit_domain_id = int(raw_domain_id)
+        if _MIN_SAFE_ROS_DOMAIN_ID <= explicit_domain_id <= _MAX_SAFE_ROS_DOMAIN_ID:
+            return str(explicit_domain_id)
+
+    process_id = os.getpid() if pid is None else int(pid)
+    domain_count = _MAX_SAFE_ROS_DOMAIN_ID - _MIN_SAFE_ROS_DOMAIN_ID + 1
+    return str(_MIN_SAFE_ROS_DOMAIN_ID + (process_id % domain_count))
 
 
 @dataclass(frozen=True)
@@ -432,7 +448,7 @@ def _run_replay(arguments, runtime_parameters, collector, schedule, post_recover
     import rclpy
     from rclpy.parameter import Parameter
 
-    domain_id = str(230 + (os.getpid() % 20))
+    domain_id = select_ros_domain_id()
     environment = os.environ.copy()
     environment["ROS_DOMAIN_ID"] = domain_id
     previous_domain_id = os.environ.get("ROS_DOMAIN_ID")
