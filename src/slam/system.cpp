@@ -634,9 +634,6 @@ void System::LocalizationInitPoseMsgCallBack(
 void System::ImuMsgCallBack(
     const sensor_msgs::msg::Imu::ConstSharedPtr& imu_ptr) {
   static Vec3d init_mean_acc = Vec3d::Zero();
-  static Vec3d last_angular_velocity;
-  static Eigen::Quaterniond last_orientation;
-  static TimeStampUs last_timestamp;
 
   IMUData imu_data;
   imu_data.timestamp_ = RosTimeToUs(imu_ptr->header);
@@ -650,10 +647,7 @@ void System::ImuMsgCallBack(
       if (ConfigParameters::Instance().imu_has_orientation_) {
         imu_data.orientation_ = RosQuaternionToEigen(imu_ptr->orientation);
       } else {
-        imu_data.orientation_ = Eigen::Quaterniond::Identity();
-        last_angular_velocity = imu_data.angular_velocity_;
-        last_orientation = Eigen::Quaterniond::Identity();
-        last_timestamp = imu_data.timestamp_;
+        UpdateImuOrientationFromAngularVelocity(imu_data);
       }
       has_imu_init_.store(true);
       imu_data_searcher_ptr_->CacheData(imu_data);
@@ -667,10 +661,7 @@ void System::ImuMsgCallBack(
         if (ConfigParameters::Instance().imu_has_orientation_) {
           imu_data.orientation_ = RosQuaternionToEigen(imu_ptr->orientation);
         } else {
-          imu_data.orientation_ = Eigen::Quaterniond::Identity();
-          last_angular_velocity = imu_data.angular_velocity_;
-          last_orientation = Eigen::Quaterniond::Identity();
-          last_timestamp = imu_data.timestamp_;
+          UpdateImuOrientationFromAngularVelocity(imu_data);
         }
 
         imu_data.linear_acceleration_ =
@@ -690,17 +681,34 @@ void System::ImuMsgCallBack(
   if (ConfigParameters::Instance().imu_has_orientation_) {
     imu_data.orientation_ = RosQuaternionToEigen(imu_ptr->orientation);
   } else {
-    const Eigen::Quaterniond delta_q(
-        SO3Exp((last_angular_velocity + imu_data.angular_velocity_) * 0.5 *
-               (imu_data.timestamp_ - last_timestamp) * kMicroseconds2Seconds));
-    imu_data.orientation_ = last_orientation * delta_q;
-
-    last_timestamp = imu_data.timestamp_;
-    last_orientation = imu_data.orientation_;
-    last_angular_velocity = imu_data.angular_velocity_;
+    UpdateImuOrientationFromAngularVelocity(imu_data);
   }
 
   imu_data_searcher_ptr_->CacheData(imu_data);
+}
+
+void System::ResetImuOrientationState() {
+  std::lock_guard<std::mutex> lock(mutex_imu_orientation_state_);
+  last_imu_angular_velocity_ = Vec3d::Zero();
+  last_imu_orientation_ = Eigen::Quaterniond::Identity();
+  last_imu_timestamp_.reset();
+}
+
+void System::UpdateImuOrientationFromAngularVelocity(IMUData& imu_data) {
+  std::lock_guard<std::mutex> lock(mutex_imu_orientation_state_);
+  if (last_imu_timestamp_.has_value() &&
+      imu_data.timestamp_ >= last_imu_timestamp_.value()) {
+    const Eigen::Quaterniond delta_q(
+        SO3Exp((last_imu_angular_velocity_ + imu_data.angular_velocity_) * 0.5 *
+               (imu_data.timestamp_ - last_imu_timestamp_.value()) *
+               kMicroseconds2Seconds));
+    imu_data.orientation_ = last_imu_orientation_ * delta_q;
+  } else {
+    imu_data.orientation_ = Eigen::Quaterniond::Identity();
+  }
+  last_imu_timestamp_ = imu_data.timestamp_;
+  last_imu_orientation_ = imu_data.orientation_;
+  last_imu_angular_velocity_ = imu_data.angular_velocity_;
 }
 
 bool System::InitIMU(const IMUData& imu_data, Vec3d& init_mean_acc) {
@@ -801,6 +809,10 @@ void System::ResetTfContinuityOnTimeJump(TimeStampUs now_us) {
       tf_continuity_controller_->Reset();
       last_tf_extrapolation_duration_us_ = 0U;
     }
+    if (imu_data_searcher_ptr_) {
+      imu_data_searcher_ptr_->Clear();
+    }
+    ResetImuOrientationState();
     {
       std::lock_guard<std::mutex> lock(mutex_raw_cloud_deque_);
       raw_cloud_deque_.clear();

@@ -661,6 +661,42 @@ TEST(TfContinuitySurface, ConfiguresAndPublishesTfOnlyFallback) {
   EXPECT_EQ(retained.front().timestamp_us, 997000U);
 }
 
+TEST(TimeJumpImuRecoverySurface,
+  ClearsEpochScopedImuStateBeforePreprocessingResumes)
+{
+  ExpectToken("include/common/data_searcher.h", "void Clear()");
+  ExpectToken("include/slam/system.h", "ResetImuOrientationState");
+  ExpectToken("include/slam/system.h", "UpdateImuOrientationFromAngularVelocity");
+
+  const std::string time_jump_body = ReadFunctionBody(
+    "src/slam/system.cpp", "void System::ResetTfContinuityOnTimeJump(");
+  ExpectTextToken(time_jump_body, "imu_data_searcher_ptr_->Clear()");
+  ExpectTextToken(time_jump_body, "ResetImuOrientationState()");
+  const std::size_t clear_imu_cache = time_jump_body.find(
+    "imu_data_searcher_ptr_->Clear()");
+  const std::size_t reset_imu_orientation = time_jump_body.find(
+    "ResetImuOrientationState()");
+  const std::size_t wake_preprocessing = time_jump_body.find(
+    "cv_preprocessing_.notify_all()");
+  ASSERT_NE(clear_imu_cache, std::string::npos);
+  ASSERT_NE(reset_imu_orientation, std::string::npos);
+  ASSERT_NE(wake_preprocessing, std::string::npos);
+  EXPECT_LT(clear_imu_cache, wake_preprocessing);
+  EXPECT_LT(reset_imu_orientation, wake_preprocessing);
+
+  const std::string imu_callback_body = ReadFunctionBody(
+    "src/slam/system.cpp", "void System::ImuMsgCallBack(");
+  ExpectTextToken(imu_callback_body,
+    "UpdateImuOrientationFromAngularVelocity(imu_data)");
+  ExpectNoTextToken(imu_callback_body, "static TimeStampUs last_timestamp");
+
+  const std::string preprocessing_body = ReadFunctionBody(
+    "src/slam/preprocessing.cpp", "void PreProcessing::Run()");
+  ExpectTextToken(preprocessing_body, "last_tf_continuity_epoch");
+  ExpectTextToken(preprocessing_body,
+    "last_cloud_timestamp = std::numeric_limits<TimeStampUs>::max()");
+}
+
 TEST(SystemRuntimeResourceSurface, ConfiguresWorkersBeforeTheirRunLoops) {
   struct RuntimeParameter {
     std::string leaf;

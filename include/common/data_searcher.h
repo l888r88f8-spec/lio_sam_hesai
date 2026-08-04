@@ -56,6 +56,11 @@ class DataSearcher {
     return true;
   }
 
+  void Clear() {
+    std::lock_guard<std::mutex> lg(mutex_deque_);
+    data_deque_.clear();
+  }
+
   /*!
    * 搜索最近的一个数据
    * 注意：(1) 如果timestamp_target比队列中最老的数据还要老，则返回false

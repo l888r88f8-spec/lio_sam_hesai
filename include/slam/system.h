@@ -95,6 +95,8 @@ class System : public rclcpp::Node {
   void ApplyLocalizationZOffset(PCLPointCloudXYZI& cloud) const;
 
   static bool InitIMU(const IMUData& imu_data, Vec3d& init_mean_acc);
+  void ResetImuOrientationState();
+  void UpdateImuOrientationFromAngularVelocity(IMUData& imu_data);
 
   bool UpdateBaseToLidarTransform();
 
@@ -161,6 +163,7 @@ class System : public rclcpp::Node {
   std::mutex mutex_localization_results_deque_;
   std::mutex mutex_health_result_;
   std::mutex mutex_base_to_lidar_transform_;
+  std::mutex mutex_imu_orientation_state_;
 
   // deque
   std::deque<LocalizationResult, Eigen::aligned_allocator<LocalizationResult>>
@@ -173,6 +176,9 @@ class System : public rclcpp::Node {
 
   Mat4d T_base_to_lidar_ = Mat4d::Identity();
   bool has_base_to_lidar_ = false;
+  Vec3d last_imu_angular_velocity_ = Vec3d::Zero();
+  Eigen::Quaterniond last_imu_orientation_ = Eigen::Quaterniond::Identity();
+  std::optional<TimeStampUs> last_imu_timestamp_;
   double last_localization_z_offset_ = 0.0;
   bool has_localization_z_offset_ = false;
   TimeStampUs last_tf_extrapolation_duration_us_ = 0U;
