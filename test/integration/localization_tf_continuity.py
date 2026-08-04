@@ -156,6 +156,7 @@ class TfContinuityCollector:
         self._last_tf_timestamp = None
         self._last_auto_trigger = None
         self._stream_recovery_auto_trigger_count = 0
+        self._stream_recovery_auto_trigger_replay_seconds = []
 
     def tf(
         self,
@@ -213,6 +214,7 @@ class TfContinuityCollector:
         trigger = relevant.get("auto_relocalization_trigger", "none").strip().lower()
         if trigger == "stream_recovered" and self._last_auto_trigger != "stream_recovered":
             self._stream_recovery_auto_trigger_count += 1
+            self._stream_recovery_auto_trigger_replay_seconds.append(replay_time)
         self._last_auto_trigger = trigger
         self.diagnostic_events.append(
             {
@@ -307,11 +309,28 @@ class TfContinuityCollector:
                         f"{label} message emitted during injected outage at {replay_time:.6f}s"
                     )
 
-        if self._stream_recovery_auto_trigger_count > 1:
+        recovery_windows = self._stream_recovery_windows()
+        if self._stream_recovery_auto_trigger_count != len(recovery_windows):
             errors.append(
                 "auto_relocalization_trigger=stream_recovered occurred "
-                f"{self._stream_recovery_auto_trigger_count} times (maximum 1)"
+                f"{self._stream_recovery_auto_trigger_count} times "
+                f"(expected {len(recovery_windows)})"
             )
+        for start, end in recovery_windows:
+            observed_count = sum(
+                start <= replay_time < end
+                for replay_time in self._stream_recovery_auto_trigger_replay_seconds
+            )
+            if observed_count != 1:
+                window = (
+                    f"{start:.1f}-{end:.1f}s"
+                    if math.isfinite(end)
+                    else f"{start:.1f}s onward"
+                )
+                errors.append(
+                    "auto_relocalization_trigger=stream_recovered must occur "
+                    f"once in recovery window {window} (observed {observed_count})"
+                )
         return errors
 
     def report(self, violations):
@@ -323,8 +342,20 @@ class TfContinuityCollector:
             "odometry": self.odom_events,
             "path": self.path_events,
             "stream_recovery_auto_trigger_count": self._stream_recovery_auto_trigger_count,
+            "stream_recovery_auto_trigger_replay_seconds": (
+                self._stream_recovery_auto_trigger_replay_seconds
+            ),
             "violations": list(violations),
         }
+
+    def _stream_recovery_windows(self):
+        outages = sorted((self.schedule.lidar_outage, self.schedule.all_outage))
+        windows = [
+            (outage[1], next_outage[0])
+            for outage, next_outage in zip(outages, outages[1:])
+        ]
+        windows.append((outages[-1][1], math.inf))
+        return windows
 
     def _has_tf(self, predicate):
         return any(predicate(event) for event in self.tf_events)

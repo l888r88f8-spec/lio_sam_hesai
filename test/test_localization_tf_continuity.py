@@ -85,7 +85,13 @@ class TfContinuityCollectorTest(unittest.TestCase):
         (65.0, {"tf_mode": "measured"}),
     )
 
-    def _record_contract(self, collector, diagnostic_order=None, tf_mode=None):
+    def _record_contract(
+        self,
+        collector,
+        diagnostic_order=None,
+        tf_mode=None,
+        include_recovery_triggers=True,
+    ):
         for timestamp in self._TF_SAMPLES:
             collector.tf(timestamp, mode=tf_mode)
         if diagnostic_order is None:
@@ -93,6 +99,10 @@ class TfContinuityCollectorTest(unittest.TestCase):
         for index in diagnostic_order:
             timestamp, values = self._DIAGNOSTICS[index]
             collector.diagnostic(timestamp, values)
+        if include_recovery_triggers:
+            collector.diagnostic(40.1, {"auto_relocalization_trigger": "stream_recovered"})
+            collector.diagnostic(50.1, {"auto_relocalization_trigger": "lost_entry"})
+            collector.diagnostic(60.1, {"auto_relocalization_trigger": "stream_recovered"})
 
     def test_collector_requires_each_fallback_mode_and_recovery(self):
         collector = TfContinuityCollector(20.0)
@@ -151,15 +161,26 @@ class TfContinuityCollectorTest(unittest.TestCase):
             any("missing sustained map->base_link TF" in error for error in collector.assert_contracts())
         )
 
-    def test_collector_limits_stream_recovery_auto_trigger_to_one(self):
+    def test_collector_requires_one_deduplicated_recovery_trigger_per_fault_edge(self):
         collector = TfContinuityCollector(20.0)
-        self._record_contract(collector)
-        collector.diagnostic(61.0, {"auto_relocalization_trigger": "stream_recovered"})
-        collector.diagnostic(61.5, {"auto_relocalization_trigger": "none"})
-        collector.diagnostic(62.0, {"auto_relocalization_trigger": "stream_recovered"})
+        self._record_contract(collector, include_recovery_triggers=False)
+
+        collector.diagnostic(40.1, {"auto_relocalization_trigger": "stream_recovered"})
+        collector.diagnostic(40.2, {"auto_relocalization_trigger": "stream_recovered"})
+        collector.diagnostic(50.1, {"auto_relocalization_trigger": "lost_entry"})
+        collector.diagnostic(60.1, {"auto_relocalization_trigger": "stream_recovered"})
+
+        self.assertEqual(collector.assert_contracts(), [])
+
+    def test_collector_rejects_recovery_trigger_outside_its_recovery_window(self):
+        collector = TfContinuityCollector(20.0)
+        self._record_contract(collector, include_recovery_triggers=False)
+        collector.diagnostic(39.9, {"auto_relocalization_trigger": "stream_recovered"})
+        collector.diagnostic(50.1, {"auto_relocalization_trigger": "lost_entry"})
+        collector.diagnostic(60.1, {"auto_relocalization_trigger": "stream_recovered"})
 
         self.assertTrue(
-            any("stream_recovered" in error for error in collector.assert_contracts())
+            any("recovery window" in error for error in collector.assert_contracts())
         )
 
 
