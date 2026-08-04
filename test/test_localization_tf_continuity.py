@@ -17,7 +17,9 @@ sys.path.insert(0, str(INTEGRATION_DIRECTORY))
 from localization_tf_continuity import (
     FaultSchedule,
     TfContinuityCollector,
+    parse_diagnostic_level,
     main,
+    relay_qos_config,
     select_ros_domain_id,
 )
 from stability_common import DatasetError, write_runtime_parameters
@@ -50,6 +52,25 @@ class RosDomainSelectionTest(unittest.TestCase):
                 domain = int(select_ros_domain_id({}, pid=pid))
                 self.assertGreaterEqual(domain, 1)
                 self.assertLessEqual(domain, 100)
+
+
+class RelayRuntimeContractTest(unittest.TestCase):
+    def test_diagnostic_level_parser_accepts_int_and_singleton_bytes(self):
+        self.assertEqual(parse_diagnostic_level(1), 1)
+        self.assertEqual(parse_diagnostic_level(b"\x01"), 1)
+
+    def test_diagnostic_level_parser_rejects_unsupported_values(self):
+        for value in (True, "1", b"\x01\x02", None):
+            with self.subTest(value=value):
+                self.assertIsNone(parse_diagnostic_level(value))
+
+    def test_relay_qos_config_matches_reliable_sensor_consumers(self):
+        lidar_qos, imu_qos = relay_qos_config()
+
+        self.assertEqual(lidar_qos.reliability, "reliable")
+        self.assertEqual(lidar_qos.depth, 5)
+        self.assertEqual(imu_qos.reliability, "reliable")
+        self.assertEqual(imu_qos.depth, 2000)
 
 
 class TfContinuityCollectorTest(unittest.TestCase):

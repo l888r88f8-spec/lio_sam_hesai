@@ -66,6 +66,28 @@ def select_ros_domain_id(environment=None, pid=None):
 
 
 @dataclass(frozen=True)
+class RelayQos:
+    depth: int
+    reliability: str = "reliable"
+
+
+def relay_qos_config():
+    """Return relay QoS profiles that satisfy the localization consumers."""
+    return RelayQos(depth=5), RelayQos(depth=2000)
+
+
+def parse_diagnostic_level(value):
+    """Return a JSON-safe diagnostic level or None for an unsupported value."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, (bytes, bytearray)) and len(value) == 1:
+        return value[0]
+    return None
+
+
+@dataclass(frozen=True)
 class FaultSchedule:
     """Replay-relative outage windows; the end of every window is exclusive."""
 
@@ -547,7 +569,12 @@ class _TfContinuityRelay:
     def __init__(self, node, collector, schedule):
         from diagnostic_msgs.msg import DiagnosticArray
         from nav_msgs.msg import Odometry, Path
-        from rclpy.qos import QoSProfile, QoSReliabilityPolicy, qos_profile_sensor_data
+        from rclpy.qos import (
+            QoSHistoryPolicy,
+            QoSProfile,
+            QoSReliabilityPolicy,
+            qos_profile_sensor_data,
+        )
         from rosgraph_msgs.msg import Clock
         from sensor_msgs.msg import Imu, PointCloud2
         from tf2_msgs.msg import TFMessage
@@ -559,8 +586,21 @@ class _TfContinuityRelay:
         self._latest_clock_seconds = None
         sensor_qos = qos_profile_sensor_data
         reliable_qos = QoSProfile(depth=100, reliability=QoSReliabilityPolicy.RELIABLE)
-        self._lidar_publisher = node.create_publisher(PointCloud2, _RELAY_LIDAR_TOPIC, sensor_qos)
-        self._imu_publisher = node.create_publisher(Imu, _RELAY_IMU_TOPIC, sensor_qos)
+        lidar_relay_config, imu_relay_config = relay_qos_config()
+        lidar_relay_qos = QoSProfile(
+            depth=lidar_relay_config.depth,
+            history=QoSHistoryPolicy.KEEP_LAST,
+            reliability=QoSReliabilityPolicy.RELIABLE,
+        )
+        imu_relay_qos = QoSProfile(
+            depth=imu_relay_config.depth,
+            history=QoSHistoryPolicy.KEEP_LAST,
+            reliability=QoSReliabilityPolicy.RELIABLE,
+        )
+        self._lidar_publisher = node.create_publisher(
+            PointCloud2, _RELAY_LIDAR_TOPIC, lidar_relay_qos
+        )
+        self._imu_publisher = node.create_publisher(Imu, _RELAY_IMU_TOPIC, imu_relay_qos)
         node.create_subscription(Clock, "/clock", self._clock_callback, sensor_qos)
         node.create_subscription(PointCloud2, _RAW_LIDAR_TOPIC, self._lidar_callback, sensor_qos)
         node.create_subscription(Imu, _RAW_IMU_TOPIC, self._imu_callback, sensor_qos)
@@ -633,7 +673,10 @@ class _TfContinuityRelay:
                 continue
             values = {value.key: value.value for value in status.values}
             self.collector.diagnostic(
-                replay_seconds, values, health_state=status.message, level=int(status.level)
+                replay_seconds,
+                values,
+                health_state=status.message,
+                level=parse_diagnostic_level(status.level),
             )
 
     def _odom_callback(self, message):
