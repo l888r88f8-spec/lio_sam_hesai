@@ -488,3 +488,10 @@ git status -s
 ```
 
 Expected: no whitespace errors and a clean worktree.
+
+#### 最终复验记录（2026-08-04）
+
+在时钟回跳修复（清空 IMU 缓存并重置角速度积分姿态状态）以及回放输出时间映射修复后，
+重新执行串行构建、完整 CTest 和安装；28 个已启用测试全部通过。最终 `hesai_sim`
+TF 连续性回放的观察报告无错误、无违例，记录 1294 个 TF，最大间隔 0.07002 秒，并在
+40.121 秒与 60.032 秒观察到两次预期的 `stream_recovered` 恢复边沿。

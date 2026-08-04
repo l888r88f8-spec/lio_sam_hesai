@@ -151,3 +151,12 @@ IMU 外推的绝对轨迹精度。
 - 外推或保持不会改变定位算法状态，也不会伪装为 odometry/path 更新。
 - 原有 E 重试策略与手动 `/initialpose` 语义不变。
 - 新单元/集成测试、完整包测试和上述三段回放均通过。
+
+## 最终验证记录（2026-08-04）
+
+- 时钟回跳时同时清空 IMU 缓存并重置由角速度推导的 IMU 姿态状态，避免回跳前的
+  IMU 样本或积分状态跨越新的 TF epoch。
+- 串行构建、28 个已启用 CTest 和安装均通过。
+- 最终 `hesai_sim` 故障注入回放的 `tf-continuity.json` 记录 `error: null` 与空
+  `violations`：共观测到 1294 个 `map -> base_link` TF，最大相邻间隔为 0.07002 秒，
+  两次 `stream_recovered` 触发分别位于 40.121 秒和 60.032 秒。
