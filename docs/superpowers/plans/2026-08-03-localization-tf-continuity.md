@@ -38,7 +38,7 @@
 - Create: `test/test_tf_continuity_controller.cpp`
 - Modify: `CMakeLists.txt`
 
-- [ ] **Step 1: Write failing selector tests**
+- [x] **Step 1: Write failing selector tests**
 
 Create `test/test_tf_continuity_controller.cpp` with a small `Sample()` helper and these contracts:
 
@@ -79,7 +79,7 @@ TEST(TfContinuityController, RateLimitsFallbackAndNewMeasuredSampleReplacesAncho
 }
 ```
 
-- [ ] **Step 2: Add the test target and verify RED**
+- [x] **Step 2: Add the test target and verify RED**
 
 Add:
 
@@ -94,7 +94,7 @@ Run: `cmake --build /home/robot/slam_ws/build/lio_sam_hesai --target test_tf_con
 
 Expected: compilation fails because `localization_health/tf_continuity_controller.h` does not exist.
 
-- [ ] **Step 3: Implement the controller**
+- [x] **Step 3: Implement the controller**
 
 Define these public values in the header:
 
@@ -135,13 +135,13 @@ at most `max_extrapolation_us`; otherwise it returns the anchor pose stamped `no
 `kHeld` mode. `RecordMeasured()` always replaces the anchor and returns an immediate
 `kMeasured` decision.
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
 Run: `ctest --test-dir /home/robot/slam_ws/build/lio_sam_hesai --output-on-failure -R '^test_tf_continuity_controller$'`
 
 Expected: all four selector tests pass.
 
-- [ ] **Step 5: Commit the pure unit**
+- [x] **Step 5: Commit the pure unit**
 
 ```bash
 git add include/localization_health/tf_continuity_controller.h \
@@ -157,7 +157,7 @@ git commit -m "feat(health): select continuous TF fallback mode"
 - Modify: `src/slam/localization.cpp`
 - Modify: `test/test_auto_relocalization_parameter_surface.cpp`
 
-- [ ] **Step 1: Write the failing source contract**
+- [x] **Step 1: Write the failing source contract**
 
 Add `LocalizationTfPredictionSurface` to `test_auto_relocalization_parameter_surface.cpp`.
 It must assert that `localization.h` declares `PredictMapLidarPose`, `TfPredictionAnchor`,
@@ -171,7 +171,7 @@ Run: `ctest --test-dir /home/robot/slam_ws/build/lio_sam_hesai --output-on-failu
 
 Expected: FAIL because the prediction snapshot symbols are absent.
 
-- [ ] **Step 2: Define the snapshot and predictor interface**
+- [x] **Step 2: Define the snapshot and predictor interface**
 
 Add to `Localization`:
 
@@ -190,7 +190,7 @@ anchor, `UpdateTfPredictionAnchor(const NavStateData&)`, and
 `MakePreIntegrationConfig() const`. Refactor `InitPreintegration()` to construct its two live
 integrators with `MakePreIntegrationConfig()`; do not change its live reset behavior.
 
-- [ ] **Step 3: Implement an isolated prediction path**
+- [x] **Step 3: Implement an isolated prediction path**
 
 Implement `UpdateTfPredictionAnchor()` by constructing `map_lidar_pose` through the existing
 `MapImuPoseToMapLidarPose(nav_state.Pose())`, then assigning the complete anchor under its
@@ -219,7 +219,7 @@ return MapLidarPrediction{MapImuPoseToMapLidarPose(predicted.Pose()),
 This method must never call `Reset()`, `SetGyroAccBias()` or `IntegrateDataSegment()` on
 `pre_integration_ptr_` or `odom_pre_integration_ptr_`.
 
-- [ ] **Step 4: Build and verify GREEN**
+- [x] **Step 4: Build and verify GREEN**
 
 Run:
 
@@ -232,7 +232,7 @@ ctest --test-dir /home/robot/slam_ws/build/lio_sam_hesai --output-on-failure \
 
 Expected: library builds and the source contract passes.
 
-- [ ] **Step 5: Commit snapshot isolation**
+- [x] **Step 5: Commit snapshot isolation**
 
 ```bash
 git add include/slam/localization.h src/slam/localization.cpp \
@@ -250,7 +250,7 @@ git commit -m "feat(localization): expose read-only TF prediction"
 - Modify: `CMakeLists.txt`
 - Modify: `test/test_auto_relocalization_parameter_surface.cpp`
 
-- [ ] **Step 1: Extend the failing System surface test**
+- [x] **Step 1: Extend the failing System surface test**
 
 Add a YAML helper `ExpectLocalizationTfYamlParameter()` and a table requiring these member,
 parameter and YAML triples:
@@ -269,7 +269,7 @@ and assert that its `!had_new_result` branch calls `PublishLocalizationHealth()`
 
 Run the same surface CTest. Expected: FAIL because the parameters and fallback method are absent.
 
-- [ ] **Step 2: Add validated configuration and controller ownership**
+- [x] **Step 2: Add validated configuration and controller ownership**
 
 Add the three configuration fields with defaults `20.0`, `0.5`, and `true`. Parse
 `localization_tf.*` in `System::InitConfigParameters()` and add this YAML block:
@@ -286,7 +286,7 @@ are loaded. Convert seconds with the existing checked `SecondsToMicroseconds()` 
 `max_extrapolation_seconds <= localization_health.stream_timeout`, call `Validate()` before
 worker startup, and store the controller in `System`.
 
-- [ ] **Step 3: Publish measured and fallback TF without output pollution**
+- [x] **Step 3: Publish measured and fallback TF without output pollution**
 
 Replace the direct measured `PublishTF(map_base_pose, result.timestamp_)` call with:
 
@@ -318,7 +318,7 @@ the two enums; add them next to the controller values rather than serializing in
 Add `src/localization_health/tf_continuity_controller.cpp` to
 `${PROJECT_NAME}_relocalization_lib` in `CMakeLists.txt`.
 
-- [ ] **Step 4: Verify parameters and integration contracts**
+- [x] **Step 4: Verify parameters and integration contracts**
 
 Run:
 
@@ -331,7 +331,7 @@ ctest --test-dir /home/robot/slam_ws/build/lio_sam_hesai --output-on-failure \
 
 Expected: both targets build and all selected tests pass.
 
-- [ ] **Step 5: Commit System wiring**
+- [x] **Step 5: Commit System wiring**
 
 ```bash
 git add include/slam/config_parameters.h include/slam/system.h src/slam/system.cpp \
@@ -347,7 +347,7 @@ git commit -m "feat(system): publish continuous localization TF"
 - Modify: `scripts/run_localization_stability.sh`
 - Modify: `.github/workflows/localization-stability.yml`
 
-- [ ] **Step 1: Write pure Python tests for schedule and observation contracts**
+- [x] **Step 1: Write pure Python tests for schedule and observation contracts**
 
 Create `test/test_localization_tf_continuity.py`. Test a pure `FaultSchedule` using replay-clock
 offsets and a `TfContinuityCollector`:
@@ -374,7 +374,7 @@ Run: `python3 -m unittest test/test_localization_tf_continuity.py`
 
 Expected: FAIL because the module and classes do not exist.
 
-- [ ] **Step 2: Implement the relay and collector**
+- [x] **Step 2: Implement the relay and collector**
 
 In `test/integration/localization_tf_continuity.py`, create one `rclpy` node that:
 
@@ -401,13 +401,13 @@ Start `ros2 bag play <bag> --clock 100 --rate 1.0 --start-offset 0
 --disable-keyboard-controls`; the bag continues emitting `/clock` through relay outages, so the
 held-TF branch is observable even though the relay drops both sensor streams.
 
-- [ ] **Step 3: Verify the pure harness tests**
+- [x] **Step 3: Verify the pure harness tests**
 
 Run: `python3 -m unittest test/test_localization_tf_continuity.py`
 
 Expected: the schedule/collector tests pass without ROS or a bag.
 
-- [ ] **Step 4: Add the developer and CI entrypoints**
+- [x] **Step 4: Add the developer and CI entrypoints**
 
 Add `tf-continuity` to the usage and accepted modes in
 `scripts/run_localization_stability.sh`; invoke:
@@ -423,7 +423,7 @@ Add a scheduled workflow step after the existing quick replay that runs
 result directory on failure. Keep pull-request CI limited to the pure Python test; the bag job
 remains scheduled because it takes more than a normal unit-test window.
 
-- [ ] **Step 5: Commit the fault-injection harness**
+- [x] **Step 5: Commit the fault-injection harness**
 
 ```bash
 git add test/integration/localization_tf_continuity.py \
@@ -438,7 +438,7 @@ git commit -m "test(localization): verify TF continuity through sensor outages"
 - Modify: `docs/superpowers/specs/2026-08-03-localization-tf-continuity-design.md`
 - Modify: `docs/superpowers/plans/2026-08-03-localization-tf-continuity.md`
 
-- [ ] **Step 1: Build and run all enabled package tests**
+- [x] **Step 1: Build and run all enabled package tests**
 
 Run:
 
@@ -451,7 +451,7 @@ ctest --test-dir /home/robot/slam_ws/build/lio_sam_hesai --output-on-failure \
 Expected: build exits 0 and all enabled CTests pass, including the new controller and Python
 unit contracts.
 
-- [ ] **Step 2: Install and run both bag acceptance commands**
+- [x] **Step 2: Install and run both bag acceptance commands**
 
 Run:
 
@@ -466,7 +466,7 @@ TF-continuity run writes an observation report proving all three modes and the o
 recovery behavior. FIFO `EPERM` warnings remain an allowed runtime fallback when the host
 lacks `CAP_SYS_NICE`.
 
-- [ ] **Step 3: Record verified status and commit**
+- [x] **Step 3: Record verified status and commit**
 
 After both bag commands succeed, change the design status from `已确认，待实施` to
 `已实施并验证`, check every task checkbox in this plan, force-add the two ignored Markdown
@@ -478,7 +478,7 @@ git add -f docs/superpowers/specs/2026-08-03-localization-tf-continuity-design.m
 git commit -m "docs(localization): record TF continuity verification"
 ```
 
-- [ ] **Step 4: Final checks**
+- [x] **Step 4: Final checks**
 
 Run:
 
