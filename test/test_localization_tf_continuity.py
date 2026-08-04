@@ -186,10 +186,12 @@ class TfContinuityCollectorTest(unittest.TestCase):
 
 
 class OutputSourceTimeContractTest(unittest.TestCase):
-    def test_delayed_pre_outage_outputs_do_not_pollute_the_outage(self):
+    def test_output_source_time_uses_the_exact_raw_lidar_replay_mapping(self):
         collector = TfContinuityCollector(20.0)
-        collector.odom(50.03, source_replay_seconds=49.95)
-        collector.path(50.03, source_replay_seconds=49.95)
+        collector.lidar_source(66.45, 0.318)
+        collector.lidar_source(98.367, 60.701)
+        collector.odom(60.840, source_timestamp_seconds=98.367)
+        collector.path(60.840, source_timestamp_seconds=98.367)
 
         errors = collector.assert_contracts()
 
@@ -197,17 +199,37 @@ class OutputSourceTimeContractTest(unittest.TestCase):
         self.assertFalse(any(error.startswith("path source") for error in errors))
         self.assertEqual(
             collector.odom_events,
-            [{"received_replay_seconds": 50.03, "source_replay_seconds": 49.95}],
+            [
+                {
+                    "received_replay_seconds": 60.84,
+                    "source_sensor_timestamp_seconds": 98.367,
+                    "source_replay_seconds": 60.701,
+                }
+            ],
         )
         self.assertEqual(
             collector.path_events,
-            [{"received_replay_seconds": 50.03, "source_replay_seconds": 49.95}],
+            [
+                {
+                    "received_replay_seconds": 60.84,
+                    "source_sensor_timestamp_seconds": 98.367,
+                    "source_replay_seconds": 60.701,
+                }
+            ],
+        )
+        self.assertEqual(
+            collector.report([])["lidar_source_replay_events"],
+            [
+                {"sensor_timestamp_seconds": 66.45, "replay_seconds": 0.318},
+                {"sensor_timestamp_seconds": 98.367, "replay_seconds": 60.701},
+            ],
         )
 
     def test_output_with_source_time_in_outage_is_a_violation(self):
         collector = TfContinuityCollector(20.0)
-        collector.odom(50.03, source_replay_seconds=50.01)
-        collector.path(50.03, source_replay_seconds=50.01)
+        collector.lidar_source(98.367, 50.01)
+        collector.odom(50.03, source_timestamp_seconds=98.367)
+        collector.path(50.03, source_timestamp_seconds=98.367)
 
         errors = collector.assert_contracts()
 
@@ -220,14 +242,31 @@ class OutputSourceTimeContractTest(unittest.TestCase):
             errors,
         )
 
-    def test_sensor_source_time_is_normalized_from_first_lidar_anchor(self):
-        self.assertAlmostEqual(
-            localization_tf_continuity.normalize_sensor_replay_seconds(
-                source_timestamp_seconds=69.248,
-                anchor_sensor_timestamp_seconds=64.498,
-                anchor_replay_seconds=0.0,
-            ),
-            4.75,
+    def test_output_with_unknown_source_timestamp_reports_a_mapping_error(self):
+        collector = TfContinuityCollector(20.0)
+        collector.odom(50.03, source_timestamp_seconds=98.367)
+        collector.path(50.03, source_timestamp_seconds=98.367)
+
+        errors = collector.assert_contracts()
+
+        self.assertIn(
+            "odometry source timestamp has no raw lidar replay mapping at 98.367000s",
+            errors,
+        )
+        self.assertIn(
+            "path source timestamp has no raw lidar replay mapping at 98.367000s",
+            errors,
+        )
+        self.assertFalse(any("falls within injected outage" in error for error in errors))
+        self.assertEqual(
+            collector.odom_events,
+            [
+                {
+                    "received_replay_seconds": 50.03,
+                    "source_sensor_timestamp_seconds": 98.367,
+                    "source_replay_seconds": None,
+                }
+            ],
         )
 
     def test_path_source_time_uses_the_last_pose_header(self):

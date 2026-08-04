@@ -51,24 +51,11 @@ def _finite_seconds(value):
     return seconds if math.isfinite(seconds) else None
 
 
-def normalize_sensor_replay_seconds(
-    source_timestamp_seconds,
-    anchor_sensor_timestamp_seconds,
-    anchor_replay_seconds,
-):
-    """Map a sensor-header timestamp into replay-relative time."""
-    source_timestamp = _finite_seconds(source_timestamp_seconds)
-    anchor_sensor_timestamp = _finite_seconds(anchor_sensor_timestamp_seconds)
-    anchor_replay = _finite_seconds(anchor_replay_seconds)
-    if (
-        source_timestamp is None
-        or anchor_sensor_timestamp is None
-        or anchor_replay is None
-    ):
+def _sensor_timestamp_microseconds(timestamp_seconds):
+    timestamp = _finite_seconds(timestamp_seconds)
+    if timestamp is None:
         return None
-    return _finite_seconds(
-        anchor_replay + source_timestamp - anchor_sensor_timestamp
-    )
+    return int(round(timestamp * 1.0e6))
 
 
 def select_ros_domain_id(environment=None, pid=None):
@@ -170,8 +157,10 @@ class TfContinuityCollector:
             raise ValueError("schedule must be a FaultSchedule")
         self.tf_events = []
         self.diagnostic_events = []
+        self.lidar_source_replay_events = []
         self.odom_events = []
         self.path_events = []
+        self._lidar_replay_by_sensor_timestamp_us = {}
         self._errors = []
         self._last_tf_timestamp = None
         self._last_auto_trigger = None
@@ -245,20 +234,40 @@ class TfContinuityCollector:
             }
         )
 
-    def odom(self, received_replay_seconds, source_replay_seconds=None):
+    def lidar_source(self, sensor_timestamp_seconds, replay_seconds):
+        sensor_timestamp = _finite_seconds(sensor_timestamp_seconds)
+        replay_time = _finite_seconds(replay_seconds)
+        sensor_timestamp_us = _sensor_timestamp_microseconds(sensor_timestamp)
+        if sensor_timestamp is None or sensor_timestamp_us is None:
+            self._errors.append("raw lidar observation has a non-finite sensor timestamp")
+            return
+        if replay_time is None:
+            self._errors.append("raw lidar observation has a non-finite replay timestamp")
+            return
+        self.lidar_source_replay_events.append(
+            {
+                "sensor_timestamp_seconds": sensor_timestamp,
+                "replay_seconds": replay_time,
+            }
+        )
+        self._lidar_replay_by_sensor_timestamp_us.setdefault(
+            sensor_timestamp_us, replay_time
+        )
+
+    def odom(self, received_replay_seconds, source_timestamp_seconds=None):
         self._record_output_event(
             self.odom_events,
             "odometry",
             received_replay_seconds,
-            source_replay_seconds,
+            source_timestamp_seconds,
         )
 
-    def path(self, received_replay_seconds, source_replay_seconds=None):
+    def path(self, received_replay_seconds, source_timestamp_seconds=None):
         self._record_output_event(
             self.path_events,
             "path",
             received_replay_seconds,
-            source_replay_seconds,
+            source_timestamp_seconds,
         )
 
     def _record_output_event(
@@ -266,26 +275,39 @@ class TfContinuityCollector:
         events,
         label,
         received_replay_seconds,
-        source_replay_seconds,
+        source_timestamp_seconds,
     ):
         received_replay_time = _finite_seconds(received_replay_seconds)
-        source_replay_time = _finite_seconds(source_replay_seconds)
+        source_timestamp = _finite_seconds(source_timestamp_seconds)
         if received_replay_time is None:
             self._errors.append(
                 f"{label} observation has a non-finite received replay timestamp"
             )
             return
-        if source_replay_time is None:
+        if source_timestamp is None:
             self._errors.append(
-                f"{label} observation has a non-finite source replay timestamp"
+                f"{label} observation has a non-finite source sensor timestamp"
             )
             return
+        source_replay_time = self._lookup_lidar_source_replay(source_timestamp)
         events.append(
             {
                 "received_replay_seconds": received_replay_time,
+                "source_sensor_timestamp_seconds": source_timestamp,
                 "source_replay_seconds": source_replay_time,
             }
         )
+        if source_replay_time is None:
+            self._errors.append(
+                f"{label} source timestamp has no raw lidar replay mapping at "
+                f"{source_timestamp:.6f}s"
+            )
+
+    def _lookup_lidar_source_replay(self, source_timestamp_seconds):
+        source_timestamp_us = _sensor_timestamp_microseconds(source_timestamp_seconds)
+        if source_timestamp_us is None:
+            return None
+        return self._lidar_replay_by_sensor_timestamp_us.get(source_timestamp_us)
 
     def assert_contracts(self):
         """Return clear failures instead of raising, so the JSON artifact is complete."""
@@ -353,7 +375,10 @@ class TfContinuityCollector:
         for label, events in (("odometry", self.odom_events), ("path", self.path_events)):
             for event in events:
                 source_replay_time = event["source_replay_seconds"]
-                if self.schedule.in_any_outage(source_replay_time):
+                if (
+                    source_replay_time is not None
+                    and self.schedule.in_any_outage(source_replay_time)
+                ):
                     errors.append(
                         f"{label} source timestamp falls within injected outage at "
                         f"{source_replay_time:.6f}s"
@@ -389,6 +414,7 @@ class TfContinuityCollector:
             "max_active_tf_spacing_seconds": self.max_active_tf_spacing_seconds,
             "tf": self.tf_events,
             "diagnostics": self.diagnostic_events,
+            "lidar_source_replay_events": self.lidar_source_replay_events,
             "odometry": self.odom_events,
             "path": self.path_events,
             "stream_recovery_auto_trigger_count": self._stream_recovery_auto_trigger_count,
@@ -665,8 +691,6 @@ class _TfContinuityRelay:
         self.schedule = schedule
         self._first_clock_seconds = None
         self._latest_clock_seconds = None
-        self._first_lidar_sensor_timestamp_seconds = None
-        self._first_lidar_replay_seconds = None
         sensor_qos = qos_profile_sensor_data
         reliable_qos = QoSProfile(depth=100, reliability=QoSReliabilityPolicy.RELIABLE)
         lidar_relay_config, imu_relay_config = relay_qos_config()
@@ -708,7 +732,10 @@ class _TfContinuityRelay:
 
     def _lidar_callback(self, message):
         replay_seconds = self._sensor_replay_seconds(message)
-        self._record_lidar_time_anchor(message, replay_seconds)
+        if replay_seconds is not None:
+            self.collector.lidar_source(
+                _message_header_timestamp_seconds(message), replay_seconds
+            )
         if replay_seconds is not None and self.schedule.forward_lidar(replay_seconds):
             self._lidar_publisher.publish(message)
 
@@ -729,23 +756,6 @@ class _TfContinuityRelay:
         if header_stamp is not None and header_stamp >= self._first_clock_seconds - 1.0:
             return header_stamp - self._first_clock_seconds
         return self.replay_seconds
-
-    def _record_lidar_time_anchor(self, message, replay_seconds):
-        if self._first_lidar_sensor_timestamp_seconds is not None:
-            return
-        sensor_timestamp = _message_header_timestamp_seconds(message)
-        replay_time = _finite_seconds(replay_seconds)
-        if sensor_timestamp is None or replay_time is None:
-            return
-        self._first_lidar_sensor_timestamp_seconds = sensor_timestamp
-        self._first_lidar_replay_seconds = replay_time
-
-    def _source_replay_seconds(self, source_timestamp_seconds):
-        return normalize_sensor_replay_seconds(
-            source_timestamp_seconds,
-            self._first_lidar_sensor_timestamp_seconds,
-            self._first_lidar_replay_seconds,
-        )
 
     def _tf_callback(self, message):
         replay_seconds = self.replay_seconds
@@ -783,9 +793,7 @@ class _TfContinuityRelay:
         if received_replay_seconds is not None:
             self.collector.odom(
                 received_replay_seconds,
-                source_replay_seconds=self._source_replay_seconds(
-                    _message_header_timestamp_seconds(message)
-                ),
+                source_timestamp_seconds=_message_header_timestamp_seconds(message),
             )
 
     def _path_callback(self, message):
@@ -793,9 +801,7 @@ class _TfContinuityRelay:
         if received_replay_seconds is not None:
             self.collector.path(
                 received_replay_seconds,
-                source_replay_seconds=self._source_replay_seconds(
-                    path_source_timestamp_seconds(message)
-                ),
+                source_timestamp_seconds=path_source_timestamp_seconds(message),
             )
 
 
