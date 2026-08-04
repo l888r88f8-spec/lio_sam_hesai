@@ -18,14 +18,15 @@ enum class TfHoldReason {
 
 struct TfPoseSample {
   Mat4d map_base_pose;
-  TimeStampUs timestamp_us;
+  TimeStampUs sensor_timestamp_us;
 };
 
 struct TfPublicationDecision {
   TfPublicationMode mode;
   TfHoldReason hold_reason;
   TfPoseSample sample;
-  TimeStampUs anchor_timestamp_us;
+  TimeStampUs publication_timestamp_us;
+  TimeStampUs anchor_sensor_timestamp_us;
   TimeStampUs extrapolation_duration_us;
 };
 
@@ -41,19 +42,22 @@ class TfContinuityController {
   static void Validate(const Config& config);
   void Reset();
 
-  TfPublicationDecision RecordMeasured(const TfPoseSample& measured);
+  TfPublicationDecision RecordMeasured(
+      const TfPoseSample& measured, TimeStampUs publication_now_us);
   std::optional<TfPublicationDecision> Select(
-      TimeStampUs now_us, const std::optional<TfPoseSample>& extrapolated);
+      TimeStampUs publication_now_us,
+      std::optional<TimeStampUs> sensor_now_us,
+      const std::optional<TfPoseSample>& extrapolated);
 
   [[nodiscard]] TfPublicationMode mode() const;
   [[nodiscard]] TfHoldReason hold_reason() const;
-  [[nodiscard]] std::optional<TimeStampUs> anchor_timestamp_us() const;
+  [[nodiscard]] std::optional<TimeStampUs>
+  anchor_sensor_timestamp_us() const;
 
  private:
   Config config_;
   std::optional<TfPoseSample> anchor_;
-  TimeStampUs last_publish_us_{0U};
-  TimeStampUs last_emitted_timestamp_us_{0U};
+  TimeStampUs last_publication_timestamp_us_{0U};
   TfPublicationMode mode_{TfPublicationMode::kNoAnchor};
   TfHoldReason hold_reason_{TfHoldReason::kNoAnchor};
 };

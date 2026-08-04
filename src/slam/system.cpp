@@ -862,16 +862,20 @@ void System::PublishTfFallback() {
 
   const auto& config = ConfigParameters::Instance();
   std::optional<localization_health::TfPoseSample> extrapolated;
-  const auto anchor_timestamp_us =
-      tf_continuity_controller_->anchor_timestamp_us();
+  std::optional<TimeStampUs> sensor_now_us;
+  const auto anchor_sensor_timestamp_us =
+      tf_continuity_controller_->anchor_sensor_timestamp_us();
   if (config.localization_tf_enable_imu_extrapolation_ &&
-      anchor_timestamp_us.has_value() && imu_data_searcher_ptr_ &&
+      anchor_sensor_timestamp_us.has_value() && imu_data_searcher_ptr_ &&
       localization_ptr_) {
     const auto latest_imu = imu_data_searcher_ptr_->LatestData();
+    if (latest_imu.has_value()) {
+      sensor_now_us = latest_imu->timestamp_;
+    }
     if (latest_imu.has_value() &&
-        latest_imu->timestamp_ > anchor_timestamp_us.value()) {
+        latest_imu->timestamp_ > anchor_sensor_timestamp_us.value()) {
       const auto imu_segment = imu_data_searcher_ptr_->GetDataSegment(
-          anchor_timestamp_us.value(), latest_imu->timestamp_);
+          anchor_sensor_timestamp_us.value(), latest_imu->timestamp_);
       const auto map_lidar_prediction =
           localization_ptr_->PredictMapLidarPose(imu_segment);
       const auto base_to_lidar = GetBaseToLidarTransform();
@@ -888,14 +892,17 @@ void System::PublishTfFallback() {
     }
   }
 
-  const TimeStampUs now_us = RosTimeToMicroseconds(get_clock()->now());
-  const auto decision = tf_continuity_controller_->Select(now_us, extrapolated);
+  const TimeStampUs publication_now_us =
+      RosTimeToMicroseconds(get_clock()->now());
+  const auto decision = tf_continuity_controller_->Select(
+      publication_now_us, sensor_now_us, extrapolated);
   if (!decision.has_value()) {
     return;
   }
 
   last_tf_extrapolation_duration_us_ = decision->extrapolation_duration_us;
-  PublishTF(decision->sample.map_base_pose, decision->sample.timestamp_us);
+  PublishTF(decision->sample.map_base_pose,
+            decision->publication_timestamp_us);
 }
 
 bool System::ProcessLocalizationResultCache(bool& had_new_result) {
@@ -982,12 +989,15 @@ bool System::ProcessLocalizationResultCache(bool& had_new_result) {
     last_localization_z_offset_ = 0.0;
     has_localization_z_offset_ = false;
   }
+  const TimeStampUs publication_now_us =
+      RosTimeToMicroseconds(get_clock()->now());
   const auto measured_decision = tf_continuity_controller_->RecordMeasured(
-      localization_health::TfPoseSample{map_base_pose, result.timestamp_});
+      localization_health::TfPoseSample{map_base_pose, result.timestamp_},
+      publication_now_us);
   last_tf_extrapolation_duration_us_ =
       measured_decision.extrapolation_duration_us;
   PublishTF(measured_decision.sample.map_base_pose,
-            measured_decision.sample.timestamp_us);
+            measured_decision.publication_timestamp_us);
   tf_continuity_time_jump_recovery_active_ = false;
 
   const Eigen::Quaterniond q(map_base_pose.block<3, 3>(0, 0));
@@ -1150,11 +1160,15 @@ void System::PublishLocalizationHealth() {
   if (tf_continuity_controller_) {
     tf_mode = tf_continuity_controller_->mode();
     tf_hold_reason = tf_continuity_controller_->hold_reason();
-    const auto anchor_timestamp_us =
-        tf_continuity_controller_->anchor_timestamp_us();
-    const TimeStampUs now_us = RosTimeToMicroseconds(get_clock()->now());
-    if (anchor_timestamp_us.has_value() && now_us >= anchor_timestamp_us.value()) {
-      tf_anchor_age_us = now_us - anchor_timestamp_us.value();
+    const auto anchor_sensor_timestamp_us =
+        tf_continuity_controller_->anchor_sensor_timestamp_us();
+    const auto latest_imu = imu_data_searcher_ptr_
+        ? imu_data_searcher_ptr_->LatestData()
+        : std::nullopt;
+    if (anchor_sensor_timestamp_us.has_value() && latest_imu.has_value() &&
+        latest_imu->timestamp_ >= anchor_sensor_timestamp_us.value()) {
+      tf_anchor_age_us =
+          latest_imu->timestamp_ - anchor_sensor_timestamp_us.value();
     }
     if (tf_mode == localization_health::TfPublicationMode::kExtrapolated) {
       tf_extrapolation_age_us = last_tf_extrapolation_duration_us_;

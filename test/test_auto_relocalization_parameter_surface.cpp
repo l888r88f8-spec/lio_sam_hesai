@@ -375,8 +375,20 @@ TEST(TfContinuitySurface, ConfiguresAndPublishesTfOnlyFallback) {
   ExpectNoToken("include/slam/localization.h", "tf_continuity_epoch_");
   ExpectToken("include/localization_health/tf_continuity_controller.h",
     "void Reset()");
+  ExpectToken("include/localization_health/tf_continuity_controller.h",
+    "sensor_timestamp_us");
+  ExpectToken("include/localization_health/tf_continuity_controller.h",
+    "publication_timestamp_us");
+  ExpectToken("include/localization_health/tf_continuity_controller.h",
+    "anchor_sensor_timestamp_us");
   ExpectToken("CMakeLists.txt",
     "src/localization_health/tf_continuity_controller.cpp");
+
+  const std::string controller_source = ReadProjectFile(
+    "src/localization_health/tf_continuity_controller.cpp");
+  ExpectTextToken(controller_source, "sensor_now_us");
+  ExpectTextToken(controller_source, "publication_now_us");
+  ExpectNoTextToken(controller_source, "last_emitted_timestamp_us_");
 
   const std::string system_source = ReadProjectFile("src/slam/system.cpp");
   const std::array<std::string, 4> diagnostics_tokens = {
@@ -554,6 +566,12 @@ TEST(TfContinuitySurface, ConfiguresAndPublishesTfOnlyFallback) {
   ExpectTextToken(fallback_body, "PublishTF");
   ExpectTextToken(fallback_body, "Select(");
   ExpectTextToken(fallback_body, "PredictMapLidarPose");
+  ExpectTextToken(fallback_body, "sensor_now_us");
+  ExpectTextToken(fallback_body, "publication_now_us");
+  ExpectTextToken(RemoveWhitespace(fallback_body),
+    "Select(publication_now_us,sensor_now_us,extrapolated)");
+  ExpectTextToken(fallback_body,
+    "decision->publication_timestamp_us");
   ExpectNoTextToken(fallback_body, "PublishRosCloud");
   ExpectNoTextToken(fallback_body, "localization_current_lidar_cloud_pub_");
   ExpectNoTextToken(fallback_body, "localization_global_cloud_map_pub_");
@@ -591,6 +609,11 @@ TEST(TfContinuitySurface, ConfiguresAndPublishesTfOnlyFallback) {
   ExpectTextToken(cache_body, "tf_continuity_time_jump_recovery_active_");
   ExpectTextToken(cache_body,
     "result.tf_continuity_epoch_ != tf_continuity_expected_epoch_");
+  ExpectTextToken(cache_body, "result.timestamp_");
+  ExpectTextToken(cache_body,
+    "RosTimeToMicroseconds(get_clock()->now())");
+  ExpectTextToken(cache_body,
+    "measured_decision.publication_timestamp_us");
   const std::size_t filter_pre_jump_results = cache_body.find("std::remove_if(");
   const std::size_t erase_pre_jump_results = cache_body.find(
     "localization_results.erase(", filter_pre_jump_results);
