@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Fault-injected rosbag acceptance harness for localization TF continuity.
+"""
+Fault-injected rosbag acceptance harness for localization TF continuity.
 
 The collector and fault schedule deliberately have no ROS imports so their
 acceptance contract can run in ordinary Python CI.  ROS is imported only by
