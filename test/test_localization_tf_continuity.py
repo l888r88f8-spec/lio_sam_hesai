@@ -14,6 +14,7 @@ from unittest.mock import patch
 INTEGRATION_DIRECTORY = Path(__file__).parent / "integration"
 sys.path.insert(0, str(INTEGRATION_DIRECTORY))
 
+import localization_tf_continuity
 from localization_tf_continuity import (
     FaultSchedule,
     TfContinuityCollector,
@@ -181,6 +182,72 @@ class TfContinuityCollectorTest(unittest.TestCase):
 
         self.assertTrue(
             any("recovery window" in error for error in collector.assert_contracts())
+        )
+
+
+class OutputSourceTimeContractTest(unittest.TestCase):
+    def test_delayed_pre_outage_outputs_do_not_pollute_the_outage(self):
+        collector = TfContinuityCollector(20.0)
+        collector.odom(50.03, source_replay_seconds=49.95)
+        collector.path(50.03, source_replay_seconds=49.95)
+
+        errors = collector.assert_contracts()
+
+        self.assertFalse(any(error.startswith("odometry source") for error in errors))
+        self.assertFalse(any(error.startswith("path source") for error in errors))
+        self.assertEqual(
+            collector.odom_events,
+            [{"received_replay_seconds": 50.03, "source_replay_seconds": 49.95}],
+        )
+        self.assertEqual(
+            collector.path_events,
+            [{"received_replay_seconds": 50.03, "source_replay_seconds": 49.95}],
+        )
+
+    def test_output_with_source_time_in_outage_is_a_violation(self):
+        collector = TfContinuityCollector(20.0)
+        collector.odom(50.03, source_replay_seconds=50.01)
+        collector.path(50.03, source_replay_seconds=50.01)
+
+        errors = collector.assert_contracts()
+
+        self.assertIn(
+            "odometry source timestamp falls within injected outage at 50.010000s",
+            errors,
+        )
+        self.assertIn(
+            "path source timestamp falls within injected outage at 50.010000s",
+            errors,
+        )
+
+    def test_sensor_source_time_is_normalized_from_first_lidar_anchor(self):
+        self.assertAlmostEqual(
+            localization_tf_continuity.normalize_sensor_replay_seconds(
+                source_timestamp_seconds=69.248,
+                anchor_sensor_timestamp_seconds=64.498,
+                anchor_replay_seconds=0.0,
+            ),
+            4.75,
+        )
+
+    def test_path_source_time_uses_the_last_pose_header(self):
+        def stamp(seconds):
+            whole_seconds = int(seconds)
+            return SimpleNamespace(
+                sec=whole_seconds,
+                nanosec=int((seconds - whole_seconds) * 1.0e9),
+            )
+
+        path = SimpleNamespace(
+            header=SimpleNamespace(stamp=stamp(50.03)),
+            poses=[
+                SimpleNamespace(header=SimpleNamespace(stamp=stamp(49.85))),
+                SimpleNamespace(header=SimpleNamespace(stamp=stamp(49.95))),
+            ],
+        )
+
+        self.assertEqual(
+            localization_tf_continuity.path_source_timestamp_seconds(path), 49.95
         )
 
 
