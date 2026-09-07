@@ -36,6 +36,7 @@ find_package(tf2_ros REQUIRED)
 set(OpenCV_STATIC ON)
 find_package(OpenCV REQUIRED)
 find_package(PCL REQUIRED)
+find_package(yaml-cpp REQUIRED)
 find_package(Eigen3 QUIET)
 if(TARGET Eigen3::Eigen)
   set(LIO_SAM_EIGEN_TARGET Eigen3::Eigen)
@@ -169,6 +170,10 @@ target_link_libraries(${PROJECT_NAME}_relocalization_lib
   ${G2O_LIBRARIES}
   Threads::Threads
 )
+target_sources(${PROJECT_NAME}_relocalization_lib PRIVATE
+  src/localization_map/tile_manifest.cpp
+)
+target_link_libraries(${PROJECT_NAME}_relocalization_lib yaml-cpp)
 
 add_executable(${PROJECT_NAME}_relocalization src/relocalization_node.cpp)
 ament_target_dependencies(${PROJECT_NAME}_relocalization
@@ -275,6 +280,11 @@ if(BUILD_TESTING)
     test/test_unified_parameter_schema.cpp)
   ament_add_gtest(test_tile_index test/test_tile_index.cpp)
   target_include_directories(test_tile_index PRIVATE include)
+  ament_add_gtest(test_tile_manifest
+    test/test_tile_manifest.cpp
+    src/localization_map/tile_manifest.cpp)
+  target_include_directories(test_tile_manifest PRIVATE include ${PCL_INCLUDE_DIRS})
+  target_link_libraries(test_tile_manifest yaml-cpp ${PCL_LIBRARIES})
   ament_add_gtest(test_relocalization_efficiency_surface
     test/test_relocalization_efficiency_surface.cpp)
   ament_add_gtest(test_bounded_async test/test_bounded_async.cpp)
