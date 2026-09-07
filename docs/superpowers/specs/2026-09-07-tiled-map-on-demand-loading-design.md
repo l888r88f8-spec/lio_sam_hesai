@@ -74,7 +74,7 @@ localization:
     max_cache_mib: 1024
     load_timeout_ms: 1000
 
-mapping:
+map_save:
   save_tiled_map: false
   tiled_map:
     tile_size_m: 100.0
@@ -82,7 +82,7 @@ mapping:
     overview_resolution_m: 5.0
 ```
 
-`mapping.save_tiled_map` 默认关闭。只有显式启用后，保存地图流程才额外生成分块
+`map_save.save_tiled_map` 默认关闭。只有显式启用后，保存地图流程才额外生成分块
 目录；现有 PCD 和 Scan Context 产物继续生成。
 
 配置约束：
@@ -259,9 +259,9 @@ tile 不可用且旧地图已经不覆盖当前位置时，报告不可用，由
 
 地图生成器从 `GlobalMap.pcd` 生成默认 5 米分辨率的 `overview.pcd`。
 
-- 全图模式的 `/localization_global_map` 行为不变；
-- 分块模式的 `/localization_global_map` 发布 overview；
-- `/localization_local_map` 发布当前 matcher 实际使用的活动地图；
+- 全图模式的 `lio_sam/localization/global_map` 行为不变；
+- 分块模式的 `lio_sam/localization/global_map` 发布 overview；
+- 新增 `lio_sam/localization/local_map`，发布当前 matcher 实际使用的活动地图；
 - overview 缺失只产生警告和诊断，不阻止定位就绪；
 - 可视化关闭时不加载 overview，以进一步降低内存。
 
