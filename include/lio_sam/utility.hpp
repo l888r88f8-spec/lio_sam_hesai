@@ -89,6 +89,10 @@ public:
 
     // Save pcd
     bool savePCD;
+    bool saveTiledMap;
+    double tiledMapSizeMeters;
+    std::string tiledMapOutputSubdirectory;
+    double tiledMapOverviewResolutionMeters;
     bool generateScDb;
     std::string savePCDDirectory;
     bool mappingMode;
@@ -226,6 +230,16 @@ public:
 
         declare_parameter("map_save.enabled", false);
         get_parameter("map_save.enabled", savePCD);
+        declare_parameter("map_save.save_tiled_map", false);
+        get_parameter("map_save.save_tiled_map", saveTiledMap);
+        declare_parameter("map_save.tiled_map.tile_size_m", 100.0);
+        get_parameter("map_save.tiled_map.tile_size_m", tiledMapSizeMeters);
+        declare_parameter("map_save.tiled_map.output_subdirectory", "tiled");
+        get_parameter("map_save.tiled_map.output_subdirectory",
+                      tiledMapOutputSubdirectory);
+        declare_parameter("map_save.tiled_map.overview_resolution_m", 5.0);
+        get_parameter("map_save.tiled_map.overview_resolution_m",
+                      tiledMapOverviewResolutionMeters);
         declare_parameter("map_save.generate_scan_context_db", true);
         get_parameter("map_save.generate_scan_context_db", generateScDb);
         declare_parameter("map_save.directory", "/Downloads/LOAM/");

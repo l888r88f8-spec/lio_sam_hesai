@@ -617,6 +617,53 @@ TEST(UnifiedParameterSchema, RelocalizationYamlUsesCanonicalNames) {
     "config/relocalization.yaml");
 }
 
+TEST(UnifiedParameterSchema, TiledMapParametersUseCanonicalNames) {
+  const std::set<std::string> localization_names = {
+    "localization.map_mode",
+    "localization.tiled_map.active_radius_tiles",
+    "localization.tiled_map.prefetch_radius_tiles",
+    "localization.tiled_map.max_cached_tiles",
+    "localization.tiled_map.max_cache_mib",
+    "localization.tiled_map.load_timeout_ms",
+  };
+  const std::set<std::string> map_save_names = {
+    "map_save.save_tiled_map",
+    "map_save.tiled_map.tile_size_m",
+    "map_save.tiled_map.output_subdirectory",
+    "map_save.tiled_map.overview_resolution_m",
+  };
+
+  ExpectContainsAll(ReadCppParameterNames("src/slam/system.cpp"),
+                    localization_names, "src/slam/system.cpp");
+  ExpectYamlContainsAll(ReadYamlParameterSurface("config/relocalization.yaml"),
+                        localization_names, "config/relocalization.yaml");
+  ExpectContainsAll(ReadCppParameterNames("include/lio_sam/utility.hpp"),
+                    map_save_names, "include/lio_sam/utility.hpp");
+  ExpectYamlContainsAll(ReadYamlParameterSurface("config/mapping.yaml"),
+                        map_save_names, "config/mapping.yaml");
+  const std::string mapping_yaml = ReadProjectFile("config/mapping.yaml");
+  const std::string relocalization_yaml =
+      ReadProjectFile("config/relocalization.yaml");
+  EXPECT_NE(mapping_yaml.find("save_tiled_map: false"),
+            std::string::npos);
+  EXPECT_NE(mapping_yaml.find("tile_size_m: 100.0"), std::string::npos);
+  EXPECT_NE(mapping_yaml.find("output_subdirectory: \"tiled\""),
+            std::string::npos);
+  EXPECT_NE(mapping_yaml.find("overview_resolution_m: 5.0"),
+            std::string::npos);
+  EXPECT_NE(relocalization_yaml.find("map_mode: auto"), std::string::npos);
+  EXPECT_NE(relocalization_yaml.find("active_radius_tiles: 1"),
+            std::string::npos);
+  EXPECT_NE(relocalization_yaml.find("prefetch_radius_tiles: 2"),
+            std::string::npos);
+  EXPECT_NE(relocalization_yaml.find("max_cached_tiles: 25"),
+            std::string::npos);
+  EXPECT_NE(relocalization_yaml.find("max_cache_mib: 1024"),
+            std::string::npos);
+  EXPECT_NE(relocalization_yaml.find("load_timeout_ms: 1000"),
+            std::string::npos);
+}
+
 TEST(UnifiedParameterSchema, LaunchOverridesUseCanonicalNames) {
   const std::string launch = StripPythonComments(
     ReadProjectFile("launch/localization_with_nonground.launch.py"));

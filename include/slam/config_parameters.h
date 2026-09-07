@@ -121,6 +121,12 @@ public:
 
     // localization map path
     std::string localization_map_path_{};
+    std::string localization_map_mode_{"auto"};
+    int localization_tiled_active_radius_{1};
+    int localization_tiled_prefetch_radius_{2};
+    int localization_tiled_max_cached_tiles_{25};
+    int localization_tiled_max_cache_mib_{1024};
+    int localization_tiled_load_timeout_ms_{1000};
     bool localization_enable_ground_height_constraint_{};
     double localization_base_link_ground_height_{};
     double localization_ground_search_radius_{};

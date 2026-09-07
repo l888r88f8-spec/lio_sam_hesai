@@ -65,6 +65,11 @@
     # CTRL+C地图与点云导出
     map_save:
       enabled: false                                     # 程序退出时是否自动保存全局地图点云
+      save_tiled_map: false                              # 同时按瓦片导出地图
+      tiled_map:
+        tile_size_m: 100.0
+        output_subdirectory: "tiled"
+        overview_resolution_m: 5.0
       generate_scan_context_db: true                     # 保存地图时生成 Scan Context 重定位数据库
       directory: "/Downloads/LOAM_hesai/"                # 全局地图导出目录，相对HOME，程序会删除后重建该目录
       resolution: 0.1                                    # 自动导出全局地图时的下采样分辨率，0表示不额外下采样

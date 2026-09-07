@@ -19,6 +19,13 @@
 
     localization:
       map_path: "/home/robot/map/hesai_sim2/GlobalMap.pcd"      # 全局地图
+      map_mode: auto                                            # auto, global, or tiled
+      tiled_map:
+        active_radius_tiles: 1
+        prefetch_radius_tiles: 2
+        max_cached_tiles: 25
+        max_cache_mib: 1024
+        load_timeout_ms: 1000
       auto_relocalization: true                                # 无需 RViz 初始位姿的自动重定位
       sc_db_path: ""                                           # 空值表示与 GlobalMap.pcd 同目录
       sc_top_n: 6                                              # Scan Context 检索候选数

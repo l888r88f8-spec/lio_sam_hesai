@@ -7,6 +7,7 @@
 #include <chrono>
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <functional>
 #include <limits>
 #include <stdexcept>
@@ -301,6 +302,18 @@ void System::InitConfigParameters() {
   // localization map path
   util::param(this, "localization.map_path", config.localization_map_path_,
               config.localization_map_path_);
+  util::param(this, "localization.map_mode", config.localization_map_mode_,
+              "auto");
+  util::param(this, "localization.tiled_map.active_radius_tiles",
+              config.localization_tiled_active_radius_, 1);
+  util::param(this, "localization.tiled_map.prefetch_radius_tiles",
+              config.localization_tiled_prefetch_radius_, 2);
+  util::param(this, "localization.tiled_map.max_cached_tiles",
+              config.localization_tiled_max_cached_tiles_, 25);
+  util::param(this, "localization.tiled_map.max_cache_mib",
+              config.localization_tiled_max_cache_mib_, 1024);
+  util::param(this, "localization.tiled_map.load_timeout_ms",
+              config.localization_tiled_load_timeout_ms_, 1000);
   util::param(this, "localization.enable_ground_height_constraint",
               config.localization_enable_ground_height_constraint_, false);
   util::param(this, "localization.base_link_ground_height",
@@ -538,6 +551,29 @@ void System::InitConfigParameters() {
               config.lc_near_neighbor_distance_threshold_, DoubleNaN);
   util::param(this, "loop_closure.registration_converge_threshold",
               config.lc_registration_converge_threshold_, FloatNaN);
+
+  if (config.localization_map_mode_ != "auto" &&
+      config.localization_map_mode_ != "global" &&
+      config.localization_map_mode_ != "tiled") {
+    throw std::invalid_argument(
+        "localization.map_mode must be auto, global, or tiled");
+  }
+  if (config.localization_tiled_active_radius_ < 0 ||
+      config.localization_tiled_max_cached_tiles_ <= 0 ||
+      config.localization_tiled_max_cache_mib_ <= 0 ||
+      config.localization_tiled_load_timeout_ms_ <= 0) {
+    throw std::invalid_argument("invalid localization.tiled_map configuration");
+  }
+  const std::uint64_t active_width =
+      2U * static_cast<std::uint64_t>(
+          config.localization_tiled_active_radius_) + 1U;
+  const std::uint64_t minimum_cached_tiles = active_width * active_width;
+  if (config.localization_tiled_prefetch_radius_ <
+          config.localization_tiled_active_radius_ ||
+      static_cast<std::uint64_t>(config.localization_tiled_max_cached_tiles_) <
+          minimum_cached_tiles) {
+    throw std::invalid_argument("invalid localization.tiled_map configuration");
+  }
 }
 
 void System::InitPublisher() {
