@@ -171,6 +171,7 @@ target_link_libraries(${PROJECT_NAME}_relocalization_lib
   Threads::Threads
 )
 target_sources(${PROJECT_NAME}_relocalization_lib PRIVATE
+  src/localization_map/tile_cache.cpp
   src/localization_map/tile_manifest.cpp
   src/localization_map/tile_map_generator.cpp
 )
@@ -300,6 +301,11 @@ if(BUILD_TESTING)
     test/test_unified_parameter_schema.cpp)
   ament_add_gtest(test_tile_index test/test_tile_index.cpp)
   target_include_directories(test_tile_index PRIVATE include)
+  ament_add_gtest(test_tile_cache
+    test/test_tile_cache.cpp
+    src/localization_map/tile_cache.cpp)
+  target_include_directories(test_tile_cache PRIVATE include ${PCL_INCLUDE_DIRS})
+  target_link_libraries(test_tile_cache ${PCL_LIBRARIES})
   ament_add_gtest(test_tile_manifest
     test/test_tile_manifest.cpp
     src/localization_map/tile_manifest.cpp)
