@@ -172,8 +172,11 @@ target_link_libraries(${PROJECT_NAME}_relocalization_lib
 )
 target_sources(${PROJECT_NAME}_relocalization_lib PRIVATE
   src/localization_map/tile_manifest.cpp
+  src/localization_map/tile_map_generator.cpp
 )
 target_link_libraries(${PROJECT_NAME}_relocalization_lib yaml-cpp)
+set_target_properties(${PROJECT_NAME}_relocalization_lib PROPERTIES
+  INSTALL_RPATH "$ORIGIN")
 
 add_executable(${PROJECT_NAME}_relocalization src/relocalization_node.cpp)
 ament_target_dependencies(${PROJECT_NAME}_relocalization
@@ -186,6 +189,15 @@ target_link_libraries(${PROJECT_NAME}_relocalization
   ${GLOG_LIBRARIES}
   ${G2O_LIBRARIES}
 )
+
+add_executable(${PROJECT_NAME}_generate_tiled_map src/generate_tiled_map.cpp)
+target_link_libraries(${PROJECT_NAME}_generate_tiled_map
+  ${PROJECT_NAME}_relocalization_lib)
+set_target_properties(
+  ${PROJECT_NAME}_relocalization
+  ${PROJECT_NAME}_generate_tiled_map
+  PROPERTIES
+    INSTALL_RPATH "$ORIGIN/..")
 
 install(
   DIRECTORY launch
@@ -223,7 +235,15 @@ install(
 )
 
 install(
+  TARGETS ${PROJECT_NAME}_relocalization_lib
+  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+install(
   TARGETS ${PROJECT_NAME}_relocalization
+    ${PROJECT_NAME}_generate_tiled_map
   DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -285,6 +305,12 @@ if(BUILD_TESTING)
     src/localization_map/tile_manifest.cpp)
   target_include_directories(test_tile_manifest PRIVATE include ${PCL_INCLUDE_DIRS})
   target_link_libraries(test_tile_manifest yaml-cpp ${PCL_LIBRARIES})
+  ament_add_gtest(test_tile_map_generator
+    test/test_tile_map_generator.cpp
+    src/localization_map/tile_manifest.cpp
+    src/localization_map/tile_map_generator.cpp)
+  target_include_directories(test_tile_map_generator PRIVATE include ${PCL_INCLUDE_DIRS})
+  target_link_libraries(test_tile_map_generator yaml-cpp ${PCL_LIBRARIES})
   ament_add_gtest(test_relocalization_efficiency_surface
     test/test_relocalization_efficiency_surface.cpp)
   ament_add_gtest(test_bounded_async test/test_bounded_async.cpp)
