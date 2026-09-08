@@ -172,6 +172,7 @@ target_link_libraries(${PROJECT_NAME}_relocalization_lib
 )
 target_sources(${PROJECT_NAME}_relocalization_lib PRIVATE
   src/localization_map/global_map_provider.cpp
+  src/localization_map/tiled_map_provider.cpp
   src/localization_map/tile_cache.cpp
   src/localization_map/tile_manifest.cpp
   src/localization_map/tile_map_generator.cpp
@@ -313,6 +314,15 @@ if(BUILD_TESTING)
   target_include_directories(test_global_map_provider PRIVATE
     include ${PCL_INCLUDE_DIRS})
   target_link_libraries(test_global_map_provider ${PCL_LIBRARIES})
+  ament_add_gtest(test_tiled_map_provider
+    test/test_tiled_map_provider.cpp
+    src/localization_map/tile_manifest.cpp
+    src/localization_map/tile_cache.cpp
+    src/localization_map/tiled_map_provider.cpp)
+  target_include_directories(test_tiled_map_provider PRIVATE
+    include ${PCL_INCLUDE_DIRS})
+  target_link_libraries(test_tiled_map_provider
+    yaml-cpp ${PCL_LIBRARIES} Threads::Threads)
   ament_add_gtest(test_tile_manifest
     test/test_tile_manifest.cpp
     src/localization_map/tile_manifest.cpp)

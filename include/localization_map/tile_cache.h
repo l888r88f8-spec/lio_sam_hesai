@@ -44,11 +44,12 @@ class TileCache {
   std::shared_ptr<const TilePayload> Find(const TileIndex& index);
   bool Insert(const TileIndex& index, TilePayload payload);
 
-  // Pin and Unpin are reference-counted for existing entries; missing entries
-  // are no-ops, and callers must match every effective Pin with an Unpin. A
+  // Pin and Unpin are reference-counted for existing entries. Pin reports
+  // whether it acquired a pin, and callers must match each successful Pin with
+  // an Unpin. A
   // single active-set owner must serialize insert/pin/commit transitions; this
   // is not a general-purpose per-client lease API.
-  void Pin(const TileIndex& index);
+  bool Pin(const TileIndex& index);
   void Unpin(const TileIndex& index);
 
   // Invalidates every outstanding pin count. The caller must hold exclusive,

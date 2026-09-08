@@ -120,13 +120,15 @@ bool TileCache::Insert(const TileIndex& index, TilePayload payload) {
   return true;
 }
 
-void TileCache::Pin(const TileIndex& index) {
+bool TileCache::Pin(const TileIndex& index) {
   std::lock_guard<std::mutex> lock(mutex_);
   const auto entry = entries_.find(index);
   if (entry != entries_.end() &&
       entry->second.pin_count != std::numeric_limits<std::size_t>::max()) {
     ++entry->second.pin_count;
+    return true;
   }
+  return false;
 }
 
 void TileCache::Unpin(const TileIndex& index) {
