@@ -49,6 +49,10 @@ struct MapDiagnostics {
   double last_load_ms{0.0};
   std::string load_state{"idle"};
   std::string last_error;
+  bool snapshot_available{false};
+  bool snapshot_degraded{false};
+  bool request_unavailable_without_coverage{false};
+  bool nonfatal_fault_active{false};
 };
 
 class MapProvider {

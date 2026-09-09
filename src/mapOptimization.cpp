@@ -3,6 +3,7 @@
 #include "lio_sam/ground_grid_patcher.h"
 #include "lio_sam_hesai/msg/cloud_info.hpp"
 #include "lio_sam_hesai/srv/save_map.hpp"
+#include "localization_map/tile_map_generator.h"
 #include "relocalization/scan_context.h"
 #include <gtsam/geometry/Rot3.h>
 #include <gtsam/geometry/Pose3.h>
@@ -516,7 +517,31 @@ public:
             }
             if (groundRes != req->resolution)
                 std::cout << "Ground save resolution: " << groundRes << std::endl;
-            res->success = (ret == 0) && groundSaved && scanContextDbSaved;
+            bool tiledMapSaved = !saveTiledMap;
+            if (saveTiledMap && ret == 0 && groundSaved && scanContextDbSaved)
+            {
+                localization_map::TileMapGeneratorOptions options;
+                options.map_directory = saveMapDirectory;
+                options.output_subdirectory = tiledMapOutputSubdirectory;
+                options.tile_size_m = tiledMapSizeMeters;
+                options.overview_resolution_m = tiledMapOverviewResolutionMeters;
+                options.frame_id = mapFrame;
+                try
+                {
+                    const auto result = localization_map::GenerateTileMap(options);
+                    tiledMapSaved = true;
+                    RCLCPP_INFO(get_logger(), "Saved %zu tiled map cells to %s",
+                                result.tile_count,
+                                result.output_directory.c_str());
+                }
+                catch (const std::exception& error)
+                {
+                    RCLCPP_ERROR(get_logger(), "Failed to save tiled map: %s",
+                                 error.what());
+                }
+            }
+            res->success =
+                (ret == 0) && groundSaved && scanContextDbSaved && tiledMapSaved;
             downSizeFilterCorner.setLeafSize(mappingCornerLeafSize, mappingCornerLeafSize, mappingCornerLeafSize);
             downSizeFilterSurf.setLeafSize(mappingSurfLeafSize, mappingSurfLeafSize, mappingSurfLeafSize);
             std::cout << "****************************************************" << std::endl;

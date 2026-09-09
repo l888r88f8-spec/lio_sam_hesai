@@ -117,13 +117,15 @@ ament_target_dependencies(${PROJECT_NAME}_mapOptimization rclcpp rclpy std_msgs 
 target_sources(${PROJECT_NAME}_mapOptimization PRIVATE
   src/ivox_map/ivox_map.cpp
   src/ivox_map/voxel_grid_node.cpp
+  src/localization_map/tile_manifest.cpp
+  src/localization_map/tile_map_generator.cpp
   src/relocalization/scan_context.cpp
 )
 
 if (OpenMP_CXX_FOUND)
-  target_link_libraries(${PROJECT_NAME}_mapOptimization ${GTSAM_LIBRARIES} "${cpp_typesupport_target}" OpenMP::OpenMP_CXX ${GLOG_LIBRARIES})
+  target_link_libraries(${PROJECT_NAME}_mapOptimization ${GTSAM_LIBRARIES} "${cpp_typesupport_target}" OpenMP::OpenMP_CXX ${GLOG_LIBRARIES} yaml-cpp)
 else()
-  target_link_libraries(${PROJECT_NAME}_mapOptimization ${GTSAM_LIBRARIES} "${cpp_typesupport_target}" ${GLOG_LIBRARIES})
+  target_link_libraries(${PROJECT_NAME}_mapOptimization ${GTSAM_LIBRARIES} "${cpp_typesupport_target}" ${GLOG_LIBRARIES} yaml-cpp)
 endif()
 
 add_library(${PROJECT_NAME}_relocalization_lib

@@ -71,7 +71,7 @@ inline uint64_t RosTimeToUs(
 
 inline void PublishRosCloud(
     const rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr &pub,
-    const PCLPointCloudXYZI::Ptr &cloud,
+    const PCLPointCloudXYZI::ConstPtr &cloud,
     const std::string &frame_id = kRosMapFrameID) {
   if (pub->get_subscription_count() == 0) {
     return;

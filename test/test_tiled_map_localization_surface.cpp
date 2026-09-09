@@ -41,3 +41,22 @@ TEST(TiledMapLocalizationSurface, UsesProviderForEveryMapRequest) {
   ExpectNoToken("include/slam/localization.h", "bool use_tile_map_");
   ExpectNoToken("include/slam/localization.h", "local_map_data_");
 }
+
+TEST(TiledMapLocalizationSurface, ExportsTilesAndPublishesMapDiagnostics) {
+  ExpectToken("src/mapOptimization.cpp", "saveTiledMap");
+  ExpectToken("src/mapOptimization.cpp", "GenerateTileMap");
+  const std::string system = "src/slam/system.cpp";
+  for (const char* key : {
+           "map_mode", "map_manifest_version", "map_active_tile_count",
+           "map_cached_tile_count", "map_cache_mib", "map_cache_hits",
+           "map_cache_misses", "map_tile_load_ms", "map_tile_load_failures",
+           "map_tile_load_state", "map_tile_load_error"}) {
+    ExpectToken(system, key);
+  }
+  ExpectToken("include/slam/system.h",
+              "localization_local_cloud_map_pub_");
+  ExpectToken(system, "lio_sam/localization/local_map");
+  ExpectToken(system, "localization_ptr_->GetLocalCloudMap()");
+  ExpectToken(system, "localization_ptr_->GetGlobalCloudMap()");
+  ExpectToken("config/rviz2.rviz", "/lio_sam/localization/local_map");
+}

@@ -407,6 +407,11 @@ Localization::InitializationResult Localization::Init(
           : PCLPointCloudXYZI::ConstPtr{};
 
   if (!local_map || local_map->empty()) {
+    {
+      std::lock_guard<std::mutex> lock(mutex_map_snapshot_);
+      last_map_request_error_ = initial_map.error;
+      map_request_unavailable_without_coverage_ = true;
+    }
     LOG(WARNING) << "Initial local map is empty, please check localization map "
                     "path and initialization pose. "
                  << initial_map.error;
@@ -506,6 +511,13 @@ bool Localization::PrepareMap() {
   const auto mode = ResolveMapMode(config.localization_map_mode_,
                                    resolved_map_path_, &mode_error);
   if (!mode.has_value()) {
+    {
+      std::lock_guard<std::mutex> lock(mutex_map_snapshot_);
+      map_provider_.reset();
+      active_map_snapshot_.reset();
+      last_map_request_error_ = mode_error;
+      map_request_unavailable_without_coverage_ = true;
+    }
     record_preparation_duration();
     LOG(ERROR) << "Localization map configuration is invalid: " << mode_error;
     return false;
@@ -536,7 +548,8 @@ bool Localization::PrepareMap() {
         config.localization_tiled_max_cached_tiles_);
     provider_config.max_cache_bytes = static_cast<std::size_t>(
         config.localization_tiled_max_cache_mib_) * 1024U * 1024U;
-    provider_config.load_overview = false;
+    provider_config.load_overview =
+        config.system_enable_visualize_global_map_;
     provider_config.registration_voxel_size =
         config.registration_local_map_cloud_filter_size_;
     new_provider = std::make_unique<localization_map::TiledMapProvider>(
@@ -545,6 +558,15 @@ bool Localization::PrepareMap() {
 
   std::string preparation_error;
   if (!new_provider->Prepare(&preparation_error)) {
+    {
+      std::lock_guard<std::mutex> lock(mutex_map_snapshot_);
+      map_provider_ = std::move(new_provider);
+      active_map_snapshot_.reset();
+      active_ground_xy_cloud_.reset();
+      active_ground_xy_kdtree_.reset();
+      last_map_request_error_ = preparation_error;
+      map_request_unavailable_without_coverage_ = true;
+    }
     record_preparation_duration();
     LOG(ERROR) << "Localization map preparation failed: "
                << preparation_error;
@@ -557,6 +579,8 @@ bool Localization::PrepareMap() {
     active_map_snapshot_.reset();
     active_ground_xy_cloud_.reset();
     active_ground_xy_kdtree_.reset();
+    last_map_request_error_.clear();
+    map_request_unavailable_without_coverage_ = false;
   }
 
   if (config.localization_auto_relocalization_) {
@@ -1082,6 +1106,7 @@ PCLPointCloudXYZI::ConstPtr Localization::LoadLocalMap(
       return request.snapshot->registration_cloud;
     case localization_map::MapRequestState::kUnchanged: {
       std::lock_guard<std::mutex> lock(mutex_map_snapshot_);
+      map_request_unavailable_without_coverage_ = false;
       return active_map_snapshot_
                  ? active_map_snapshot_->registration_cloud
                  : PCLPointCloudXYZI::ConstPtr{};
@@ -1089,13 +1114,24 @@ PCLPointCloudXYZI::ConstPtr Localization::LoadLocalMap(
     case localization_map::MapRequestState::kPending:
       if (request.previous_snapshot_covers_center) {
         std::lock_guard<std::mutex> lock(mutex_map_snapshot_);
+        map_request_unavailable_without_coverage_ = false;
         return active_map_snapshot_
                    ? active_map_snapshot_->registration_cloud
                    : PCLPointCloudXYZI::ConstPtr{};
       }
+      {
+        std::lock_guard<std::mutex> lock(mutex_map_snapshot_);
+        map_request_unavailable_without_coverage_ = false;
+      }
       need_update_local_map_ = true;
       return nullptr;
     case localization_map::MapRequestState::kUnavailable:
+      {
+        std::lock_guard<std::mutex> lock(mutex_map_snapshot_);
+        last_map_request_error_ = request.error;
+        map_request_unavailable_without_coverage_ =
+            !request.previous_snapshot_covers_center;
+      }
       LOG_EVERY_N(WARNING, 50)
           << "Localization map request unavailable: " << request.error;
       need_update_local_map_ = true;
@@ -1129,6 +1165,8 @@ void Localization::UpdateActiveMapSnapshot(
   active_map_snapshot_ = std::move(snapshot);
   active_ground_xy_cloud_ = std::move(flattened);
   active_ground_xy_kdtree_ = std::move(tree);
+  last_map_request_error_.clear();
+  map_request_unavailable_without_coverage_ = false;
 }
 
 NavStateData Localization::IntegrateImuMeasures(
@@ -1454,22 +1492,59 @@ void Localization::UpdateCurrentLidarCloud(
   lidar_cloud_ = lidar_cloud;
 }
 
-PCLPointCloudXYZI Localization::GetGlobalCloudMap() {
+PCLPointCloudXYZI::ConstPtr Localization::GetGlobalCloudMap() {
   std::lock_guard<std::mutex> lock(mutex_map_snapshot_);
   if (!map_provider_) {
-    return {};
+    return nullptr;
   }
-  const auto overview = map_provider_->Overview();
-  return overview ? *overview : PCLPointCloudXYZI{};
+  return map_provider_->Overview();
 }
 
-PCLPointCloudXYZI Localization::GetLocalCloudMap() {
+PCLPointCloudXYZI::ConstPtr Localization::GetLocalCloudMap() {
   std::lock_guard<std::mutex> lock(mutex_map_snapshot_);
   if (!active_map_snapshot_ ||
       !active_map_snapshot_->registration_cloud) {
-    return {};
+    return nullptr;
   }
-  return *active_map_snapshot_->registration_cloud;
+  return active_map_snapshot_->registration_cloud;
+}
+
+localization_map::MapDiagnostics Localization::MapDiagnostics() const {
+  std::lock_guard<std::mutex> lock(mutex_map_snapshot_);
+  localization_map::MapDiagnostics diagnostics;
+  if (map_provider_) {
+    diagnostics = map_provider_->Diagnostics();
+  }
+  diagnostics.snapshot_available =
+      active_map_snapshot_ && active_map_snapshot_->registration_cloud &&
+      !active_map_snapshot_->registration_cloud->empty();
+  diagnostics.snapshot_degraded =
+      active_map_snapshot_ && active_map_snapshot_->degraded;
+  diagnostics.request_unavailable_without_coverage =
+      map_request_unavailable_without_coverage_;
+  if (active_map_snapshot_ && !active_map_snapshot_->missing_indices.empty()) {
+    if (!diagnostics.last_error.empty()) {
+      diagnostics.last_error += "; ";
+    }
+    diagnostics.last_error += "missing tiles:";
+    for (const auto& index : active_map_snapshot_->missing_indices) {
+      diagnostics.last_error += " [" + std::to_string(index.x) + "," +
+                                std::to_string(index.y) + "]";
+    }
+  }
+  if (diagnostics.last_error.empty()) {
+    diagnostics.last_error = last_map_request_error_;
+  }
+  const std::string root = resolved_map_path_.string();
+  const std::size_t root_position = diagnostics.last_error.find(root);
+  if (!root.empty() && root_position != std::string::npos) {
+    diagnostics.last_error.erase(root_position, root.size());
+    if (root_position < diagnostics.last_error.size() &&
+        diagnostics.last_error[root_position] == '/') {
+      diagnostics.last_error.erase(root_position, 1U);
+    }
+  }
+  return diagnostics;
 }
 
 PCLPointCloudXYZI Localization::GetCurrentLidarCloudMap() {

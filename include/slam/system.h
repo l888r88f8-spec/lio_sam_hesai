@@ -81,6 +81,8 @@ class System : public rclcpp::Node {
   void PublishRuntimeDiagnostics();
   void AppendRuntimeDiagnostics(
       diagnostic_msgs::msg::DiagnosticStatus& status) const;
+  void AppendMapDiagnostics(
+      diagnostic_msgs::msg::DiagnosticStatus& status) const;
   void ResetTfContinuityOnTimeJump(TimeStampUs now_us);
   void PublishTfFallback();
   void PublishTF(const Mat4d& map_base_pose, TimeStampUs timestamp);
@@ -115,10 +117,13 @@ class System : public rclcpp::Node {
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr
       localization_global_cloud_map_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr
+      localization_local_cloud_map_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr
       localization_current_lidar_cloud_pub_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr localization_odom_pub_;
   rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr
       diagnostics_pub_;
+  PCLPointCloudXYZI::ConstPtr last_published_local_map_;
 
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;

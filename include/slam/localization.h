@@ -28,9 +28,11 @@ public:
 
     explicit Localization(System* system_ptr);
 
-    PCLPointCloudXYZI GetGlobalCloudMap();
+    PCLPointCloudXYZI::ConstPtr GetGlobalCloudMap();
 
-    PCLPointCloudXYZI GetLocalCloudMap();
+    PCLPointCloudXYZI::ConstPtr GetLocalCloudMap();
+
+    [[nodiscard]] localization_map::MapDiagnostics MapDiagnostics() const;
 
     PCLPointCloudXYZI GetCurrentLidarCloudMap();
 
@@ -167,7 +169,7 @@ private:
     std::atomic<double> map_preparation_duration_ms_{0.0};
 
     std::mutex mutex_lidar_cloud_;
-    std::mutex mutex_map_snapshot_;
+    mutable std::mutex mutex_map_snapshot_;
     PCLPointCloudXYZI lidar_cloud_;
     std::unique_ptr<localization_map::MapProvider> map_provider_;
     localization_map::MapMode selected_map_mode_{
@@ -176,6 +178,8 @@ private:
     std::shared_ptr<const localization_map::MapSnapshot> active_map_snapshot_;
     PCLPointCloudXYZI::Ptr active_ground_xy_cloud_{nullptr};
     pcl::KdTreeFLANN<PCLPointXYZI>::Ptr active_ground_xy_kdtree_{nullptr};
+    std::string last_map_request_error_;
+    bool map_request_unavailable_without_coverage_{false};
 
     bool need_update_local_map_{};
     bool force_local_map_rebuild_{false};

@@ -36,6 +36,18 @@ namespace {
 
 namespace fs = std::filesystem;
 
+std::string TileDescription(const TileIndex& index,
+                            const fs::path& relative_path,
+                            const char* error_class) {
+  std::string result = std::string(error_class) + " tile [" +
+                       std::to_string(index.x) + "," +
+                       std::to_string(index.y) + "]";
+  if (!relative_path.empty()) {
+    result += " path=" + relative_path.generic_string();
+  }
+  return result;
+}
+
 enum class Priority : std::size_t {
   kPrefetch = 0U,
   kActive = 1U,
@@ -271,12 +283,14 @@ class TiledMapProvider::Impl {
     UniqueFileDescriptor global_file = OpenValidatedFile(
         root_descriptor, global_entry->second.path, global_entry->second.bytes);
     if (!global_file) {
-      result.error = "global tile file validation failed";
+      result.error = TileDescription(index, global_entry->second.path,
+                                     "global file validation failed for");
       return result;
     }
     PCLPointCloudXYZI::Ptr global = LoadPcdAsXYZI(global_file.ProcPath());
     if (!global || global->size() != global_entry->second.point_count) {
-      result.error = "global tile point count mismatch";
+      result.error = TileDescription(index, global_entry->second.path,
+                                     "global point count mismatch for");
       return result;
     }
     PCLPointCloudXYZI::Ptr filtered(new PCLPointCloudXYZI);
@@ -287,7 +301,8 @@ class TiledMapProvider::Impl {
                            config.registration_voxel_size);
     voxel_grid.filter(*filtered);
     if (filtered->empty()) {
-      result.error = "global tile is empty after filtering";
+      result.error = TileDescription(index, global_entry->second.path,
+                                     "global empty after filtering for");
       return result;
     }
     result.payload.global = filtered;
@@ -307,10 +322,12 @@ class TiledMapProvider::Impl {
           result.payload.ground = ground;
           result.ground_ok = true;
         } else {
-          result.error = "ground tile point count mismatch";
+          result.error = TileDescription(index, ground_entry->second.path,
+                                         "ground point count mismatch for");
         }
       } else {
-        result.error = "ground tile file validation failed";
+        result.error = TileDescription(index, ground_entry->second.path,
+                                       "ground file validation failed for");
       }
     }
 
@@ -323,7 +340,8 @@ class TiledMapProvider::Impl {
     if (global_bytes > std::numeric_limits<std::size_t>::max() - ground_bytes) {
       result.global_ok = false;
       result.payload = {};
-      result.error = "tile memory size overflow";
+      result.error = TileDescription(index, global_entry->second.path,
+                                     "memory size overflow for");
       return result;
     }
     result.payload.bytes = global_bytes + ground_bytes;
@@ -402,8 +420,8 @@ class TiledMapProvider::Impl {
             request->pinned_indices.insert(index);
           } else {
             request->outcomes[index].state = OutcomeState::kBudget;
-            request->outcomes[index].error =
-                "tile cache could not pin active tile";
+            request->outcomes[index].error = TileDescription(
+                index, {}, "cache could not pin active");
           }
         }
       }
@@ -573,7 +591,8 @@ class TiledMapProvider::Impl {
         continue;
       }
       entry.second.state = OutcomeState::kBudget;
-      entry.second.error = "tile cache budget rejected active request";
+      entry.second.error = TileDescription(
+          entry.first, {}, "cache budget rejected active");
       const auto load = loads.find(entry.first);
       if (load == loads.end()) {
         continue;
@@ -636,7 +655,7 @@ class TiledMapProvider::Impl {
       } catch (...) {
         result.index = index;
         result.global_present = true;
-        result.error = "tile loader threw an exception";
+        result.error = TileDescription(index, {}, "loader exception for");
       }
       const double elapsed_ms = std::chrono::duration<double, std::milli>(
                                     std::chrono::steady_clock::now() - started)
@@ -672,12 +691,12 @@ class TiledMapProvider::Impl {
           inserted = cache.Insert(index, std::move(result.payload));
         } catch (...) {
           outcome.state = OutcomeState::kFailed;
-          outcome.error = "tile cache insertion failed";
+          outcome.error = TileDescription(index, {}, "cache insertion failed for");
           ++diagnostics.load_failures;
         }
         if (!inserted && outcome.state != OutcomeState::kFailed) {
           outcome.state = OutcomeState::kBudget;
-          outcome.error = "tile cache budget rejected loaded tile";
+          outcome.error = TileDescription(index, {}, "cache budget rejected loaded");
           ++diagnostics.load_failures;
         } else if (inserted) {
           outcome.state = OutcomeState::kReady;
@@ -700,8 +719,8 @@ class TiledMapProvider::Impl {
               request->second->pinned_indices.insert(index);
             } else {
               request->second->outcomes[index].state = OutcomeState::kBudget;
-              request->second->outcomes[index].error =
-                  "tile cache could not pin active tile";
+              request->second->outcomes[index].error = TileDescription(
+                  index, {}, "cache could not pin active");
             }
           }
           affected.push_back(request->second);
@@ -732,11 +751,14 @@ class TiledMapProvider::Impl {
     const auto center_outcome = request.outcomes.find(request.center);
     if (center_outcome != request.outcomes.end() &&
         center_outcome->second.state == OutcomeState::kBudget) {
-      return Unavailable("tile cache budget rejected active request");
+      return Unavailable(TileDescription(
+          request.center, {}, "cache budget rejected active"));
     }
     if (center_outcome == request.outcomes.end() ||
         center_outcome->second.state != OutcomeState::kReady) {
-      return Unavailable("center global tile is unavailable");
+      return Unavailable("center global tile [" +
+                         std::to_string(request.center.x) + "," +
+                         std::to_string(request.center.y) + "] is unavailable");
     }
 
     PCLPointCloudXYZI::Ptr registration(new PCLPointCloudXYZI);
@@ -745,7 +767,8 @@ class TiledMapProvider::Impl {
     for (const TileIndex& index : request.indices) {
       const TileOutcome& outcome = request.outcomes.at(index);
       if (outcome.state == OutcomeState::kBudget) {
-        return Unavailable("tile cache budget rejected active request");
+        return Unavailable(TileDescription(
+            index, {}, "cache budget rejected active"));
       }
       if (outcome.state != OutcomeState::kReady) {
         snapshot->degraded = true;
@@ -754,7 +777,8 @@ class TiledMapProvider::Impl {
       }
       const auto& payload = outcome.payload;
       if (!payload || !payload->global) {
-        return Unavailable("requested tile was evicted before snapshot commit");
+        return Unavailable(TileDescription(
+            index, {}, "evicted before snapshot commit"));
       }
       *registration += *payload->global;
       snapshot->indices.push_back(index);
@@ -915,6 +939,7 @@ bool TiledMapProvider::Prepare(std::string* error) {
   if (impl_->config.load_overview) {
     if (!impl_->manifest.overview.has_value()) {
       impl_->diagnostics.last_error = "tiled map overview is unavailable";
+      impl_->diagnostics.nonfatal_fault_active = true;
     } else {
       try {
         UniqueFileDescriptor overview_file = OpenValidatedFile(
@@ -929,6 +954,7 @@ bool TiledMapProvider::Prepare(std::string* error) {
       if (!impl_->overview || impl_->overview->empty()) {
         impl_->overview.reset();
         impl_->diagnostics.last_error = "tiled map overview is unavailable";
+        impl_->diagnostics.nonfatal_fault_active = true;
       }
     }
   }
@@ -1021,7 +1047,8 @@ MapRequestResult TiledMapProvider::RequestTracking(
         if (!all_pinned) {
           impl_->ReleaseRequestPinsLocked(completed_request);
           impl_->RestoreCurrentActiveLocked();
-          return Unavailable("tile cache could not retain active request");
+          return Unavailable(TileDescription(
+              existing->first, {}, "cache could not retain active"));
         }
         std::map<TileIndex, std::shared_ptr<const TilePayload>> new_payloads;
         for (const TileIndex& index : result.snapshot->indices) {

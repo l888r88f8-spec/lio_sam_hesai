@@ -582,6 +582,10 @@ void System::InitPublisher() {
   localization_global_cloud_map_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
           "lio_sam/localization/global_map",
           rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable());
+  localization_local_cloud_map_pub_ =
+      create_publisher<sensor_msgs::msg::PointCloud2>(
+          "lio_sam/localization/local_map",
+          rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable());
   localization_current_lidar_cloud_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
           "lio_sam/localization/current_lidar", 5);
 
@@ -894,11 +898,21 @@ void System::Run() {
       localization_global_cloud_map_pub_->get_subscription_count() > 0) {
     const auto global_cloud_map = localization_ptr_->GetGlobalCloudMap();
 
-    if (!global_cloud_map.empty()) {
+    if (global_cloud_map && !global_cloud_map->empty()) {
       PublishRosCloud(localization_global_cloud_map_pub_,
-                      global_cloud_map.makeShared(),
+                      global_cloud_map,
                       ConfigParameters::Instance().map_frame_);
       first_global_map_visualization = false;
+    }
+  }
+
+  if (localization_local_cloud_map_pub_->get_subscription_count() > 0) {
+    const auto local_cloud_map = localization_ptr_->GetLocalCloudMap();
+    if (local_cloud_map && !local_cloud_map->empty() &&
+        local_cloud_map.get() != last_published_local_map_.get()) {
+      PublishRosCloud(localization_local_cloud_map_pub_, local_cloud_map,
+                      ConfigParameters::Instance().map_frame_);
+      last_published_local_map_ = local_cloud_map;
     }
   }
 }
@@ -1234,6 +1248,7 @@ void System::PublishLocalizationHealth() {
   add_value("tf_hold_reason", TfHoldReasonString(tf_hold_reason));
 
   AppendRuntimeDiagnostics(status);
+  AppendMapDiagnostics(status);
   add_value("rates_known", BoolString(inputs.stream.rates_known));
   add_value("lidar_stalled", BoolString(inputs.stream.lidar_stalled));
   add_value("imu_stalled", BoolString(inputs.stream.imu_stalled));
@@ -1257,8 +1272,53 @@ void System::PublishRuntimeDiagnostics() {
   status.level = diagnostic_msgs::msg::DiagnosticStatus::OK;
   status.message = "runtime resource diagnostics";
   AppendRuntimeDiagnostics(status);
+  AppendMapDiagnostics(status);
   diagnostics.status.emplace_back(std::move(status));
   diagnostics_pub_->publish(diagnostics);
+}
+
+void System::AppendMapDiagnostics(
+    diagnostic_msgs::msg::DiagnosticStatus& status) const {
+  const localization_map::MapDiagnostics map =
+      localization_ptr_ ? localization_ptr_->MapDiagnostics()
+                        : localization_map::MapDiagnostics{};
+  const auto add_value = [&status](const std::string& key,
+                                   const std::string& value) {
+    diagnostic_msgs::msg::KeyValue item;
+    item.key = key;
+    item.value = value;
+    status.values.emplace_back(std::move(item));
+  };
+  add_value("map_mode",
+            map.mode == localization_map::MapMode::kTiled ? "tiled"
+                                                          : "global");
+  add_value("map_manifest_version", std::to_string(map.manifest_version));
+  add_value("map_active_tile_count", std::to_string(map.active_tiles));
+  add_value("map_cached_tile_count", std::to_string(map.cached_tiles));
+  add_value("map_cache_mib", std::to_string(map.cache_mib));
+  add_value("map_cache_hits", std::to_string(map.cache_hits));
+  add_value("map_cache_misses", std::to_string(map.cache_misses));
+  add_value("map_tile_load_ms", std::to_string(map.last_load_ms));
+  add_value("map_tile_load_failures", std::to_string(map.load_failures));
+  add_value("map_tile_load_state", map.load_state);
+  add_value("map_tile_load_error", map.last_error);
+
+  const bool unavailable = map.request_unavailable_without_coverage;
+  const bool degraded = map.snapshot_degraded || map.nonfatal_fault_active;
+  const auto previous_level = status.level;
+  if (unavailable) {
+    status.level = std::max(
+        status.level, diagnostic_msgs::msg::DiagnosticStatus::ERROR);
+    if (previous_level < diagnostic_msgs::msg::DiagnosticStatus::ERROR) {
+      status.message = "localization map unavailable";
+    }
+  } else if (degraded) {
+    status.level = std::max(
+        status.level, diagnostic_msgs::msg::DiagnosticStatus::WARN);
+    if (previous_level < diagnostic_msgs::msg::DiagnosticStatus::WARN) {
+      status.message = "localization map degraded";
+    }
+  }
 }
 
 void System::AppendRuntimeDiagnostics(

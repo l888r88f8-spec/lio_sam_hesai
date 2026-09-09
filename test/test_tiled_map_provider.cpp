@@ -1001,7 +1001,10 @@ TEST(TiledMapProvider, ProductionLoaderRejectsTileReplacedBySymlink) {
 
   const auto result = provider.LoadCandidate(Pose(0), 1s);
   EXPECT_EQ(result.state, MapRequestState::kUnavailable);
-  EXPECT_EQ(result.error, "center global tile is unavailable");
+  EXPECT_EQ(result.error, "center global tile [0,0] is unavailable");
+  const auto diagnostics = provider.Diagnostics();
+  EXPECT_NE(diagnostics.last_error.find("[0,0]"), std::string::npos);
+  EXPECT_NE(diagnostics.last_error.find("global/0_0.pcd"), std::string::npos);
 }
 
 TEST(TiledMapProvider, InvalidConfigOrManifestFailsWithStableDiagnostics) {
