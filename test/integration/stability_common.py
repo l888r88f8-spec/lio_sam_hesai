@@ -224,7 +224,7 @@ def prepare_tiled_fault_case(source, destination, fault_case, center_index=None)
     if not global_tiles:
         raise DatasetError("Tiled manifest has no global tiles")
     if center_index is None:
-        center = (0, 0)
+        center = tuple(global_tiles[0]["index"])
     else:
         center = tuple(int(value) for value in center_index)
         if len(center) != 2:
@@ -240,7 +240,20 @@ def prepare_tiled_fault_case(source, destination, fault_case, center_index=None)
         raise DatasetError(
             "Tiled fault center tile is absent; set LIO_SAM_TILED_FAULT_CENTER_INDEX"
         )
-    neighbor = (center[0] + 1, center[1])
+    global_indices = [tuple(entry["index"]) for entry in global_tiles]
+    neighbor = None
+    for candidate in sorted(selected - {center}):
+        remaining = [index for index in global_indices if index != candidate]
+        if candidate not in global_indices or not remaining:
+            continue
+        if (min(index[0] for index in remaining) <= candidate[0] <=
+                max(index[0] for index in remaining) and
+                min(index[1] for index in remaining) <= candidate[1] <=
+                max(index[1] for index in remaining)):
+            neighbor = candidate
+            break
+    if neighbor is None:
+        neighbor = (center[0] + 1, center[1])
     missing = center if fault_case == "missing-center" else neighbor
     if fault_case not in ("corrupt-manifest", "missing-center", "missing-neighbor"):
         raise DatasetError(f"Unknown tiled fault case: {fault_case}")

@@ -966,11 +966,13 @@ TEST(TiledMapProvider, ProductionLoaderValidatesCountsAndLoadsClouds) {
       {"ground/0_0.pcd", 1U, fs::file_size(ground_path)};
   manifest.Save(directory.root());
 
-  TiledMapProvider provider(Config(directory.root()));
+  TiledMapProvider provider(Config(directory.root(), 1, 1));
   ASSERT_TRUE(provider.Prepare(nullptr));
   const auto loaded = provider.LoadCandidate(Pose(0), 1s);
   ASSERT_EQ(loaded.state, MapRequestState::kReady);
   EXPECT_EQ(loaded.snapshot->registration_cloud->size(), 2U);
+  EXPECT_EQ(loaded.snapshot->indices.size(), 1U);
+  EXPECT_FALSE(loaded.snapshot->degraded);
   ASSERT_EQ(loaded.snapshot->ground_cloud->size(), 1U);
   EXPECT_FLOAT_EQ(loaded.snapshot->ground_cloud->front().z, -1.0F);
 

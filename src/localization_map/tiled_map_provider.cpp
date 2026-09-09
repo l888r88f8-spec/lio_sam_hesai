@@ -368,6 +368,38 @@ class TiledMapProvider::Impl {
     }
   }
 
+  void UpdateManifestBounds() {
+    if (manifest.global_tiles.empty()) {
+      manifest_bounds_valid = false;
+      return;
+    }
+    const TileIndex first = manifest.global_tiles.begin()->first;
+    manifest_min_x = manifest_max_x = first.x;
+    manifest_min_y = manifest_max_y = first.y;
+    for (const auto& entry : manifest.global_tiles) {
+      manifest_min_x = std::min(manifest_min_x, entry.first.x);
+      manifest_max_x = std::max(manifest_max_x, entry.first.x);
+      manifest_min_y = std::min(manifest_min_y, entry.first.y);
+      manifest_max_y = std::max(manifest_max_y, entry.first.y);
+    }
+    manifest_bounds_valid = true;
+  }
+
+  bool InManifestBounds(const TileIndex& index) const {
+    return !manifest_bounds_valid ||
+           (index.x >= manifest_min_x && index.x <= manifest_max_x &&
+            index.y >= manifest_min_y && index.y <= manifest_max_y);
+  }
+
+  void ClipToManifestBounds(std::vector<TileIndex>* indices) const {
+    indices->erase(
+        std::remove_if(indices->begin(), indices->end(),
+                       [&](const TileIndex& index) {
+                         return !InManifestBounds(index);
+                       }),
+        indices->end());
+  }
+
   bool HasQueuedWorkLocked() const {
     return std::any_of(assembly_queues.begin(), assembly_queues.end(),
                        [](const auto& queue) { return !queue.empty(); }) ||
@@ -459,6 +491,7 @@ class TiledMapProvider::Impl {
     request->center = center;
     request->priority = priority;
     request->indices = SquareNeighborhood(center, config.active_radius);
+    ClipToManifestBounds(&request->indices);
     for (const TileIndex& index : request->indices) {
       request->outcomes.emplace(index, TileOutcome{});
     }
@@ -843,6 +876,8 @@ class TiledMapProvider::Impl {
       diagnostics.last_error = "prefetch neighborhood is outside tile range";
       return;
     }
+    ClipToManifestBounds(&prefetch);
+    ClipToManifestBounds(&active);
     prefetch.erase(std::remove_if(prefetch.begin(), prefetch.end(),
                                   [&](const TileIndex& index) {
                                     return std::binary_search(
@@ -897,6 +932,11 @@ class TiledMapProvider::Impl {
   int root_descriptor{-1};
   bool prepared{false};
   bool stopping{false};
+  bool manifest_bounds_valid{false};
+  int manifest_min_x{0};
+  int manifest_max_x{0};
+  int manifest_min_y{0};
+  int manifest_max_y{0};
 };
 
 TiledMapProvider::TiledMapProvider(TiledMapProviderConfig config)
@@ -935,6 +975,7 @@ bool TiledMapProvider::Prepare(std::string* error) {
   } catch (const std::exception&) {
     return fail("tiled map manifest is invalid or unavailable");
   }
+  impl_->UpdateManifestBounds();
   impl_->root_descriptor = OpenRootDirectory(impl_->config.root);
   if (impl_->root_descriptor < 0) {
     return fail("tiled map root is unavailable");

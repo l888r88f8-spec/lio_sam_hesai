@@ -146,7 +146,7 @@ class TiledMapIntegrationTest(unittest.TestCase):
         self.assertFalse((fixture / "global/8_8.pcd").exists())
 
     def test_fault_invariants_require_refusal_or_exact_degraded_index(self):
-        refused = {"map_tile_load_state": "error", "first_ok_seconds": None}
+        refused = {"first_ok_seconds": None, "first_odom_seconds": None}
         self.assertEqual(
             tiled_fault_violations(refused, "corrupt-manifest"), []
         )

@@ -36,6 +36,8 @@ TEST(TiledMapLocalizationSurface, UsesProviderForEveryMapRequest) {
               "UpdateActiveMapSnapshot(initial_map.snapshot)");
   ExpectToken("src/slam/localization.cpp", "map_provider_->RequestTracking");
   ExpectToken("src/slam/localization.cpp", "MapRequestState::kPending");
+  ExpectToken("src/slam/localization.cpp",
+              "provider_config.registration_voxel_size = 0.3F");
   ExpectNoToken("src/slam/localization.cpp",
                 "Scan Context auto relocalization does not support tile maps");
   ExpectNoToken("include/slam/localization.h", "bool use_tile_map_");

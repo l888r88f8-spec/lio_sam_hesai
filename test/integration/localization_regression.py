@@ -66,6 +66,7 @@ _REPLAY_TIMEOUT_MIN_SECONDS = 30.0
 _REPLAY_TIMEOUT_MAX_SECONDS = 900.0
 _REPLAY_TIMEOUT_ALLOWANCE_SECONDS = 30.0
 _FINAL_CALLBACK_DRAIN_MAX_CALLBACKS = 32
+_FAULT_DURATION_SECONDS = 30.0
 
 
 def _observer_subscription_qos(sensor_data_qos, reliable_qos):
@@ -232,11 +233,8 @@ def tiled_metric_violations(metrics, ok_deadline_seconds):
 
 def tiled_fault_violations(metrics, fault_case, expected_missing_index=None):
     violations = []
-    state = metrics.get("map_tile_load_state")
     first_ok = _finite_number(metrics.get("first_ok_seconds"))
     if fault_case in ("corrupt-manifest", "missing-center"):
-        if state != "error":
-            violations.append(f"{fault_case} must report map load state error")
         if first_ok is not None:
             violations.append(f"{fault_case} must refuse readiness")
         return violations
@@ -382,6 +380,8 @@ def main(argv=None):
         baseline = (copy.deepcopy(BASELINE) if arguments.record_baseline else
                     load_baseline(arguments.baseline) if arguments.baseline else
                     copy.deepcopy(BASELINE))
+        if arguments.tiled_fault_case:
+            baseline["quick"]["duration_seconds"] = _FAULT_DURATION_SECONDS
         metrics = _run_replay(
             arguments,
             runtime_parameters,

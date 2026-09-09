@@ -550,8 +550,9 @@ bool Localization::PrepareMap() {
         config.localization_tiled_max_cache_mib_) * 1024U * 1024U;
     provider_config.load_overview =
         config.system_enable_visualize_global_map_;
-    provider_config.registration_voxel_size =
-        config.registration_local_map_cloud_filter_size_;
+    // Match the legacy GlobalMapProvider density. Some registration backends
+    // leave local_map_cloud_filter_size unset at the numeric sentinel.
+    provider_config.registration_voxel_size = 0.3F;
     new_provider = std::make_unique<localization_map::TiledMapProvider>(
         std::move(provider_config));
   }
