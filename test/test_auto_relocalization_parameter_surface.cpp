@@ -937,20 +937,23 @@ TEST(FrameProcessingPipelineSurface, DropsOverdueFramesBeforeStateCommit) {
 
   ExpectToken(
     "include/slam/localization.h",
-    "LoadLocalMap(const Mat4d& pose, bool force_rebuild");
+    "PCLPointCloudXYZI::ConstPtr LoadLocalMap(");
   const std::string load_local_map_body = ReadFunctionBody(
     "src/slam/localization.cpp",
-    "PCLPointCloudXYZI::Ptr Localization::LoadLocalMap(");
-  const std::size_t force_rebuild_input = load_local_map_body.find(
-    "need_update_local_map_ = force_rebuild");
-  const std::size_t global_map_early_return = load_local_map_body.find(
-    "if (!need_update_local_map_)");
-  const std::size_t global_crop = load_local_map_body.find("crop_box.filter(");
+    "PCLPointCloudXYZI::ConstPtr Localization::LoadLocalMap(");
+  const std::string compact_load_local_map =
+    RemoveWhitespace(load_local_map_body);
+  const std::size_t force_rebuild_input = compact_load_local_map.find(
+    "map_provider_->RequestTracking(pose,velocity_xy,force_rebuild)");
+  const std::size_t pending_state = compact_load_local_map.find(
+    "MapRequestState::kPending");
+  const std::size_t coverage_gate = compact_load_local_map.find(
+    "request.previous_snapshot_covers_center", pending_state);
   ASSERT_NE(force_rebuild_input, std::string::npos);
-  ASSERT_NE(global_map_early_return, std::string::npos);
-  ASSERT_NE(global_crop, std::string::npos);
-  EXPECT_LT(force_rebuild_input, global_map_early_return);
-  EXPECT_LT(global_map_early_return, global_crop);
+  ASSERT_NE(pending_state, std::string::npos);
+  ASSERT_NE(coverage_gate, std::string::npos);
+  EXPECT_LT(force_rebuild_input, pending_state);
+  EXPECT_LT(pending_state, coverage_gate);
 
   EXPECT_NE(initialization_body.find(
     "NavStateData initialized_nav_state = last_nav_state_"),

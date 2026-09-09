@@ -58,16 +58,17 @@ TEST(RelocalizationEfficiencySurface, ExposesDedicatedGroundMap) {
               "localization_ground_map_path_");
   ExpectToken("src/slam/system.cpp", "localization.ground_map_path");
   ExpectToken("config/relocalization.yaml", "ground_map_path:");
-  ExpectToken("include/slam/localization.h", "ground_map_cloud_ptr_");
-  ExpectToken("include/slam/localization.h", "ground_map_xy_cloud_ptr_");
-  ExpectToken("include/slam/localization.h", "ground_map_xy_kdtree_");
+  ExpectToken("src/slam/localization.cpp", "provider_config.ground_map_path");
+  ExpectToken("src/localization_map/global_map_provider.cpp",
+              "impl_->ground_tree");
+  ExpectToken("include/slam/localization.h", "active_ground_xy_kdtree_");
 }
 
 TEST(RelocalizationEfficiencySurface, CandidateLocalMapUsesFiftyMeterExtent) {
-  ExpectToken("src/slam/localization.cpp",
-              "constexpr double kLocalMapHalfExtent = 50.0;");
-  ExpectNoToken("src/slam/localization.cpp",
-                "constexpr double kLocalMapHalfExtent = 100.0;");
+  ExpectToken("src/localization_map/global_map_provider.cpp",
+              "constexpr double kCandidateHalfExtent = 50.0;");
+  ExpectNoToken("src/localization_map/global_map_provider.cpp",
+                "constexpr double kCandidateHalfExtent = 100.0;");
 }
 
 TEST(RelocalizationEfficiencySurface,
@@ -83,7 +84,7 @@ TEST(RelocalizationEfficiencySurface,
   const std::size_t isolated_preparation = localization.find(
       "try {\n      Timer preparation_timer;", ordered_loop);
   const std::size_t lazy_local_map =
-      localization.find("LoadCandidateLocalMap(", isolated_preparation);
+      localization.find("map_provider_->LoadCandidate(", isolated_preparation);
   const std::size_t serial_match =
       localization.find("matcher->Match(", lazy_local_map);
   const std::size_t early_accept = localization.find(

@@ -5,21 +5,19 @@
 #include "slam/system.h"
 #include "slam/config_parameters.h"
 #include "common/data_type.h"
-#include "common/compare_function.h"
 #include "imu/pre_integration.h"
 #include "localization_health/reinitialization_control.h"
+#include "localization_map/map_provider.h"
 #include "registration/registration_interface.h"
 #include "registration/icp_optimized.h"
 #include "relocalization/scan_context.h"
 #include "runtime/frame_processing_watchdog.h"
 
 #include <atomic>
-#include <map>
+#include <filesystem>
 #include <memory>
 #include <mutex>
 #include <optional>
-#include <set>
-#include <unordered_set>
 #include <vector>
 
 #include <pcl/kdtree/kdtree_flann.h>
@@ -31,6 +29,8 @@ public:
     explicit Localization(System* system_ptr);
 
     PCLPointCloudXYZI GetGlobalCloudMap();
+
+    PCLPointCloudXYZI GetLocalCloudMap();
 
     PCLPointCloudXYZI GetCurrentLidarCloudMap();
 
@@ -111,23 +111,11 @@ private:
      * @param pose
      * @return local map cloud
      */
-    PCLPointCloudXYZI::Ptr LoadLocalMap(const Mat4d& pose, bool force_rebuild = false);
+    PCLPointCloudXYZI::ConstPtr LoadLocalMap(
+        const Mat4d& pose, bool force_rebuild = false);
 
-    PCLPointCloudXYZI::Ptr LoadCandidateLocalMap(const Mat4d& pose);
-
-    void LoadTileMapIndices();
-
-    static PCLPointCloudXYZI::Ptr LoadGlobalMap(const std::string& path);
-
-    static PCLPointCloudXYZI::Ptr LoadTileMap(const Vec2i& tile_map_index);
-
-    /*!
-     * @brief Centered on index, load nearby tile map indices
-     * @param index
-     * @param step_size
-     * @return
-     */
-    static std::vector<Vec2i> GenerateTileMapIndices(const Vec2i& index, int step_size);
+    void UpdateActiveMapSnapshot(
+        std::shared_ptr<const localization_map::MapSnapshot> snapshot);
 
     [[nodiscard]] NavStateData IntegrateImuMeasures(const NavStateData& last_nav_state) const;
     [[nodiscard]] NavStateData IntegrateImuMeasuresOdom(
@@ -136,7 +124,9 @@ private:
     void Optimize(NavStateData& curr_nav_state, const Mat4d& lidar_pose);
 
     [[nodiscard]] std::optional<double> EstimateMapGroundZ(
-        const Mat4d& map_lidar_pose);
+        const Mat4d& map_lidar_pose,
+        const std::shared_ptr<const localization_map::MapSnapshot>& snapshot =
+            nullptr);
 
 private:
     struct TfPredictionAnchor {
@@ -158,9 +148,6 @@ private:
     mutable std::mutex mutex_tf_prediction_anchor_;
     std::optional<TfPredictionAnchor> tf_prediction_anchor_;
 
-    std::map<Vec2i, PCLPointCloudXYZI::Ptr, LessVec2i> local_map_data_;
-    std::set<Vec2i, LessVec2i> map_data_indices_;
-
     // navigation state and bias
     NavStateData last_nav_state_;
     NavStateData last_odom_state_;
@@ -180,22 +167,18 @@ private:
     std::atomic<double> map_preparation_duration_ms_{0.0};
 
     std::mutex mutex_lidar_cloud_;
-    std::mutex mutex_global_map_cloud_;
+    std::mutex mutex_map_snapshot_;
     PCLPointCloudXYZI lidar_cloud_;
-    PCLPointCloudXYZI::Ptr global_map_cloud_ptr_{nullptr};
-    PCLPointCloudXYZI::Ptr global_map_xy_cloud_ptr_{nullptr};
-    pcl::KdTreeFLANN<PCLPointXYZI>::Ptr global_map_xy_kdtree_{nullptr};
-    PCLPointCloudXYZI::Ptr ground_map_cloud_ptr_{nullptr};
-    PCLPointCloudXYZI::Ptr ground_map_xy_cloud_ptr_{nullptr};
-    pcl::KdTreeFLANN<PCLPointXYZI>::Ptr ground_map_xy_kdtree_{nullptr};
+    std::unique_ptr<localization_map::MapProvider> map_provider_;
+    localization_map::MapMode selected_map_mode_{
+        localization_map::MapMode::kGlobal};
+    std::filesystem::path resolved_map_path_;
+    std::shared_ptr<const localization_map::MapSnapshot> active_map_snapshot_;
+    PCLPointCloudXYZI::Ptr active_ground_xy_cloud_{nullptr};
+    pcl::KdTreeFLANN<PCLPointXYZI>::Ptr active_ground_xy_kdtree_{nullptr};
 
-    bool use_tile_map_{false}; // Not recommended
     bool need_update_local_map_{};
     bool force_local_map_rebuild_{false};
-    double tile_map_grid_size_;
-    double tile_map_grid_size_half_;
-
-    std::vector<double> local_map_edge_;
 
     std::optional<Mat4d> init_pose_optional_;
     std::mutex mutex_init_pose_optional_;

@@ -336,6 +336,8 @@ if(BUILD_TESTING)
   target_link_libraries(test_tile_map_generator yaml-cpp ${PCL_LIBRARIES})
   ament_add_gtest(test_relocalization_efficiency_surface
     test/test_relocalization_efficiency_surface.cpp)
+  ament_add_gtest(test_tiled_map_localization_surface
+    test/test_tiled_map_localization_surface.cpp)
   ament_add_gtest(test_bounded_async test/test_bounded_async.cpp)
   target_include_directories(test_bounded_async PRIVATE include)
   ament_add_gtest(test_ivox_map_batch_add

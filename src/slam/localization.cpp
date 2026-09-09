@@ -1,21 +1,19 @@
 #include "slam/localization.h"
 
-#include <pcl/conversions.h>
-#include <pcl/filters/crop_box.h>
-#include <pcl/io/pcd_io.h>
-
 #include <Eigen/Geometry>
 
 #include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <exception>
-#include <fstream>
+#include <filesystem>
 #include <iomanip>
 #include <limits>
 
 #include <g2o/core/sparse_optimizer.h>
 
+#include "localization_map/global_map_provider.h"
+#include "localization_map/tiled_map_provider.h"
 #include "optimization/g2o/accel_bias_rw_edge.h"
 #include "optimization/g2o/gyro_bias_rw_edge.h"
 #include "optimization/g2o/g2o_optimizer_header.h"
@@ -28,8 +26,6 @@
 #include "registration/loam_point_to_plane_ivox.h"
 #include "registration/loam_point_to_plane_kdtree.h"
 #include "relocalization/acceptance_policy.h"
-#include "relocalization/ground_map_source.h"
-#include "slam/split_map.h"
 
 namespace {
 
@@ -39,42 +35,43 @@ std::uint64_t SteadyNowMicroseconds() {
       std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count());
 }
 
-bool HasPclField(const pcl::PCLPointCloud2& cloud,
-                 const std::string& field_name) {
-  return std::find_if(cloud.fields.begin(), cloud.fields.end(),
-                      [&](const pcl::PCLPointField& field) {
-                        return field.name == field_name;
-                      }) != cloud.fields.end();
-}
+std::optional<localization_map::MapMode> ResolveMapMode(
+    const std::string& configured_mode, const std::filesystem::path& map_path,
+    std::string* error) {
+  namespace fs = std::filesystem;
+  std::error_code status_error;
+  const bool is_file = fs::is_regular_file(map_path, status_error);
+  status_error.clear();
+  const bool is_directory = fs::is_directory(map_path, status_error);
+  const auto fail = [&](const std::string& message) {
+    if (error != nullptr) {
+      *error = message;
+    }
+    return std::optional<localization_map::MapMode>{};
+  };
 
-PCLPointCloudXYZI::Ptr LoadPcdAsXYZI(const std::string& path) {
-  pcl::PCLPointCloud2 cloud_blob;
-  if (pcl::io::loadPCDFile(path, cloud_blob) != 0) {
-    return nullptr;
+  if (configured_mode == "global") {
+    return is_file ? std::optional{localization_map::MapMode::kGlobal}
+                   : fail("global map path must be a regular file");
   }
-
-  PCLPointCloudXYZI::Ptr cloud(new PCLPointCloudXYZI);
-  if (HasPclField(cloud_blob, "intensity")) {
-    pcl::fromPCLPointCloud2(cloud_blob, *cloud);
-    return cloud;
+  if (configured_mode == "tiled") {
+    status_error.clear();
+    if (!is_directory ||
+        !fs::is_regular_file(map_path / "manifest.yaml", status_error)) {
+      return fail("tiled map path must contain manifest.yaml");
+    }
+    return localization_map::MapMode::kTiled;
   }
-
-  PCLPointCloudXYZ cloud_xyz;
-  pcl::fromPCLPointCloud2(cloud_blob, cloud_xyz);
-  cloud->reserve(cloud_xyz.size());
-  for (const auto& point_xyz : cloud_xyz) {
-    PCLPointXYZI point_xyzi;
-    point_xyzi.x = point_xyz.x;
-    point_xyzi.y = point_xyz.y;
-    point_xyzi.z = point_xyz.z;
-    point_xyzi.intensity = 0.0f;
-    cloud->push_back(point_xyzi);
+  if (configured_mode != "auto") {
+    return fail("map mode must be auto, global, or tiled");
   }
-  cloud->header = cloud_xyz.header;
-  cloud->width = static_cast<std::uint32_t>(cloud->size());
-  cloud->height = 1;
-  cloud->is_dense = cloud_xyz.is_dense;
-  return cloud;
+  if (is_file) {
+    return localization_map::MapMode::kGlobal;
+  }
+  if (is_directory) {
+    return localization_map::MapMode::kTiled;
+  }
+  return fail("map path is neither a regular file nor a directory");
 }
 
 }  // namespace
@@ -82,10 +79,6 @@ PCLPointCloudXYZI::Ptr LoadPcdAsXYZI(const std::string& path) {
 Localization::Localization(System* system_ptr)
     : system_ptr_(system_ptr),
       frame_processing_watchdog_(system_ptr->FrameProcessingTimeoutUs()) {
-  if (use_tile_map_) {
-    tile_map_grid_size_ = ConfigParameters::Instance().tile_map_grid_size_;
-    tile_map_grid_size_half_ = tile_map_grid_size_ * 0.5;
-  }
   SetLidarPoseInformation();
   InitMatcher();
 }
@@ -403,12 +396,20 @@ Localization::InitializationResult Localization::Init(
   // Auto candidates each use a temporary matcher; start final initialization
   // with a fresh local-map matcher for both automatic and manual poses.
   InitMatcher();
+  const auto initial_map = map_provider_->LoadCandidate(
+      MapImuPoseToMapLidarPose(init_pose),
+      std::chrono::milliseconds(
+          ConfigParameters::Instance().localization_tiled_load_timeout_ms_));
   const auto local_map =
-      LoadLocalMap(MapImuPoseToMapLidarPose(init_pose), false);
+      initial_map.state == localization_map::MapRequestState::kReady &&
+              initial_map.snapshot
+          ? initial_map.snapshot->registration_cloud
+          : PCLPointCloudXYZI::ConstPtr{};
 
   if (!local_map || local_map->empty()) {
     LOG(WARNING) << "Initial local map is empty, please check localization map "
-                    "path and initialization pose.";
+                    "path and initialization pose. "
+                 << initial_map.error;
     return InitializationResult::kFailed;
   }
 
@@ -457,7 +458,8 @@ Localization::InitializationResult Localization::Init(
   init_result.consistency_required = result_consistency_required;
   init_result.is_tracking = false;
   if (ConfigParameters::Instance().localization_enable_ground_height_constraint_) {
-    if (const auto map_ground_z = EstimateMapGroundZ(init_result.map_pose);
+    if (const auto map_ground_z = EstimateMapGroundZ(
+            init_result.map_pose, initial_map.snapshot);
         map_ground_z.has_value()) {
       init_result.has_map_ground_z = true;
       init_result.map_ground_z = map_ground_z.value();
@@ -471,6 +473,7 @@ Localization::InitializationResult Localization::Init(
     return InitializationResult::kFailed;
   }
   frame_processing_watchdog_.Complete(initialization_commit_now_us, false);
+  UpdateActiveMapSnapshot(initial_map.snapshot);
   UpdateTfPredictionAnchor(initialized_nav_state);
   curr_pose_ = init_pose;
   last_nav_state_ = initialized_nav_state;
@@ -493,80 +496,73 @@ bool Localization::PrepareMap() {
   };
 
   map_ready_.store(false);
-  {
-    std::lock_guard<std::mutex> lg(mutex_global_map_cloud_);
-    std::string global_map_path =
-        ConfigParameters::Instance().localization_map_path_;
-    if (global_map_path.empty()) {
-      global_map_path = kDataPath + kGlobalMapFileName;
-    }
-    global_map_cloud_ptr_ = LoadGlobalMap(global_map_path);
+  const auto& config = ConfigParameters::Instance();
+  resolved_map_path_ = config.localization_map_path_.empty()
+                           ? std::filesystem::path(kDataPath) /
+                                 kGlobalMapFileName
+                           : std::filesystem::path(
+                                 config.localization_map_path_);
+  std::string mode_error;
+  const auto mode = ResolveMapMode(config.localization_map_mode_,
+                                   resolved_map_path_, &mode_error);
+  if (!mode.has_value()) {
+    record_preparation_duration();
+    LOG(ERROR) << "Localization map configuration is invalid: " << mode_error;
+    return false;
+  }
+  selected_map_mode_ = *mode;
+  std::unique_ptr<localization_map::MapProvider> new_provider;
 
-    if (global_map_cloud_ptr_) {
-      constexpr auto filter_size = 0.3f;
-      global_map_cloud_ptr_ =
-          VoxelGridCloud(global_map_cloud_ptr_, filter_size);
-    }
-
-    if (global_map_cloud_ptr_ && !global_map_cloud_ptr_->empty()) {
-      global_map_xy_cloud_ptr_.reset(new PCLPointCloudXYZI(
-          *global_map_cloud_ptr_));
-      for (auto& point : global_map_xy_cloud_ptr_->points) {
-        point.z = 0.0F;
-      }
-      global_map_xy_kdtree_.reset(new pcl::KdTreeFLANN<PCLPointXYZI>());
-      global_map_xy_kdtree_->setInputCloud(global_map_xy_cloud_ptr_);
+  if (selected_map_mode_ == localization_map::MapMode::kGlobal) {
+    std::filesystem::path ground_path;
+    if (config.localization_ground_map_path_.empty()) {
+      ground_path = resolved_map_path_.parent_path() / "GroundMap.pcd";
     } else {
-      global_map_cloud_ptr_.reset();
-      global_map_xy_cloud_ptr_.reset();
-      global_map_xy_kdtree_.reset();
-      ground_map_cloud_ptr_.reset();
-      ground_map_xy_cloud_ptr_.reset();
-      ground_map_xy_kdtree_.reset();
-      record_preparation_duration();
-      LOG(ERROR) << "Global map is missing or empty at " << global_map_path
-                 << ".";
-      return false;
+      ground_path = config.localization_ground_map_path_;
     }
-
-    std::string ground_map_path =
-        ConfigParameters::Instance().localization_ground_map_path_;
-    if (ground_map_path.empty()) {
-      const auto slash = global_map_path.find_last_of('/');
-      ground_map_path = slash == std::string::npos
-                            ? "GroundMap.pcd"
-                            : global_map_path.substr(0, slash + 1U) +
-                                  "GroundMap.pcd";
-    }
-    PCLPointCloudXYZI::Ptr ground_map = LoadGlobalMap(ground_map_path);
-    if (ground_map && !ground_map->empty()) {
-      ground_map_cloud_ptr_ = ground_map;
-      ground_map_xy_cloud_ptr_.reset(new PCLPointCloudXYZI(*ground_map));
-      for (auto& point : ground_map_xy_cloud_ptr_->points) {
-        point.z = 0.0F;
-      }
-      ground_map_xy_kdtree_.reset(new pcl::KdTreeFLANN<PCLPointXYZI>());
-      ground_map_xy_kdtree_->setInputCloud(ground_map_xy_cloud_ptr_);
-      LOG(INFO) << "Loaded dedicated ground map with " << ground_map->size()
-                << " points from " << ground_map_path << ".";
-    } else {
-      ground_map_cloud_ptr_.reset();
-      ground_map_xy_cloud_ptr_.reset();
-      ground_map_xy_kdtree_.reset();
-      LOG(WARNING) << "Ground map unavailable at " << ground_map_path
-                   << "; EstimateMapGroundZ falls back to the global map.";
-    }
+    localization_map::GlobalMapProviderConfig provider_config;
+    provider_config.global_map_path = resolved_map_path_;
+    provider_config.ground_map_path = ground_path;
+    provider_config.global_voxel_size = 0.3F;
+    new_provider = std::make_unique<localization_map::GlobalMapProvider>(
+        std::move(provider_config));
+  } else {
+    localization_map::TiledMapProviderConfig provider_config;
+    provider_config.root = resolved_map_path_;
+    provider_config.active_radius = config.localization_tiled_active_radius_;
+    provider_config.prefetch_radius =
+        config.localization_tiled_prefetch_radius_;
+    provider_config.max_cached_tiles = static_cast<std::size_t>(
+        config.localization_tiled_max_cached_tiles_);
+    provider_config.max_cache_bytes = static_cast<std::size_t>(
+        config.localization_tiled_max_cache_mib_) * 1024U * 1024U;
+    provider_config.load_overview = false;
+    provider_config.registration_voxel_size =
+        config.registration_local_map_cloud_filter_size_;
+    new_provider = std::make_unique<localization_map::TiledMapProvider>(
+        std::move(provider_config));
   }
 
-  if (ConfigParameters::Instance().localization_auto_relocalization_) {
+  std::string preparation_error;
+  if (!new_provider->Prepare(&preparation_error)) {
+    record_preparation_duration();
+    LOG(ERROR) << "Localization map preparation failed: "
+               << preparation_error;
+    return false;
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(mutex_map_snapshot_);
+    map_provider_ = std::move(new_provider);
+    active_map_snapshot_.reset();
+    active_ground_xy_cloud_.reset();
+    active_ground_xy_kdtree_.reset();
+  }
+
+  if (config.localization_auto_relocalization_) {
     LoadScanContextDb();
   } else {
     scan_context_db_loaded_ = false;
-  }
-
-  // If use tile map, load tile map indices file
-  if (use_tile_map_) {
-    LoadTileMapIndices();
   }
 
   record_preparation_duration();
@@ -819,30 +815,12 @@ void Localization::Run() {
   }
 }
 
-PCLPointCloudXYZI::Ptr Localization::LoadGlobalMap(const std::string& path) {
-  if (path.empty()) {
-    return nullptr;
-  }
-
-  return LoadPcdAsXYZI(path);
-}
-
 void Localization::LoadScanContextDb() {
-  if (use_tile_map_) {
-    LOG(WARNING) << "Scan Context auto relocalization is disabled for tile maps.";
-    scan_context_db_loaded_ = false;
-    return;
-  }
   std::string db_path = ConfigParameters::Instance().localization_sc_db_path_;
   if (db_path.empty()) {
-    std::string map_path = ConfigParameters::Instance().localization_map_path_;
-    if (map_path.empty()) {
-      map_path = kDataPath + kGlobalMapFileName;
-    }
-    const auto slash = map_path.find_last_of('/');
-    db_path = slash == std::string::npos
-                  ? "sc_db.bin"
-                  : map_path.substr(0, slash + 1U) + "sc_db.bin";
+    const std::filesystem::path database_directory =
+        resolved_map_path_.parent_path();
+    db_path = (database_directory / "sc_db.bin").string();
   }
 
   std::string map_tag;
@@ -977,9 +955,30 @@ std::optional<Mat4d> Localization::TryAutoRelocalize(
       candidate_lidar_pose.block<3, 3>(0, 0) =
           map_imu_rotation * lidar_to_imu_rotation;
 
+      const auto candidate_map = map_provider_->LoadCandidate(
+          candidate_lidar_pose,
+          std::chrono::milliseconds(
+              ConfigParameters::Instance()
+                  .localization_tiled_load_timeout_ms_));
+      if (candidate_map.state != localization_map::MapRequestState::kReady ||
+          !candidate_map.snapshot ||
+          !candidate_map.snapshot->registration_cloud ||
+          candidate_map.snapshot->registration_cloud->empty()) {
+        const double preparation_ms = preparation_timer.End();
+        total_preparation_ms += preparation_ms;
+        LOG(INFO) << "Auto relocalization candidate " << candidate_index + 1U
+                  << "/" << candidates.size() << " (score="
+                  << candidate.score << ") prepared in " << preparation_ms
+                  << " ms, registered in 0 ms, fitness="
+                  << std::numeric_limits<float>::infinity()
+                  << " (map unavailable: " << candidate_map.error << ").";
+        continue;
+      }
+
       if (ConfigParameters::Instance()
               .localization_enable_ground_height_constraint_) {
-        if (const auto ground_z = EstimateMapGroundZ(candidate_lidar_pose);
+        if (const auto ground_z = EstimateMapGroundZ(
+                candidate_lidar_pose, candidate_map.snapshot);
             ground_z.has_value()) {
           // System's cached transform maps base_link coordinates into the
           // lidar frame, so map->base is map->lidar * base->lidar.
@@ -994,18 +993,8 @@ std::optional<Mat4d> Localization::TryAutoRelocalize(
         }
       }
 
-      auto local_map = LoadCandidateLocalMap(candidate_lidar_pose);
       const double preparation_ms = preparation_timer.End();
       total_preparation_ms += preparation_ms;
-      if (!local_map || local_map->empty()) {
-        LOG(INFO) << "Auto relocalization candidate " << candidate_index + 1U
-                  << "/" << candidates.size() << " (score="
-                  << candidate.score << ") prepared in " << preparation_ms
-                  << " ms, registered in 0 ms, fitness="
-                  << std::numeric_limits<float>::infinity()
-                  << " (empty local map).";
-        continue;
-      }
       ++prepared_count;
 
       stage = "fine registration";
@@ -1014,7 +1003,8 @@ std::optional<Mat4d> Localization::TryAutoRelocalize(
       Timer registration_timer;
       ++evaluated_count;
       auto matcher = CreateMatcher();
-      matcher->AddCloudToLocalMap({*local_map});
+      matcher->AddCloudToLocalMap(
+          {*candidate_map.snapshot->registration_cloud});
       const bool match_ok = matcher->Match(source_cloud, match_pose);
       if (match_ok) {
         fitness = matcher->GetFitnessScore(2.0F);
@@ -1066,186 +1056,79 @@ std::optional<Mat4d> Localization::TryAutoRelocalize(
   return best_pose;
 }
 
-PCLPointCloudXYZI::Ptr Localization::LoadLocalMap(const Mat4d& pose,
-                                                   bool force_rebuild) {
-  need_update_local_map_ = force_rebuild;
+PCLPointCloudXYZI::ConstPtr Localization::LoadLocalMap(
+    const Mat4d& pose, bool force_rebuild) {
+  need_update_local_map_ = false;
+  if (!map_provider_) {
+    need_update_local_map_ = true;
+    return nullptr;
+  }
 
-  if (use_tile_map_) {
-    const Vec2d position_xy = pose.block<2, 1>(0, 3);
-    Vec2i curr_grid_index;
-    curr_grid_index.x() = std::floor(
-        (position_xy.x() - tile_map_grid_size_half_) / tile_map_grid_size_);
-    curr_grid_index.y() = std::floor(
-        (position_xy.y() - tile_map_grid_size_half_) / tile_map_grid_size_);
-
-    // generate neighbor tile map indices
-    const auto tile_map_indices = GenerateTileMapIndices(curr_grid_index, 1);
-
-    // load new tile map cloud
-    for (const Vec2i& tile_map_index : tile_map_indices) {
-      if (map_data_indices_.find(tile_map_index) == map_data_indices_.end()) {
-        continue;
-      }
-
-      if (local_map_data_.find(tile_map_index) == local_map_data_.end()) {
-        auto tile_map_cloud = LoadTileMap(tile_map_index);
-
-        if (!tile_map_cloud) {
-          continue;
-        }
-
-        local_map_data_[tile_map_index] = VoxelGridCloud(
-            tile_map_cloud, ConfigParameters::Instance()
-                                .registration_local_map_cloud_filter_size_);
+  std::optional<Vec2d> velocity_xy;
+  if (has_init_.load() && last_nav_state_.V_.allFinite()) {
+    velocity_xy = last_nav_state_.V_.head<2>();
+  }
+  const auto request =
+      map_provider_->RequestTracking(pose, velocity_xy, force_rebuild);
+  switch (request.state) {
+    case localization_map::MapRequestState::kReady:
+      if (!request.snapshot || !request.snapshot->registration_cloud ||
+          request.snapshot->registration_cloud->empty()) {
         need_update_local_map_ = true;
+        return nullptr;
       }
-    }
-
-    // delete distant tile map cloud
-    for (auto it = local_map_data_.begin(); it != local_map_data_.end();) {
-      if ((it->first - curr_grid_index).cast<float>().norm() > 2) {
-        local_map_data_.erase(it++);
-        need_update_local_map_ = true;
-      } else {
-        ++it;
-      }
-    }
-
-    static PCLPointCloudXYZI::Ptr map_cloud(new PCLPointCloudXYZI);
-
-    // No need to update the map
-    if (!need_update_local_map_) {
-      return map_cloud;
-    }
-
-    map_cloud->clear();
-
-    // Stitching tile map cloud
-    for (const auto& data : local_map_data_) {
-      if (!data.second) {
-        continue;
-      }
-      *map_cloud += *data.second;
-    }
-
-    return map_cloud;
-  } else {
-    if (!global_map_cloud_ptr_ || global_map_cloud_ptr_->empty()) {
-      LOG_EVERY_N(WARNING, 50)
-          << "Global map is unavailable, localization cannot load local map.";
-      return nullptr;
-    }
-
-    PCLPointCloudXYZI::Ptr map_cloud(new PCLPointCloudXYZI);
-
-    static bool first = true;
-    static pcl::CropBox<PCLPointXYZI> crop_box;
-
-    if (first || !has_init_) {
-      crop_box.setInputCloud(global_map_cloud_ptr_);
-      local_map_edge_.clear();
-      first = false;
-    }
-
-    if (local_map_edge_.empty()) {
+      UpdateActiveMapSnapshot(request.snapshot);
       need_update_local_map_ = true;
-    } else {
-      for (int i = 0; i < 3; ++i) {
-        if (std::fabs(pose(i, 3) - local_map_edge_[i]) > 50.0 &&
-            std::fabs(pose(i, 3) - local_map_edge_[i + 3]) > 50.0) {
-          continue;
-        }
-        need_update_local_map_ = true;
-        break;
+      return request.snapshot->registration_cloud;
+    case localization_map::MapRequestState::kUnchanged: {
+      std::lock_guard<std::mutex> lock(mutex_map_snapshot_);
+      return active_map_snapshot_
+                 ? active_map_snapshot_->registration_cloud
+                 : PCLPointCloudXYZI::ConstPtr{};
+    }
+    case localization_map::MapRequestState::kPending:
+      if (request.previous_snapshot_covers_center) {
+        std::lock_guard<std::mutex> lock(mutex_map_snapshot_);
+        return active_map_snapshot_
+                   ? active_map_snapshot_->registration_cloud
+                   : PCLPointCloudXYZI::ConstPtr{};
       }
-    }
-
-    if (!need_update_local_map_) {
+      need_update_local_map_ = true;
       return nullptr;
-    }
-
-    local_map_edge_.resize(6);
-    local_map_edge_[0] = pose(0, 3) - 100.0;
-    local_map_edge_[1] = pose(1, 3) - 100.0;
-    local_map_edge_[2] = pose(2, 3) - 100.0;
-
-    local_map_edge_[3] = pose(0, 3) + 100.0;
-    local_map_edge_[4] = pose(1, 3) + 100.0;
-    local_map_edge_[5] = pose(2, 3) + 100.0;
-
-    crop_box.setMin(
-        Vec4d(local_map_edge_[0], local_map_edge_[1], local_map_edge_[2], 1.0)
-            .cast<float>());
-    crop_box.setMax(
-        Vec4d(local_map_edge_[3], local_map_edge_[4], local_map_edge_[5], 1.0)
-            .cast<float>());
-    crop_box.filter(*map_cloud);
-
-    return map_cloud;
+    case localization_map::MapRequestState::kUnavailable:
+      LOG_EVERY_N(WARNING, 50)
+          << "Localization map request unavailable: " << request.error;
+      need_update_local_map_ = true;
+      return nullptr;
   }
+  need_update_local_map_ = true;
+  return nullptr;
 }
 
-PCLPointCloudXYZI::Ptr Localization::LoadCandidateLocalMap(
-    const Mat4d& pose) {
-  if (use_tile_map_) {
-    LOG(WARNING) << "Scan Context auto relocalization does not support tile maps.";
-    return nullptr;
+void Localization::UpdateActiveMapSnapshot(
+    std::shared_ptr<const localization_map::MapSnapshot> snapshot) {
+  PCLPointCloudXYZI::ConstPtr ground_source;
+  if (snapshot && snapshot->ground_cloud && !snapshot->ground_cloud->empty()) {
+    ground_source = snapshot->ground_cloud;
+  } else if (snapshot) {
+    ground_source = snapshot->registration_cloud;
   }
 
-  PCLPointCloudXYZI::Ptr map_cloud(new PCLPointCloudXYZI);
-  std::lock_guard<std::mutex> lg(mutex_global_map_cloud_);
-  if (!global_map_cloud_ptr_ || global_map_cloud_ptr_->empty() ||
-      !global_map_xy_kdtree_) {
-    return nullptr;
-  }
-
-  constexpr double kLocalMapHalfExtent = 50.0;
-  const Vec3d position = pose.block<3, 1>(0, 3);
-  PCLPointXYZI query_point;
-  query_point.x = static_cast<float>(position.x());
-  query_point.y = static_cast<float>(position.y());
-  query_point.z = 0.0F;
-  std::vector<int> point_indices;
-  std::vector<float> point_squared_distances;
-  global_map_xy_kdtree_->radiusSearch(
-      query_point, std::sqrt(2.0) * kLocalMapHalfExtent, point_indices,
-      point_squared_distances);
-  map_cloud->reserve(point_indices.size());
-  for (const int point_index : point_indices) {
-    if (point_index < 0 ||
-        point_index >= static_cast<int>(global_map_cloud_ptr_->size())) {
-      continue;
+  PCLPointCloudXYZI::Ptr flattened;
+  pcl::KdTreeFLANN<PCLPointXYZI>::Ptr tree;
+  if (ground_source && !ground_source->empty()) {
+    flattened.reset(new PCLPointCloudXYZI(*ground_source));
+    for (auto& point : *flattened) {
+      point.z = 0.0F;
     }
-    const auto& point = global_map_cloud_ptr_->points[point_index];
-    if (std::fabs(static_cast<double>(point.x) - position.x()) >
-            kLocalMapHalfExtent ||
-        std::fabs(static_cast<double>(point.y) - position.y()) >
-            kLocalMapHalfExtent ||
-        std::fabs(static_cast<double>(point.z) - position.z()) >
-            kLocalMapHalfExtent) {
-      continue;
-    }
-    map_cloud->push_back(point);
-  }
-  return map_cloud;
-}
-
-PCLPointCloudXYZI::Ptr Localization::LoadTileMap(const Vec2i& tile_map_index) {
-  std::string tile_map_path = kTileMapFolder + TILE_MAP_NAME(tile_map_index);
-  return LoadPcdAsXYZI(tile_map_path);
-}
-
-std::vector<Vec2i> Localization::GenerateTileMapIndices(const Vec2i& index,
-                                                        int step_size) {
-  std::vector<Vec2i> neighbor_indices;
-  for (int i = -step_size; i <= step_size; ++i) {
-    for (int j = -step_size; j <= step_size; ++j) {
-      Vec2i step(i, j);
-      neighbor_indices.emplace_back(index + step);
-    }
+    tree.reset(new pcl::KdTreeFLANN<PCLPointXYZI>());
+    tree->setInputCloud(flattened);
   }
 
-  return neighbor_indices;
+  std::lock_guard<std::mutex> lock(mutex_map_snapshot_);
+  active_map_snapshot_ = std::move(snapshot);
+  active_ground_xy_cloud_ = std::move(flattened);
+  active_ground_xy_kdtree_ = std::move(tree);
 }
 
 NavStateData Localization::IntegrateImuMeasures(
@@ -1474,7 +1357,8 @@ void Localization::Optimize(NavStateData& curr_nav_state,
 }
 
 std::optional<double> Localization::EstimateMapGroundZ(
-    const Mat4d& map_lidar_pose) {
+    const Mat4d& map_lidar_pose,
+    const std::shared_ptr<const localization_map::MapSnapshot>& snapshot) {
   const double radius = std::max(
       0.0, ConfigParameters::Instance().localization_ground_search_radius_);
   const double percentile = std::clamp(
@@ -1483,36 +1367,55 @@ std::optional<double> Localization::EstimateMapGroundZ(
       0, ConfigParameters::Instance().localization_ground_min_points_);
   const Vec3d position = map_lidar_pose.block<3, 1>(0, 3);
 
-  std::vector<double> nearby_z;
-  {
-    std::lock_guard<std::mutex> lg(mutex_global_map_cloud_);
-    const auto source = SelectGroundMapSource(
-        global_map_cloud_ptr_, global_map_xy_kdtree_, ground_map_cloud_ptr_,
-        ground_map_xy_kdtree_);
-    if (!source.has_value()) {
-      return std::nullopt;
+  PCLPointCloudXYZI::ConstPtr height_cloud;
+  pcl::KdTreeFLANN<PCLPointXYZI>::Ptr xy_kdtree;
+  PCLPointCloudXYZI::Ptr temporary_xy_cloud;
+  if (snapshot) {
+    height_cloud = snapshot->ground_cloud && !snapshot->ground_cloud->empty()
+                       ? snapshot->ground_cloud
+                       : snapshot->registration_cloud;
+    if (height_cloud && !height_cloud->empty()) {
+      temporary_xy_cloud.reset(new PCLPointCloudXYZI(*height_cloud));
+      for (auto& point : *temporary_xy_cloud) {
+        point.z = 0.0F;
+      }
+      xy_kdtree.reset(new pcl::KdTreeFLANN<PCLPointXYZI>());
+      xy_kdtree->setInputCloud(temporary_xy_cloud);
     }
+  } else {
+    std::lock_guard<std::mutex> lock(mutex_map_snapshot_);
+    if (active_map_snapshot_) {
+      height_cloud = active_map_snapshot_->ground_cloud &&
+                             !active_map_snapshot_->ground_cloud->empty()
+                         ? active_map_snapshot_->ground_cloud
+                         : active_map_snapshot_->registration_cloud;
+    }
+    xy_kdtree = active_ground_xy_kdtree_;
+  }
+  if (!height_cloud || !xy_kdtree) {
+    return std::nullopt;
+  }
 
-    PCLPointXYZI query_point;
-    query_point.x = static_cast<float>(position.x());
-    query_point.y = static_cast<float>(position.y());
-    query_point.z = 0.0F;
-    std::vector<int> point_indices;
-    std::vector<float> point_squared_distances;
-    source->xy_kdtree->radiusSearch(
-        query_point, radius, point_indices, point_squared_distances);
-    nearby_z.reserve(point_indices.size());
-    for (const int point_index : point_indices) {
-      if (point_index < 0 ||
-          point_index >= static_cast<int>(source->height_cloud->size())) {
-        continue;
-      }
-      const auto& point = source->height_cloud->points[point_index];
-      if (!std::isfinite(point.z)) {
-        continue;
-      }
-      nearby_z.emplace_back(static_cast<double>(point.z));
+  std::vector<double> nearby_z;
+  PCLPointXYZI query_point;
+  query_point.x = static_cast<float>(position.x());
+  query_point.y = static_cast<float>(position.y());
+  query_point.z = 0.0F;
+  std::vector<int> point_indices;
+  std::vector<float> point_squared_distances;
+  xy_kdtree->radiusSearch(query_point, radius, point_indices,
+                          point_squared_distances);
+  nearby_z.reserve(point_indices.size());
+  for (const int point_index : point_indices) {
+    if (point_index < 0 ||
+        point_index >= static_cast<int>(height_cloud->size())) {
+      continue;
     }
+    const auto& point = height_cloud->points[point_index];
+    if (!std::isfinite(point.z)) {
+      continue;
+    }
+    nearby_z.emplace_back(static_cast<double>(point.z));
   }
 
   if (nearby_z.size() < static_cast<std::size_t>(min_points)) {
@@ -1552,31 +1455,24 @@ void Localization::UpdateCurrentLidarCloud(
 }
 
 PCLPointCloudXYZI Localization::GetGlobalCloudMap() {
-  std::lock_guard<std::mutex> lg(mutex_global_map_cloud_);
-  if (!global_map_cloud_ptr_) {
+  std::lock_guard<std::mutex> lock(mutex_map_snapshot_);
+  if (!map_provider_) {
     return {};
   }
+  const auto overview = map_provider_->Overview();
+  return overview ? *overview : PCLPointCloudXYZI{};
+}
 
-  return *global_map_cloud_ptr_;
+PCLPointCloudXYZI Localization::GetLocalCloudMap() {
+  std::lock_guard<std::mutex> lock(mutex_map_snapshot_);
+  if (!active_map_snapshot_ ||
+      !active_map_snapshot_->registration_cloud) {
+    return {};
+  }
+  return *active_map_snapshot_->registration_cloud;
 }
 
 PCLPointCloudXYZI Localization::GetCurrentLidarCloudMap() {
   std::lock_guard<std::mutex> lg(mutex_lidar_cloud_);
   return lidar_cloud_;
-}
-
-void Localization::LoadTileMapIndices() {
-  const std::string file_name = kTileMapFolder + kTileMapIndicesFileName;
-
-  std::ifstream file(file_name);
-
-  CHECK(file.is_open()) << "Load tile map indices file failed!";
-
-  while (!file.eof()) {
-    int x, y;
-    file >> x >> y;
-    map_data_indices_.emplace(x, y);
-  }
-
-  file.close();
 }
