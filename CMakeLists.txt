@@ -276,6 +276,11 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/test/test_localization_regression.py)
   set_tests_properties(test_localization_regression PROPERTIES
     ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/test/integration")
+  add_test(NAME test_tiled_map_integration
+    COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/test/test_tiled_map_integration.py)
+  set_tests_properties(test_tiled_map_integration PROPERTIES
+    ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/test/integration")
   add_test(NAME test_localization_stability_rss
     COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/test/test_localization_stability_rss.py)

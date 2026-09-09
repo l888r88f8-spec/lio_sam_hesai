@@ -809,17 +809,24 @@ class TiledMapProvider::Impl {
     cache.ClearPins();
     bool restored = true;
     for (const auto& entry : current_payloads) {
+      bool tile_restored = true;
       if (!cache.Find(entry.first)) {
         try {
-          restored = cache.Insert(entry.first, *entry.second) && restored;
+          tile_restored = cache.Insert(entry.first, *entry.second);
         } catch (...) {
-          restored = false;
+          tile_restored = false;
+        }
+        if (!tile_restored) {
+          diagnostics.last_error = TileDescription(
+              entry.first, {}, "cache restore insertion failed for");
         }
       }
-      restored = cache.Pin(entry.first) && restored;
-    }
-    if (!restored) {
-      diagnostics.last_error = "previous active tile cache restore failed";
+      const bool pinned = cache.Pin(entry.first);
+      if (!pinned) {
+        diagnostics.last_error = TileDescription(
+            entry.first, {}, "cache restore pin failed for");
+      }
+      restored = tile_restored && pinned && restored;
     }
     current_pins_valid = restored;
     return restored;

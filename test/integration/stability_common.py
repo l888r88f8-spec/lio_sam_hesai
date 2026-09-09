@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import re
 import signal
+import shutil
 from types import MappingProxyType
 
 import yaml
@@ -26,7 +27,7 @@ class DatasetIdentity:
 
 _REQUIRED_MAP_FILES = ("GlobalMap.pcd", "GroundMap.pcd", "sc_db.bin")
 _RUNTIME_PARAMETER_LINE = re.compile(
-    r"^(?P<indent>\s*)(?P<key>map_path|ground_map_path|sc_db_path)\s*:"
+    r"^(?P<indent>\s*)(?P<key>map_path|map_mode|ground_map_path|sc_db_path)\s*:"
     r"(?P<value>.*)$"
 )
 _SENSOR_TOPIC_HEADER_LINE = re.compile(r"^(?P<indent>\s*)sensor_topic\s*:(?P<value>.*)$")
@@ -35,11 +36,23 @@ _PCD_HEADER_LIMIT_BYTES = 64 * 1024
 _PCD_DATA_ENCODINGS = frozenset((b"ascii", b"binary", b"binary_compressed"))
 
 
-def validate_dataset(bag_dir: Path, map_dir: Path) -> DatasetIdentity:
+def validate_dataset(bag_dir: Path, map_dir: Path, *, tiled_dir=None) -> DatasetIdentity:
     bag_path = Path(bag_dir)
     map_path = Path(map_dir)
     _require_directory(bag_path, "Bag")
     _require_directory(map_path, "Map")
+    if tiled_dir is not None:
+        tiled_path = Path(tiled_dir)
+        _require_directory(tiled_path, "Tiled map")
+        resolved_map = map_path.resolve()
+        resolved_tiled = tiled_path.resolve()
+        if not resolved_tiled.is_relative_to(resolved_map):
+            raise DatasetError(
+                f"Tiled map directory must be inside selected map root: {resolved_tiled}"
+            )
+        manifest = resolved_tiled / "manifest.yaml"
+        if not manifest.is_file():
+            raise DatasetError(f"Tiled map manifest.yaml is missing: {manifest}")
 
     metadata = _load_metadata(bag_path / "metadata.yaml")
     bag_info = _require_mapping(
@@ -77,7 +90,9 @@ def validate_dataset(bag_dir: Path, map_dir: Path) -> DatasetIdentity:
     )
 
 
-def write_runtime_parameters(template, map_dir, output_dir, topic_overrides=None):
+def write_runtime_parameters(
+    template, map_dir, output_dir, topic_overrides=None, *, tiled_dir=None
+):
     template_path = Path(template)
     if not template_path.is_file():
         raise DatasetError(f"Runtime parameter template is missing: {template_path}")
@@ -89,10 +104,12 @@ def write_runtime_parameters(template, map_dir, output_dir, topic_overrides=None
 
     map_path = Path(map_dir).resolve()
     replacements = {
-        "map_path": map_path / "GlobalMap.pcd",
+        "map_path": Path(tiled_dir).resolve() if tiled_dir is not None else map_path / "GlobalMap.pcd",
         "ground_map_path": map_path / "GroundMap.pcd",
         "sc_db_path": map_path / "sc_db.bin",
     }
+    if tiled_dir is not None:
+        replacements["map_mode"] = "tiled"
     topic_overrides = _validate_topic_overrides(topic_overrides)
     replacement_counts = {key: 0 for key in replacements}
     topic_override_counts = {key: 0 for key in topic_overrides}
@@ -130,11 +147,15 @@ def write_runtime_parameters(template, map_dir, output_dir, topic_overrides=None
             continue
 
         key = match.group("key")
+        if key not in replacements:
+            rendered_lines.append(line)
+            continue
         replacement_counts[key] += 1
         _, comment = _split_inline_yaml_comment(match.group("value"))
+        replacement = replacements[key]
         rendered_lines.append(
             f"{match.group('indent')}{key}: "
-            f"{json.dumps(str(replacements[key]))}{comment}{line_ending}"
+            f"{json.dumps(str(replacement))}{comment}{line_ending}"
         )
 
     invalid_keys = [key for key, count in replacement_counts.items() if count != 1]
@@ -186,6 +207,91 @@ def terminate_process_group(pid, timeout_seconds=10.0):
         os.killpg(pid, signal.SIGINT)
     except ProcessLookupError:
         pass
+
+
+def prepare_tiled_fault_case(source, destination, fault_case, center_index=None):
+    """Create a small, self-contained manifest fixture for replay fault checks."""
+    source_path = Path(source).resolve()
+    destination_path = Path(destination)
+    manifest_path = source_path / "manifest.yaml"
+    try:
+        manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, yaml.YAMLError) as error:
+        raise DatasetError(f"Unable to read tiled manifest {manifest_path}: {error}") from error
+    manifest = _require_mapping(manifest, "tiled manifest")
+    global_tiles = _manifest_tiles(manifest, "global")
+    ground_tiles = _manifest_tiles(manifest, "ground")
+    if not global_tiles:
+        raise DatasetError("Tiled manifest has no global tiles")
+    if center_index is None:
+        center = (0, 0)
+    else:
+        center = tuple(int(value) for value in center_index)
+        if len(center) != 2:
+            raise DatasetError("Tiled fault center index must contain two integers")
+    selected = {
+        (center[0] + dx, center[1] + dy)
+        for dx in (-1, 0, 1)
+        for dy in (-1, 0, 1)
+    }
+    if fault_case != "missing-center" and not any(
+        tuple(entry["index"]) == center for entry in global_tiles
+    ):
+        raise DatasetError(
+            "Tiled fault center tile is absent; set LIO_SAM_TILED_FAULT_CENTER_INDEX"
+        )
+    neighbor = (center[0] + 1, center[1])
+    missing = center if fault_case == "missing-center" else neighbor
+    if fault_case not in ("corrupt-manifest", "missing-center", "missing-neighbor"):
+        raise DatasetError(f"Unknown tiled fault case: {fault_case}")
+
+    destination_path.mkdir(parents=True, exist_ok=False)
+    if fault_case == "corrupt-manifest":
+        (destination_path / "manifest.yaml").write_text("schema_version: [\n", encoding="utf-8")
+        return f"[{missing[0]},{missing[1]}]"
+
+    retained = {}
+    for kind, entries in (("global", global_tiles), ("ground", ground_tiles)):
+        retained[kind] = [
+            entry for entry in entries
+            if tuple(entry["index"]) in selected and tuple(entry["index"]) != missing
+        ]
+        for entry in retained[kind]:
+            _copy_manifest_relative_file(source_path, destination_path, entry["path"])
+    manifest["tiles"]["global"] = retained["global"]
+    manifest["tiles"]["ground"] = retained["ground"]
+    overview = manifest.get("overview")
+    if isinstance(overview, Mapping) and isinstance(overview.get("path"), str):
+        _copy_manifest_relative_file(source_path, destination_path, overview["path"])
+    (destination_path / "manifest.yaml").write_text(
+        yaml.safe_dump(manifest, sort_keys=False), encoding="utf-8"
+    )
+    return f"[{missing[0]},{missing[1]}]"
+
+
+def _manifest_tiles(manifest, kind):
+    tiles = _require_mapping(manifest.get("tiles"), "tiled manifest tiles")
+    entries = tiles.get(kind)
+    if not isinstance(entries, list):
+        raise DatasetError(f"Tiled manifest tiles.{kind} must be a list")
+    for entry in entries:
+        if (not isinstance(entry, Mapping) or not isinstance(entry.get("index"), list)
+                or len(entry["index"]) != 2 or not isinstance(entry.get("path"), str)):
+            raise DatasetError(f"Invalid tiled manifest tiles.{kind} entry")
+    return entries
+
+
+def _copy_manifest_relative_file(source_root, destination_root, relative):
+    relative_path = Path(relative)
+    source = (source_root / relative_path).resolve()
+    if relative_path.is_absolute() or not source.is_relative_to(source_root):
+        raise DatasetError(f"Manifest path escapes tiled map root: {relative}")
+    destination = destination_root / relative_path
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        shutil.copy2(source, destination)
+    except OSError as error:
+        raise DatasetError(f"Unable to copy tiled fixture file {relative}: {error}") from error
 
 
 def _split_inline_yaml_comment(value_tail: str) -> tuple[str, str]:

@@ -47,6 +47,21 @@ _NUMERIC_DIAGNOSTIC_FIELDS = (
     "lidar_rate_hz",
     "imu_rate_hz",
 )
+_TILED_NUMERIC_DIAGNOSTIC_FIELDS = (
+    "map_manifest_version",
+    "map_active_tile_count",
+    "map_cached_tile_count",
+    "map_cache_mib",
+    "map_cache_hits",
+    "map_cache_misses",
+    "map_tile_load_ms",
+    "map_tile_load_failures",
+)
+_TILED_TEXT_DIAGNOSTIC_FIELDS = (
+    "map_mode",
+    "map_tile_load_state",
+    "map_tile_load_error",
+)
 _REPLAY_TIMEOUT_MIN_SECONDS = 30.0
 _REPLAY_TIMEOUT_MAX_SECONDS = 900.0
 _REPLAY_TIMEOUT_ALLOWANCE_SECONDS = 30.0
@@ -78,6 +93,8 @@ class MetricCollector:
         self._diagnostic_values = {key: [] for key in _NUMERIC_DIAGNOSTIC_FIELDS}
         self._invalid_diagnostic_values = set()
         self._timestamp_monotonic = None
+        self._map_diagnostics = {}
+        self._max_target_diagnostic_level = None
 
     def clock(self, seconds):
         timestamp = _finite_number(seconds)
@@ -115,6 +132,9 @@ class MetricCollector:
         if numeric_level is None or timestamp is None:
             return
         self._diagnostic_events.append((timestamp, numeric_level))
+        self._max_target_diagnostic_level = _max_or_initial(
+            self._max_target_diagnostic_level, numeric_level
+        )
 
         if numeric_level == 0:
             if self._first_ok_seconds is None:
@@ -125,6 +145,12 @@ class MetricCollector:
 
         if not isinstance(values, Mapping):
             values = {}
+        for key in _TILED_TEXT_DIAGNOSTIC_FIELDS:
+            if key in values:
+                self._map_diagnostics[key] = str(values[key])
+        for key in _TILED_NUMERIC_DIAGNOSTIC_FIELDS:
+            if key in values:
+                self._map_diagnostics[key] = _finite_number(values[key])
         for key in _NUMERIC_DIAGNOSTIC_FIELDS:
             if key not in values:
                 continue
@@ -153,7 +179,7 @@ class MetricCollector:
 
         values = self._diagnostic_values
         invalid = self._invalid_diagnostic_values
-        return {
+        metrics = {
             "first_odom_seconds": _offset_from_clock(
                 self._first_valid_odom_seconds, self._clock_start
             ),
@@ -179,6 +205,52 @@ class MetricCollector:
             "min_imu_rate_hz": _minimum(values["imu_rate_hz"], "imu_rate_hz" in invalid),
             "timestamp_monotonic": self._timestamp_monotonic,
         }
+        metrics.update(self._map_diagnostics)
+        if self._map_diagnostics:
+            metrics["max_diagnostic_level"] = self._max_target_diagnostic_level
+        return metrics
+
+
+def tiled_metric_violations(metrics, ok_deadline_seconds):
+    """Return bounded-map invariant failures in addition to legacy thresholds."""
+    violations = []
+    if metrics.get("map_mode") != "tiled":
+        violations.append("map_mode must be tiled")
+    for key, limit in (("map_cached_tile_count", 25), ("map_cache_mib", 1024)):
+        value = _finite_number(metrics.get(key))
+        if value is None or value > limit:
+            violations.append(f"{key} must be <= {limit}")
+    failures = _finite_number(metrics.get("map_tile_load_failures"))
+    if failures is None or failures != 0:
+        violations.append("map_tile_load_failures must be 0")
+    first_ok = _finite_number(metrics.get("first_ok_seconds"))
+    deadline = _finite_number(ok_deadline_seconds)
+    if first_ok is None or deadline is None or first_ok > deadline:
+        violations.append("automatic relocalization did not reach OK by deadline")
+    return violations
+
+
+def tiled_fault_violations(metrics, fault_case, expected_missing_index=None):
+    violations = []
+    state = metrics.get("map_tile_load_state")
+    first_ok = _finite_number(metrics.get("first_ok_seconds"))
+    if fault_case in ("corrupt-manifest", "missing-center"):
+        if state != "error":
+            violations.append(f"{fault_case} must report map load state error")
+        if first_ok is not None:
+            violations.append(f"{fault_case} must refuse readiness")
+        return violations
+    if fault_case != "missing-neighbor":
+        return [f"unknown tiled fault case: {fault_case}"]
+    level = _finite_number(metrics.get("max_diagnostic_level"))
+    if level is None or level < 1:
+        violations.append("missing-neighbor must report degraded diagnostics")
+    error = str(metrics.get("map_tile_load_error", ""))
+    if expected_missing_index and expected_missing_index not in error:
+        violations.append(
+            f"missing-neighbor diagnostic must contain {expected_missing_index}"
+        )
+    return violations
 
 
 def _finite_number(value):
@@ -266,6 +338,12 @@ def build_argument_parser():
     parser.add_argument("--map", required=True, type=Path)
     parser.add_argument("--params-template", required=True, type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
+    parser.add_argument("--tiled-dir", type=Path)
+    parser.add_argument(
+        "--tiled-fault-case",
+        choices=("corrupt-manifest", "missing-center", "missing-neighbor"),
+    )
+    parser.add_argument("--expected-missing-index")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--baseline", type=Path)
     mode.add_argument("--record-baseline", action="store_true")
@@ -288,14 +366,22 @@ def main(argv=None):
         launch_log = (output_dir / "launch.log").open("w", encoding="utf-8")
         player_log = (output_dir / "bag-play.log").open("w", encoding="utf-8")
 
-        if not arguments.record_baseline and arguments.baseline is None:
+        if (not arguments.record_baseline and arguments.baseline is None and
+                arguments.tiled_fault_case is None):
             raise ReplayError("--baseline is required unless --record-baseline is used")
 
-        identity = validate_dataset(arguments.bag, arguments.map)
-        runtime_parameters = write_runtime_parameters(
-            arguments.params_template, arguments.map, output_dir
+        identity = validate_dataset(
+            arguments.bag, arguments.map, tiled_dir=arguments.tiled_dir
         )
-        baseline = copy.deepcopy(BASELINE) if arguments.record_baseline else load_baseline(arguments.baseline)
+        runtime_parameters = write_runtime_parameters(
+            arguments.params_template,
+            arguments.map,
+            output_dir,
+            tiled_dir=arguments.tiled_dir,
+        )
+        baseline = (copy.deepcopy(BASELINE) if arguments.record_baseline else
+                    load_baseline(arguments.baseline) if arguments.baseline else
+                    copy.deepcopy(BASELINE))
         metrics = _run_replay(
             arguments,
             runtime_parameters,
@@ -308,8 +394,24 @@ def main(argv=None):
             candidate_path = output_dir / "candidate-baseline.yaml"
             write_candidate(candidate_path, identity, metrics)
             print(f"Candidate baseline written to {candidate_path}")
+        elif arguments.tiled_fault_case:
+            violations = tiled_fault_violations(
+                metrics,
+                arguments.tiled_fault_case,
+                arguments.expected_missing_index,
+            )
+            if violations:
+                exit_code = 1
+                for violation in violations:
+                    print(f"fault violation: {violation}", file=sys.stderr)
         else:
             violations = compare_quick_metrics(baseline, metrics)
+            if arguments.tiled_dir is not None:
+                violations.extend(
+                    tiled_metric_violations(
+                        metrics, baseline["quick"]["ok_deadline_seconds"]
+                    )
+                )
             if violations:
                 exit_code = 1
                 for violation in violations:
