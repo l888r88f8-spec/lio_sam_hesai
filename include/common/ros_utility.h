@@ -84,6 +84,9 @@ inline void PublishRosCloud(
   pub->publish(cloud_ros);
 }
 
+// Superseded by RosPoseAdapter::ToTransformStamped, which fills the same
+// message from a direction-safe transform. Kept only until the last caller
+// migrates to the adapter; remove it then.
 inline geometry_msgs::msg::TransformStamped eigen2Transform(
     const Eigen::Matrix3d &rot, const Eigen::Vector3d &pos,
     const std::string &frame_id, const std::string &child_frame_id,

@@ -97,6 +97,17 @@ include_directories(
 
 rosidl_generate_interfaces(${PROJECT_NAME} "msg/CloudInfo.msg" "srv/SaveMap.srv" DEPENDENCIES std_msgs sensor_msgs)
 
+# Shared contract sources: direction-safe transforms, ROS pose/TF conversion,
+# immutable configuration, and map artifact layout. Consumers link this instead
+# of re-deriving frames, aliases, or artifact paths themselves.
+add_library(${PROJECT_NAME}_contracts STATIC
+  src/common/ros_pose_adapter.cpp
+)
+ament_target_dependencies(${PROJECT_NAME}_contracts
+  rclcpp geometry_msgs nav_msgs)
+target_include_directories(${PROJECT_NAME}_contracts PUBLIC include)
+target_link_libraries(${PROJECT_NAME}_contracts ${LIO_SAM_EIGEN_TARGET})
+
 
 
 add_executable(${PROJECT_NAME}_featureExtraction src/featureExtraction.cpp)
@@ -182,6 +193,17 @@ target_sources(${PROJECT_NAME}_relocalization_lib PRIVATE
 target_link_libraries(${PROJECT_NAME}_relocalization_lib yaml-cpp)
 set_target_properties(${PROJECT_NAME}_relocalization_lib PROPERTIES
   INSTALL_RPATH "$ORIGIN")
+
+# Every production consumer of the shared contract gets it here rather than
+# repeating the dependency at each add_executable/add_library site.
+foreach(contract_consumer
+    ${PROJECT_NAME}_featureExtraction
+    ${PROJECT_NAME}_imageProjection
+    ${PROJECT_NAME}_imuPreintegration
+    ${PROJECT_NAME}_mapOptimization
+    ${PROJECT_NAME}_relocalization_lib)
+  target_link_libraries(${contract_consumer} ${PROJECT_NAME}_contracts)
+endforeach()
 
 add_executable(${PROJECT_NAME}_relocalization src/relocalization_node.cpp)
 ament_target_dependencies(${PROJECT_NAME}_relocalization
@@ -313,6 +335,9 @@ if(BUILD_TESTING)
   ament_add_gtest(test_rigid_transform test/test_rigid_transform.cpp)
   target_include_directories(test_rigid_transform PRIVATE include)
   target_link_libraries(test_rigid_transform ${LIO_SAM_EIGEN_TARGET})
+  ament_add_gtest(test_ros_pose_adapter test/test_ros_pose_adapter.cpp)
+  target_include_directories(test_ros_pose_adapter PRIVATE include)
+  target_link_libraries(test_ros_pose_adapter ${PROJECT_NAME}_contracts)
   ament_add_gtest(test_tile_index test/test_tile_index.cpp)
   target_include_directories(test_tile_index PRIVATE include)
   ament_add_gtest(test_tile_cache
