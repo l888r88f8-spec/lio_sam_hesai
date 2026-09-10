@@ -310,6 +310,9 @@ if(BUILD_TESTING)
     test/test_unified_parameter_schema.cpp)
   ament_add_gtest(test_coordinate_contract_surface
     test/test_coordinate_contract_surface.cpp)
+  ament_add_gtest(test_rigid_transform test/test_rigid_transform.cpp)
+  target_include_directories(test_rigid_transform PRIVATE include)
+  target_link_libraries(test_rigid_transform ${LIO_SAM_EIGEN_TARGET})
   ament_add_gtest(test_tile_index test/test_tile_index.cpp)
   target_include_directories(test_tile_index PRIVATE include)
   ament_add_gtest(test_tile_cache
