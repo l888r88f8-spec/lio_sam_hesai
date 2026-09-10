@@ -214,13 +214,14 @@ SlamConfig
 <map_root>/transformations.pcd
 <map_root>/CornerMap.pcd
 <map_root>/SurfMap.pcd
-<map_root>/tiled/manifest.yaml
+<map_root>/<tile_subdirectory>/manifest.yaml
 ```
 
 P2.2 不重命名磁盘文件。保存器、全图加载器、分块生成器、Scan Context 加载器和测试
 必须使用同一布局对象，不再自行拼接文件名。删除或修正与该布局冲突的
 `kGlobalMapFileName = "map.pcd"` 默认。manifest 内 `frame_id` 继续取 `frames.map`；
-格式版本及摘要仍由 P2.3 负责。
+`tile_subdirectory` 默认保持 `tiled`，并继续接受现有
+`map_save.tiled_map.output_subdirectory` 配置；格式版本及摘要仍由 P2.3 负责。
 
 ## 8. 公共 ROS 适配器
 
