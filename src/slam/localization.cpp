@@ -76,20 +76,22 @@ std::optional<localization_map::MapMode> ResolveMapMode(
 
 }  // namespace
 
-Localization::Localization(System* system_ptr)
+Localization::Localization(System* system_ptr,
+                           std::shared_ptr<const SlamConfig> config)
     : system_ptr_(system_ptr),
+      config_(std::move(config)),
       frame_processing_watchdog_(system_ptr->FrameProcessingTimeoutUs()) {
   SetLidarPoseInformation();
   InitMatcher();
 }
 
-void Localization::SetInitPose(const Mat4d& pose) {
+void Localization::SetInitPose(const MapTLidar& map_T_lidar) {
   [[maybe_unused]] auto manual_initialization =
       reinitialization_control_.BeginManualInitialization();
   std::lock_guard<std::mutex> lg(mutex_init_pose_optional_);
-  // RViz/System provides map->lidar, while registration consumes the
-  // deskewed IMU-frame cloud and therefore uses map->imu internally.
-  init_pose_optional_ = MapLidarPoseToMapImuPose(pose);
+  // RViz/System provides map_T_lidar, while registration consumes the
+  // deskewed IMU-frame cloud and therefore uses map_T_imu internally.
+  init_pose_optional_ = MapLidarPoseToMapImuPose(map_T_lidar);
   has_init_ = false;
 }
 
@@ -97,15 +99,16 @@ void Localization::RequestAutomaticRelocalization() {
   reinitialization_control_.RequestAutomaticRelocalization();
 }
 
+// map_T_imu = map_T_lidar * lidar_T_imu
 Mat4d Localization::MapLidarPoseToMapImuPose(
-    const Mat4d& map_lidar_pose) const {
-  return map_lidar_pose *
-         ConfigParameters::Instance().calibration_lidar_to_imu_.inverse();
+    const MapTLidar& map_T_lidar) const {
+  return map_T_lidar.Matrix() * config_->calibration.lidar_T_imu.Matrix();
 }
 
+// map_T_lidar = map_T_imu * lidar_T_imu
 Mat4d Localization::MapImuPoseToMapLidarPose(
     const Mat4d& map_imu_pose) const {
-  return map_imu_pose * ConfigParameters::Instance().calibration_lidar_to_imu_;
+  return map_imu_pose * config_->calibration.lidar_T_imu.Matrix();
 }
 
 std::optional<Localization::MapLidarPrediction>
@@ -149,14 +152,15 @@ Localization::PredictMapLidarPose(
   }
 
   return MapLidarPrediction{
-      MapImuPoseToMapLidarPose(predicted.Pose()), predicted.timestamp_};
+      MapTLidar::FromMatrix(MapImuPoseToMapLidarPose(predicted.Pose())),
+      predicted.timestamp_};
 }
 
 void Localization::SetLidarPoseInformation() {
   const auto& lidar_rot_std =
-      ConfigParameters::Instance().lidar_rotation_noise_std_;
+      config_->localization.lidar.rotation_noise_std;
   const auto& lidar_posi_std =
-      ConfigParameters::Instance().lidar_position_noise_std_;
+      config_->localization.lidar.position_noise_std;
 
   lidar_pose_info_.setZero();
   lidar_pose_info_.block<3, 3>(0, 0) =
@@ -166,59 +170,59 @@ void Localization::SetLidarPoseInformation() {
 }
 
 std::shared_ptr<RegistrationInterface> Localization::CreateMatcher() const {
-  if (ConfigParameters::Instance().registration_and_searcher_mode_ ==
+  if (config_->localization.frontend.registration_and_searcher_mode ==
       kIcpOptimized) {
     return std::make_shared<IcpOptimized<double>>(
-        ConfigParameters::Instance().registration_opti_iter_num_,
-        ConfigParameters::Instance().registration_local_map_size_,
-        static_cast<float>(ConfigParameters::Instance()
-                               .registration_local_map_cloud_filter_size_),
-        static_cast<float>(ConfigParameters::Instance()
-                               .registration_source_cloud_filter_size_),
+        config_->localization.frontend.registration.optimization_iter_num,
+        config_->localization.frontend.registration.local_map_size,
+        static_cast<float>(config_->localization.frontend.registration
+                               .local_map_cloud_filter_size),
+        static_cast<float>(config_->localization.frontend.registration
+                               .source_cloud_filter_size),
         static_cast<double>(
-            ConfigParameters::Instance().registration_point_search_thres_),
+            config_->localization.frontend.registration.point_search_thres),
         static_cast<double>(
-            ConfigParameters::Instance().registration_position_converge_thres_),
+            config_->localization.frontend.registration.position_converge_thres),
         static_cast<double>(
-            ConfigParameters::Instance().registration_rotation_converge_thres_),
+            config_->localization.frontend.registration.rotation_converge_thres),
         static_cast<double>(
-            ConfigParameters::Instance().registration_keyframe_delta_rotation_),
+            config_->localization.frontend.registration.keyframe_delta_rotation),
         static_cast<double>(
-            ConfigParameters::Instance().registration_keyframe_delta_dist_),
+            config_->localization.frontend.registration.keyframe_delta_distance),
         true);
-  } else if (ConfigParameters::Instance().registration_and_searcher_mode_ ==
+  } else if (config_->localization.frontend.registration_and_searcher_mode ==
              kIncrementalNDT) {
     return std::make_shared<IncrementalNDT>(
-        ConfigParameters::Instance().registration_ndt_voxel_size_,
-        ConfigParameters::Instance().registration_ndt_outlier_threshold_,
-        ConfigParameters::Instance().registration_source_cloud_filter_size_,
+        config_->localization.frontend.registration.ndt_voxel_size,
+        config_->localization.frontend.registration.ndt_outlier_threshold,
+        config_->localization.frontend.registration.source_cloud_filter_size,
         static_cast<double>(
-            ConfigParameters::Instance().registration_rotation_converge_thres_),
+            config_->localization.frontend.registration.rotation_converge_thres),
         static_cast<double>(
-            ConfigParameters::Instance().registration_position_converge_thres_),
-        ConfigParameters::Instance().registration_ndt_min_points_in_voxel_,
-        ConfigParameters::Instance().registration_ndt_max_points_in_voxel_,
-        ConfigParameters::Instance().registration_ndt_min_effective_pts_,
-        ConfigParameters::Instance().registration_ndt_capacity_,
-        ConfigParameters::Instance().registration_opti_iter_num_, true);
-  } else if (ConfigParameters::Instance().registration_and_searcher_mode_ ==
+            config_->localization.frontend.registration.position_converge_thres),
+        config_->localization.frontend.registration.ndt_min_points_in_voxel,
+        config_->localization.frontend.registration.ndt_max_points_in_voxel,
+        config_->localization.frontend.registration.ndt_min_effective_pts,
+        config_->localization.frontend.registration.ndt_capacity,
+        config_->localization.frontend.registration.optimization_iter_num, true);
+  } else if (config_->localization.frontend.registration_and_searcher_mode ==
              kPointToPlane_IVOX) {
     return std::make_shared<LoamPointToPlaneIVOX<double>>(
-        ConfigParameters::Instance().registration_point_to_planar_thres_,
-        ConfigParameters::Instance().registration_position_converge_thres_,
-        ConfigParameters::Instance().registration_rotation_converge_thres_,
-        ConfigParameters::Instance().registration_opti_iter_num_, true);
-  } else if (ConfigParameters::Instance().registration_and_searcher_mode_ ==
+        config_->localization.frontend.registration.point_to_planar_thres,
+        config_->localization.frontend.registration.position_converge_thres,
+        config_->localization.frontend.registration.rotation_converge_thres,
+        config_->localization.frontend.registration.optimization_iter_num, true);
+  } else if (config_->localization.frontend.registration_and_searcher_mode ==
              kPointToPlane_KdTree) {
     return std::make_shared<LoamPointToPlaneKdtree<double>>(
-        ConfigParameters::Instance().registration_point_to_planar_thres_,
-        ConfigParameters::Instance().registration_position_converge_thres_,
-        ConfigParameters::Instance().registration_rotation_converge_thres_,
-        ConfigParameters::Instance().registration_keyframe_delta_rotation_,
-        ConfigParameters::Instance().registration_keyframe_delta_dist_,
-        ConfigParameters::Instance().registration_local_map_size_,
-        ConfigParameters::Instance().registration_local_map_cloud_filter_size_,
-        ConfigParameters::Instance().registration_opti_iter_num_, true);
+        config_->localization.frontend.registration.point_to_planar_thres,
+        config_->localization.frontend.registration.position_converge_thres,
+        config_->localization.frontend.registration.rotation_converge_thres,
+        config_->localization.frontend.registration.keyframe_delta_rotation,
+        config_->localization.frontend.registration.keyframe_delta_distance,
+        config_->localization.frontend.registration.local_map_size,
+        config_->localization.frontend.registration.local_map_cloud_filter_size,
+        config_->localization.frontend.registration.optimization_iter_num, true);
   } else {
     LOG(FATAL) << "Unsupported registration type! "
                   "You can choose one of the following: "
@@ -241,9 +245,9 @@ bool Localization::DiscardTimedOutFrameIfNeeded(std::uint64_t now_us) {
     pre_integration_ptr_->SetGyroAccBias(last_nav_state_.bg_,
                                          last_nav_state_.ba_);
   }
-  if (odom_pre_integration_ptr_) {
-    odom_pre_integration_ptr_->SetGyroAccBias(last_odom_state_.bg_,
-                                              last_odom_state_.ba_);
+  if (local_pre_integration_ptr_) {
+    local_pre_integration_ptr_->SetGyroAccBias(last_local_state_.bg_,
+                                               last_local_state_.ba_);
   }
   need_update_local_map_ = true;
   force_local_map_rebuild_ = true;
@@ -260,22 +264,22 @@ bool Localization::DiscardTimedOutFrameIfNeeded() {
 PreIntegration::ConfigPara Localization::MakePreIntegrationConfig() const {
   PreIntegration::ConfigPara config_para;
   config_para.init_acc_bias_ =
-      Vec3d(ConfigParameters::Instance().imu_init_acc_bias_,
-            ConfigParameters::Instance().imu_init_acc_bias_,
-            ConfigParameters::Instance().imu_init_acc_bias_);
+      Vec3d(config_->localization.imu.init_acc_bias,
+            config_->localization.imu.init_acc_bias,
+            config_->localization.imu.init_acc_bias);
   config_para.init_gyro_bias_ =
-      Vec3d(ConfigParameters::Instance().imu_init_gyro_bias_,
-            ConfigParameters::Instance().imu_init_gyro_bias_,
-            ConfigParameters::Instance().imu_init_gyro_bias_);
-  config_para.gravity_ = ConfigParameters::Instance().gravity_vector_;
+      Vec3d(config_->localization.imu.init_gyro_bias,
+            config_->localization.imu.init_gyro_bias,
+            config_->localization.imu.init_gyro_bias);
+  config_para.gravity_ = system_ptr_->gravity_vector_;
   config_para.acc_noise_std_ =
-      Vec3d(ConfigParameters::Instance().imu_acc_noise_std_,
-            ConfigParameters::Instance().imu_acc_noise_std_,
-            ConfigParameters::Instance().imu_acc_noise_std_);
+      Vec3d(config_->localization.imu.acc_noise_std,
+            config_->localization.imu.acc_noise_std,
+            config_->localization.imu.acc_noise_std);
   config_para.gyro_noise_std_ =
-      Vec3d(ConfigParameters::Instance().imu_gyro_noise_std_,
-            ConfigParameters::Instance().imu_gyro_noise_std_,
-            ConfigParameters::Instance().imu_gyro_noise_std_);
+      Vec3d(config_->localization.imu.gyro_noise_std,
+            config_->localization.imu.gyro_noise_std,
+            config_->localization.imu.gyro_noise_std);
   config_para.integration_noise_cov_ = Vec3d(1.0e-8, 1.0e-8, 1.0e-8);
 
   return config_para;
@@ -284,13 +288,14 @@ PreIntegration::ConfigPara Localization::MakePreIntegrationConfig() const {
 void Localization::InitPreintegration() {
   const auto config_para = MakePreIntegrationConfig();
   pre_integration_ptr_ = std::make_shared<PreIntegration>(config_para);
-  odom_pre_integration_ptr_ = std::make_shared<PreIntegration>(config_para);
+  local_pre_integration_ptr_ = std::make_shared<PreIntegration>(config_para);
 }
 
 void Localization::UpdateTfPredictionAnchor(const NavStateData& nav_state) {
   TfPredictionAnchor anchor;
   anchor.nav_state = nav_state;
-  anchor.map_lidar_pose = MapImuPoseToMapLidarPose(nav_state.Pose());
+  anchor.map_T_lidar =
+      MapTLidar::FromMatrix(MapImuPoseToMapLidarPose(nav_state.Pose()));
   anchor.timestamp = nav_state.timestamp_;
 
   std::lock_guard<std::mutex> lock(mutex_tf_prediction_anchor_);
@@ -315,7 +320,7 @@ Localization::InitializationResult Localization::Init(
   }
 
   if (!has_manual_init_pose) {
-    if (!ConfigParameters::Instance().localization_auto_relocalization_ ||
+    if (!config_->localization.localization.auto_relocalization ||
         !scan_context_db_loaded_) {
       LOG_EVERY_N(INFO, 10) << "Please set initialization pose for "
                                "localization by RViz -> 2D Pose Estimate";
@@ -344,23 +349,23 @@ Localization::InitializationResult Localization::Init(
     if (!has_manual_init_pose &&
         ShouldEarlyAcceptRelocalization(
             auto_fitness,
-            ConfigParameters::Instance().localization_sc_accept_fitness_)) {
+            config_->localization.localization.sc_accept_fitness)) {
       LOG(INFO) << "Auto relocalization accepted early with fitness "
                 << auto_fitness << " (< "
-                << ConfigParameters::Instance().localization_sc_accept_fitness_
+                << config_->localization.localization.sc_accept_fitness
                 << ").";
       init_pose = auto_pose.value();
       consistency_ref_pose_.reset();
       consistency_hit_count_ = 0;
     } else if (!has_manual_init_pose) {
       const int required_frames = std::max(
-          1, ConfigParameters::Instance().localization_sc_consistency_frames_);
+          1, config_->localization.localization.sc_consistency_frames);
       const double translation_threshold = std::max(
           0.0,
-          ConfigParameters::Instance().localization_sc_consistency_trans_thres_);
+          config_->localization.localization.sc_consistency_trans_thres);
       const double yaw_threshold = std::max(
           0.0,
-          ConfigParameters::Instance().localization_sc_consistency_yaw_thres_);
+          config_->localization.localization.sc_consistency_yaw_thres);
       if (consistency_ref_pose_.has_value()) {
         const Mat4d delta = consistency_ref_pose_.value().inverse() *
                             auto_pose.value();
@@ -399,7 +404,7 @@ Localization::InitializationResult Localization::Init(
   const auto initial_map = map_provider_->LoadCandidate(
       MapImuPoseToMapLidarPose(init_pose),
       std::chrono::milliseconds(
-          ConfigParameters::Instance().localization_tiled_load_timeout_ms_));
+          config_->localization.localization.tiled_map.load_timeout_ms));
   const auto local_map =
       initial_map.state == localization_map::MapRequestState::kReady &&
               initial_map.snapshot
@@ -449,22 +454,24 @@ Localization::InitializationResult Localization::Init(
   initialized_nav_state.info_ = cov.inverse();
   initialized_nav_state.timestamp_ = curr_time_us_;
 
-  NavStateData initialized_odom_state = last_odom_state_;
-  initialized_odom_state.SetPose(Mat4d::Identity());
-  initialized_odom_state.V_ = Vec3d::Zero();
-  initialized_odom_state.timestamp_ = curr_time_us_;
+  NavStateData initialized_local_state = last_local_state_;
+  initialized_local_state.SetPose(Mat4d::Identity());
+  initialized_local_state.V_ = Vec3d::Zero();
+  initialized_local_state.timestamp_ = curr_time_us_;
 
   LocalizationResult init_result;
   init_result.timestamp_ = curr_time_us_;
-  init_result.map_pose = MapImuPoseToMapLidarPose(init_pose);
-  init_result.odom_pose = initialized_odom_state.Pose();
+  init_result.map_T_lidar =
+      MapTLidar::FromMatrix(MapImuPoseToMapLidarPose(init_pose));
+  init_result.local_T_imu =
+      LocalTImu::FromMatrix(initialized_local_state.Pose());
   init_result.reg_fitness = fitness_score;
   init_result.consistency_hit = result_consistency_hit;
   init_result.consistency_required = result_consistency_required;
   init_result.is_tracking = false;
-  if (ConfigParameters::Instance().localization_enable_ground_height_constraint_) {
+  if (config_->localization.localization.enable_ground_height_constraint) {
     if (const auto map_ground_z = EstimateMapGroundZ(
-            init_result.map_pose, initial_map.snapshot);
+            init_result.map_T_lidar.Matrix(), initial_map.snapshot);
         map_ground_z.has_value()) {
       init_result.has_map_ground_z = true;
       init_result.map_ground_z = map_ground_z.value();
@@ -484,7 +491,7 @@ Localization::InitializationResult Localization::Init(
   last_nav_state_ = initialized_nav_state;
   delta_pose_ = Mat4d::Identity();
   last_pose_ = init_pose;
-  last_odom_state_ = initialized_odom_state;
+  last_local_state_ = initialized_local_state;
   CacheResultToSystem(init_result, tf_continuity_epoch);
   UpdateCurrentLidarCloud(*initialized_lidar_cloud);
 
@@ -501,14 +508,13 @@ bool Localization::PrepareMap() {
   };
 
   map_ready_.store(false);
-  const auto& config = ConfigParameters::Instance();
-  resolved_map_path_ = config.localization_map_path_.empty()
+  const LocalizationMapConfig& map_config = config_->localization.localization;
+  resolved_map_path_ = map_config.map_path.empty()
                            ? std::filesystem::path(kDataPath) /
                                  kGlobalMapFileName
-                           : std::filesystem::path(
-                                 config.localization_map_path_);
+                           : std::filesystem::path(map_config.map_path);
   std::string mode_error;
-  const auto mode = ResolveMapMode(config.localization_map_mode_,
+  const auto mode = ResolveMapMode(map_config.map_mode,
                                    resolved_map_path_, &mode_error);
   if (!mode.has_value()) {
     {
@@ -527,10 +533,10 @@ bool Localization::PrepareMap() {
 
   if (selected_map_mode_ == localization_map::MapMode::kGlobal) {
     std::filesystem::path ground_path;
-    if (config.localization_ground_map_path_.empty()) {
+    if (map_config.ground_map_path.empty()) {
       ground_path = resolved_map_path_.parent_path() / "GroundMap.pcd";
     } else {
-      ground_path = config.localization_ground_map_path_;
+      ground_path = map_config.ground_map_path;
     }
     localization_map::GlobalMapProviderConfig provider_config;
     provider_config.global_map_path = resolved_map_path_;
@@ -541,13 +547,13 @@ bool Localization::PrepareMap() {
   } else {
     localization_map::TiledMapProviderConfig provider_config;
     provider_config.root = resolved_map_path_;
-    provider_config.active_radius = config.localization_tiled_active_radius_;
+    provider_config.active_radius = map_config.tiled_map.active_radius_tiles;
     provider_config.prefetch_radius =
-        config.localization_tiled_prefetch_radius_;
+        map_config.tiled_map.prefetch_radius_tiles;
     provider_config.max_cached_tiles = static_cast<std::size_t>(
-        config.localization_tiled_max_cached_tiles_);
+        map_config.tiled_map.max_cached_tiles);
     provider_config.max_cache_bytes = static_cast<std::size_t>(
-        config.localization_tiled_max_cache_mib_) * 1024U * 1024U;
+        map_config.tiled_map.max_cache_mib) * 1024U * 1024U;
     // Always load the overview so tiled mode publishes a global-map overview;
     // it is a small 5 m resolution cloud.
     provider_config.load_overview = true;
@@ -585,7 +591,7 @@ bool Localization::PrepareMap() {
     map_request_unavailable_without_coverage_ = false;
   }
 
-  if (config.localization_auto_relocalization_) {
+  if (map_config.auto_relocalization) {
     LoadScanContextDb();
   } else {
     scan_context_db_loaded_ = false;
@@ -708,18 +714,18 @@ void Localization::Run() {
                    << static_cast<double>(curr_time_us_) * kMicroseconds2Seconds;
     }
 
-    NavStateData predict_odom_state = last_odom_state_;
-    if (!reset_imu_integration && odom_pre_integration_ptr_) {
-      predict_odom_state = IntegrateImuMeasuresOdom(last_odom_state_);
+    NavStateData predict_local_state = last_local_state_;
+    if (!reset_imu_integration && local_pre_integration_ptr_) {
+      predict_local_state = IntegrateImuMeasuresLocal(last_local_state_);
     }
-    predict_odom_state.timestamp_ = curr_time_us_;
+    predict_local_state.timestamp_ = curr_time_us_;
 
     NavStateData predict_nav_state;
 
     if (reset_imu_integration) {
       predict_nav_state = last_nav_state_;
       predict_nav_state.timestamp_ = curr_time_us_;
-    } else if (ConfigParameters::Instance().fusion_method_ ==
+    } else if (config_->localization.frontend.fusion_method ==
         kFusionTightCouplingOptimization) {
       // use imu integrals as predicted values for registration
       if (!pre_integration_ptr_) {
@@ -727,19 +733,19 @@ void Localization::Run() {
       }
       predict_nav_state = IntegrateImuMeasures(last_nav_state_);
       predict_nav_state.timestamp_ = curr_time_us_;
-    } else if (ConfigParameters::Instance().fusion_method_ ==
+    } else if (config_->localization.frontend.fusion_method ==
                kFusionLooseCoupling) {
       const Mat4d odom_delta =
-          last_odom_state_.Pose().inverse() * predict_odom_state.Pose();
+          last_local_state_.Pose().inverse() * predict_local_state.Pose();
       predict_nav_state.SetPose(last_pose_ * odom_delta);
-      predict_nav_state.V_ = predict_odom_state.V_;
+      predict_nav_state.V_ = predict_local_state.V_;
       predict_nav_state.timestamp_ = curr_time_us_;
-    } else if (ConfigParameters::Instance().fusion_method_ ==
+    } else if (config_->localization.frontend.fusion_method ==
                kFusionTightCouplingKF) {
       LOG(FATAL) << "Kalman filter support will be coming soon!";
     } else {
       LOG(FATAL) << "Fusion method doesn't support: "
-                 << ConfigParameters::Instance().fusion_method_;
+                 << config_->localization.frontend.fusion_method;
     }
 
     // Performing pointcloud registration.
@@ -760,8 +766,8 @@ void Localization::Run() {
       curr_nav_state = predict_nav_state;
       curr_nav_state.SetPose(match_pose);
       curr_nav_state.timestamp_ = curr_time_us_;
-      predict_odom_state.SetPose(match_pose);
-    } else if (ConfigParameters::Instance().fusion_method_ ==
+      predict_local_state.SetPose(match_pose);
+    } else if (config_->localization.frontend.fusion_method ==
         kFusionTightCouplingOptimization) {
       curr_nav_state.SetPose(predict_nav_state.Pose());
       curr_nav_state.V_ = predict_nav_state.V_;
@@ -771,14 +777,14 @@ void Localization::Run() {
 
       // Performing pre-integration optimization
       Optimize(curr_nav_state, match_pose);
-    } else if (ConfigParameters::Instance().fusion_method_ ==
+    } else if (config_->localization.frontend.fusion_method ==
                kFusionLooseCoupling) {
       curr_nav_state.SetPose(match_pose);
       curr_nav_state.V_ = predict_nav_state.V_;
       curr_nav_state.timestamp_ = curr_time_us_;
     } else {
       LOG(FATAL) << "Fusion method doesn't support: "
-                 << ConfigParameters::Instance().fusion_method_;
+                 << config_->localization.frontend.fusion_method;
     }
 
     if (DiscardTimedOutFrameIfNeeded()) {
@@ -791,14 +797,16 @@ void Localization::Run() {
     // Cache result to System for visualization
     LocalizationResult result;
     result.timestamp_ = curr_time_us_;
-    result.map_pose = MapImuPoseToMapLidarPose(curr_pose);
-    result.odom_pose = predict_odom_state.Pose();
+    result.map_T_lidar = MapTLidar::FromMatrix(MapImuPoseToMapLidarPose(curr_pose));
+    result.local_T_imu =
+        LocalTImu::FromMatrix(predict_local_state.Pose());
     result.reg_fitness = matcher_->GetFitnessScore(2.0F);
     result.consistency_hit = 0;
     result.consistency_required = 0;
     result.is_tracking = true;
-    if (ConfigParameters::Instance().localization_enable_ground_height_constraint_) {
-      if (const auto map_ground_z = EstimateMapGroundZ(result.map_pose);
+    if (config_->localization.localization.enable_ground_height_constraint) {
+      if (const auto map_ground_z =
+              EstimateMapGroundZ(result.map_T_lidar.Matrix());
           map_ground_z.has_value()) {
         result.has_map_ground_z = true;
         result.map_ground_z = map_ground_z.value();
@@ -820,12 +828,12 @@ void Localization::Run() {
     delta_pose_ = delta_pose;
     last_pose_ = curr_pose;
     last_nav_state_ = curr_nav_state;
-    last_odom_state_ = predict_odom_state;
-    last_odom_state_.bg_ = curr_nav_state.bg_;
-    last_odom_state_.ba_ = curr_nav_state.ba_;
+    last_local_state_ = predict_local_state;
+    last_local_state_.bg_ = curr_nav_state.bg_;
+    last_local_state_.ba_ = curr_nav_state.ba_;
 
     // reset pre-integration and reset bias
-    if (ConfigParameters::Instance().fusion_method_ ==
+    if (config_->localization.frontend.fusion_method ==
         kFusionTightCouplingOptimization) {
       if (pre_integration_ptr_) {
         pre_integration_ptr_->Reset();
@@ -833,16 +841,16 @@ void Localization::Run() {
                                              curr_nav_state.ba_);
       }
     }
-    if (odom_pre_integration_ptr_) {
-      odom_pre_integration_ptr_->Reset();
-      odom_pre_integration_ptr_->SetGyroAccBias(curr_nav_state.bg_,
-                                                curr_nav_state.ba_);
+    if (local_pre_integration_ptr_) {
+      local_pre_integration_ptr_->Reset();
+      local_pre_integration_ptr_->SetGyroAccBias(curr_nav_state.bg_,
+                                                 curr_nav_state.ba_);
     }
   }
 }
 
 void Localization::LoadScanContextDb() {
-  std::string db_path = ConfigParameters::Instance().localization_sc_db_path_;
+  std::string db_path = config_->localization.localization.sc_db_path;
   if (db_path.empty()) {
     const std::filesystem::path database_directory =
         resolved_map_path_.parent_path();
@@ -856,7 +864,7 @@ void Localization::LoadScanContextDb() {
     // ring-key gate from the runtime parameters (the fine registration below
     // is the real validator, so a generous gate is preferred).
     scan_context_.SetRingKeyMaxDist(
-        ConfigParameters::Instance().localization_sc_ringkey_max_dist_);
+        config_->localization.localization.sc_ringkey_max_dist);
     LOG(INFO) << "Loaded Scan Context DB with " << scan_context_.Size()
               << " keyframes from " << db_path << " (map_tag=" << map_tag
               << ").";
@@ -872,35 +880,33 @@ std::optional<Mat4d> Localization::TryAutoRelocalize(
       !curr_cloud_cluster_ptr_ || curr_cloud_cluster_ptr_->ordered_cloud_.empty()) {
     return std::nullopt;
   }
-  if (!ConfigParameters::Instance().imu_has_orientation_ ||
+  if (!config_->localization.imu.has_orientation ||
       curr_cloud_cluster_ptr_->imu_data_.empty()) {
     LOG_EVERY_N(WARNING, 10)
         << "Scan Context auto relocalization requires an IMU orientation.";
     return std::nullopt;
   }
 
-  const Mat4d& lidar_to_imu =
-      ConfigParameters::Instance().calibration_lidar_to_imu_;
-  const double calibration_determinant =
-      lidar_to_imu.block<3, 3>(0, 0).determinant();
-  if (!lidar_to_imu.allFinite() ||
+  const LidarTImu& lidar_T_imu = config_->calibration.lidar_T_imu;
+  const double calibration_determinant = lidar_T_imu.Rotation().determinant();
+  if (!lidar_T_imu.Matrix().allFinite() ||
       !std::isfinite(calibration_determinant) ||
       std::fabs(calibration_determinant) <
           std::numeric_limits<double>::epsilon()) {
     LOG(WARNING) << "Skip Scan Context relocalization due to invalid "
-                    "lidar-to-IMU calibration.";
+                    "lidar-IMU calibration.";
     return std::nullopt;
   }
-  const Mat4d imu_to_lidar = lidar_to_imu.inverse();
+  const ImuTLidar imu_T_lidar = lidar_T_imu.Inverse();
 
   // Mapping keyframe features are in the lidar frame, whereas localization
   // ordered_cloud_ is deskewed in the IMU frame. Convert only the descriptor
   // input so Scan Context compares like-for-like local geometry.
   const PCLPointCloudXYZI query_cloud = TransformPointCloud(
-      curr_cloud_cluster_ptr_->ordered_cloud_, imu_to_lidar);
+      curr_cloud_cluster_ptr_->ordered_cloud_, imu_T_lidar.Matrix());
   const auto query_descriptor = scan_context_.MakeDescriptor(query_cloud);
   const int top_n = std::max(
-      1, ConfigParameters::Instance().localization_sc_top_n_);
+      1, config_->localization.localization.sc_top_n);
   const auto candidates = scan_context_.Query(query_descriptor, top_n);
   if (candidates.empty()) {
     LOG_EVERY_N(INFO, 10) << "Scan Context returned no relocalization candidate.";
@@ -921,22 +927,22 @@ std::optional<Mat4d> Localization::TryAutoRelocalize(
       -imu_rotation(2, 0),
       std::hypot(imu_rotation(2, 1), imu_rotation(2, 2)));
   const float fitness_threshold = static_cast<float>(std::max(
-      0.0, ConfigParameters::Instance().localization_sc_fitness_thres_));
-  const Mat3d lidar_to_imu_rotation = lidar_to_imu.block<3, 3>(0, 0);
-  const Mat3d imu_to_lidar_rotation = imu_to_lidar.block<3, 3>(0, 0);
+      0.0, config_->localization.localization.sc_fitness_thres));
+  const Mat3d lidar_T_imu_rotation = lidar_T_imu.Rotation();
+  const Mat3d imu_T_lidar_rotation = imu_T_lidar.Rotation();
 
-  std::optional<Mat4d> base_to_lidar;
-  if (ConfigParameters::Instance().localization_enable_ground_height_constraint_) {
-    base_to_lidar = system_ptr_->GetBaseToLidarTransform();
-    if (!base_to_lidar.has_value()) {
+  std::optional<LidarTBase> lidar_T_base;
+  if (config_->localization.localization.enable_ground_height_constraint) {
+    lidar_T_base = system_ptr_->GetLidarTBase();
+    if (!lidar_T_base.has_value()) {
       LOG_EVERY_N(WARNING, 10)
-          << "Scan Context relocalization is waiting for base-to-lidar TF.";
+          << "Scan Context relocalization is waiting for lidar_T_base TF.";
       return std::nullopt;
     }
   }
 
   const double accept_fitness = std::max(
-      0.0, ConfigParameters::Instance().localization_sc_accept_fitness_);
+      0.0, config_->localization.localization.sc_accept_fitness);
   const PointcloudClusterPtr source_cloud = curr_cloud_cluster_ptr_;
   std::optional<Mat4d> best_pose;
   float best_fitness = std::numeric_limits<float>::infinity();
@@ -968,7 +974,7 @@ std::optional<Mat4d> Localization::TryAutoRelocalize(
       const Mat3d nominal_map_lidar_rotation =
           Eigen::AngleAxisd(lidar_yaw, Vec3d::UnitZ()).toRotationMatrix();
       const Mat3d nominal_map_imu_rotation =
-          nominal_map_lidar_rotation * imu_to_lidar_rotation;
+          nominal_map_lidar_rotation * imu_T_lidar_rotation;
       const double imu_yaw = std::atan2(
           nominal_map_imu_rotation(1, 0), nominal_map_imu_rotation(0, 0));
       const Mat3d map_imu_rotation =
@@ -979,13 +985,13 @@ std::optional<Mat4d> Localization::TryAutoRelocalize(
 
       Mat4d candidate_lidar_pose = candidate.pose;
       candidate_lidar_pose.block<3, 3>(0, 0) =
-          map_imu_rotation * lidar_to_imu_rotation;
+          map_imu_rotation * lidar_T_imu_rotation;
 
       const auto candidate_map = map_provider_->LoadCandidate(
           candidate_lidar_pose,
           std::chrono::milliseconds(
-              ConfigParameters::Instance()
-                  .localization_tiled_load_timeout_ms_));
+              config_->localization.localization.tiled_map
+                  .load_timeout_ms));
       if (candidate_map.state != localization_map::MapRequestState::kReady ||
           !candidate_map.snapshot ||
           !candidate_map.snapshot->registration_cloud ||
@@ -1001,20 +1007,20 @@ std::optional<Mat4d> Localization::TryAutoRelocalize(
         continue;
       }
 
-      if (ConfigParameters::Instance()
-              .localization_enable_ground_height_constraint_) {
+      if (config_->localization.localization
+              .enable_ground_height_constraint) {
         if (const auto ground_z = EstimateMapGroundZ(
                 candidate_lidar_pose, candidate_map.snapshot);
             ground_z.has_value()) {
-          // System's cached transform maps base_link coordinates into the
-          // lidar frame, so map->base is map->lidar * base->lidar.
-          const Vec3d base_to_lidar_translation =
-              base_to_lidar.value().block<3, 1>(0, 3);
+          // The cached transform is lidar_T_base, so map_T_base is
+          // map_T_lidar * lidar_T_base.
+          const Vec3d lidar_T_base_translation =
+              lidar_T_base.value().Translation();
           candidate_lidar_pose(2, 3) =
-              ground_z.value() + ConfigParameters::Instance()
-                                     .localization_base_link_ground_height_ -
+              ground_z.value() +
+                  config_->localization.localization.base_link_ground_height -
               (candidate_lidar_pose.block<3, 3>(0, 0) *
-               base_to_lidar_translation)
+               lidar_T_base_translation)
                   .z();
         }
       }
@@ -1025,7 +1031,7 @@ std::optional<Mat4d> Localization::TryAutoRelocalize(
 
       stage = "fine registration";
       float fitness = std::numeric_limits<float>::infinity();
-      Mat4d match_pose = candidate_lidar_pose * imu_to_lidar;
+      Mat4d match_pose = candidate_lidar_pose * imu_T_lidar.Matrix();
       Timer registration_timer;
       ++evaluated_count;
       auto matcher = CreateMatcher();
@@ -1178,11 +1184,11 @@ NavStateData Localization::IntegrateImuMeasures(
   return pre_integration_ptr_->Predict(last_nav_state);
 }
 
-NavStateData Localization::IntegrateImuMeasuresOdom(
-    const NavStateData& last_odom_state) const {
-  odom_pre_integration_ptr_->IntegrateDataSegment(
+NavStateData Localization::IntegrateImuMeasuresLocal(
+    const NavStateData& last_local_state) const {
+  local_pre_integration_ptr_->IntegrateDataSegment(
       curr_cloud_cluster_ptr_->imu_data_);
-  return odom_pre_integration_ptr_->Predict(last_odom_state);
+  return local_pre_integration_ptr_->Predict(last_local_state);
 }
 
 void Localization::Optimize(NavStateData& curr_nav_state,
@@ -1297,7 +1303,7 @@ void Localization::Optimize(NavStateData& curr_nav_state,
   Mat3d acc_bias_rw_info = Mat3d::Identity();
   acc_bias_rw_info =
       acc_bias_rw_info *
-      (1.0 / std::pow(ConfigParameters::Instance().imu_acc_rw_noise_std_, 2.0));
+      (1.0 / std::pow(config_->localization.imu.acc_bias_rw_noise_std, 2.0));
   auto* edge_acc_bias_rw = new EdgeAccelBiasRW();
   edge_acc_bias_rw->setVertex(0, vertex_ba_last);
   edge_acc_bias_rw->setVertex(1, vertex_ba_curr);
@@ -1309,7 +1315,7 @@ void Localization::Optimize(NavStateData& curr_nav_state,
   gyro_bias_rw_info =
       gyro_bias_rw_info *
       (1.0 /
-       std::pow(ConfigParameters::Instance().imu_gyro_rw_noise_std_, 2.0));
+       std::pow(config_->localization.imu.gyro_bias_rw_noise_std, 2.0));
   auto* edge_gyro_bias_rw = new EdgeGyroBiasRW();
   edge_gyro_bias_rw->setVertex(0, vertex_bg_last);
   edge_gyro_bias_rw->setVertex(1, vertex_bg_curr);
@@ -1318,7 +1324,7 @@ void Localization::Optimize(NavStateData& curr_nav_state,
 
   // start to optimize
   optimizer.initializeOptimization();
-  optimizer.optimize(ConfigParameters::Instance().frontend_fusion_opti_iters_);
+  optimizer.optimize(config_->localization.frontend.fusion_opti_iters);
 
   // get the results after optimization
   const Mat3d& curr_R_opti = vertex_rotation_curr->estimate();
@@ -1397,15 +1403,15 @@ void Localization::Optimize(NavStateData& curr_nav_state,
 }
 
 std::optional<double> Localization::EstimateMapGroundZ(
-    const Mat4d& map_lidar_pose,
+    const Mat4d& map_T_lidar_matrix,
     const std::shared_ptr<const localization_map::MapSnapshot>& snapshot) {
   const double radius = std::max(
-      0.0, ConfigParameters::Instance().localization_ground_search_radius_);
+      0.0, config_->localization.localization.ground_search_radius);
   const double percentile = std::clamp(
-      ConfigParameters::Instance().localization_ground_z_percentile_, 0.0, 1.0);
+      config_->localization.localization.ground_z_percentile, 0.0, 1.0);
   const int min_points = std::max(
-      0, ConfigParameters::Instance().localization_ground_min_points_);
-  const Vec3d position = map_lidar_pose.block<3, 1>(0, 3);
+      0, config_->localization.localization.ground_min_points);
+  const Vec3d position = map_T_lidar_matrix.block<3, 1>(0, 3);
 
   PCLPointCloudXYZI::ConstPtr height_cloud;
   pcl::KdTreeFLANN<PCLPointXYZI>::Ptr xy_kdtree;

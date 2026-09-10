@@ -20,7 +20,7 @@ class PreProcessing {
  public:
   PreProcessing() = delete;
 
-  explicit PreProcessing(System* system_ptr);
+  PreProcessing(System* system_ptr, std::shared_ptr<const SlamConfig> config);
 
   ~PreProcessing() = default;
 
@@ -33,7 +33,8 @@ class PreProcessing {
  private:
   void InitVoxelGridFilter();
 
-  static pcl::PointCloud<relocalization::PointXYZIRT>::Ptr ConvertMessageToCloud(
+  // Non-static: both scale point offset times by the injected configuration.
+  pcl::PointCloud<relocalization::PointXYZIRT>::Ptr ConvertMessageToCloud(
       const sensor_msgs::msg::PointCloud2::ConstSharedPtr& cloud_ros_ptr);
 
   static bool HasCloudField(const sensor_msgs::msg::PointCloud2& cloud,
@@ -51,7 +52,7 @@ class PreProcessing {
   ConvertXYZIMessageToCloud(
       const sensor_msgs::msg::PointCloud2::ConstSharedPtr& cloud_ros_ptr);
 
-  static pcl::PointCloud<relocalization::PointXYZIRT>::Ptr
+  pcl::PointCloud<relocalization::PointXYZIRT>::Ptr
   ConvertHesaiMessageToCloud(
       const sensor_msgs::msg::PointCloud2::ConstSharedPtr& cloud_ros_ptr);
 
@@ -69,6 +70,8 @@ class PreProcessing {
       const pcl::PointCloud<relocalization::PointXYZIRT>::Ptr& cloud);
 
  private:
+  std::shared_ptr<const SlamConfig> config_;
+
   // voxel grid filter
   pcl::VoxelGrid<PCLPointXYZI> corner_voxel_filter_;
   pcl::VoxelGrid<PCLPointXYZI> planer_voxel_filter_;

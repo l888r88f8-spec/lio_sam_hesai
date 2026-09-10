@@ -4,7 +4,6 @@
 
 #include "common/data_type.h"
 #include "slam/system.h"
-#include "slam/config_parameters.h"
 
 #include <pcl/filters/voxel_grid.h>
 

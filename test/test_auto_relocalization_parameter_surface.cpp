@@ -253,9 +253,10 @@ void ExpectRuntimeYamlParameter(const std::string & leaf)
 }  // namespace
 
 TEST(AutoRelocalizationParameterSurface, ExposesAllRuntimeParameters) {
-  const std::array<std::string, 3> files = {
-    "include/slam/config_parameters.h",
-    "src/slam/system.cpp",
+  const std::array<std::string, 4> files = {
+    "include/common/slam_config.h",
+    "src/common/slam_config.cpp",
+    "src/slam/localization.cpp",
     "config/relocalization.yaml",
   };
   const std::array<std::string, 7> tokens = {
@@ -310,29 +311,32 @@ TEST(AutoRelocalizationParameterSurface, ExposesMappingDatabaseExport) {
 TEST(AutoRelocalizationParameterSurface, ExposesLocalizationHealthParameters) {
   struct HealthParameter {
     std::string leaf;
-    std::string member;
+    std::string nested_read;
   };
   const std::array<HealthParameter, 14> parameters = {{
-    {"enable", "health_enable_"},
-    {"degrade_enter_frames", "health_degrade_enter_frames_"},
-    {"recover_frames", "health_recover_frames_"},
-    {"lost_enter_frames", "health_lost_enter_frames_"},
-    {"degraded_fitness_thres", "health_degraded_fitness_thres_"},
-    {"lost_fitness_thres", "health_lost_fitness_thres_"},
-    {"nominal_lidar_rate_hz", "health_nominal_lidar_rate_hz_"},
-    {"nominal_imu_rate_hz", "health_nominal_imu_rate_hz_"},
-    {"min_rate_ratio", "health_min_rate_ratio_"},
-    {"lidar_stall_timeout", "health_lidar_stall_timeout_"},
-    {"imu_stall_timeout", "health_imu_stall_timeout_"},
-    {"result_timeout", "health_result_timeout_"},
-    {"base_covariance", "health_base_covariance_"},
-    {"max_covariance_scale", "health_max_covariance_scale_"},
+    {"enable", "config_->localization.health.enable"},
+    {"degrade_enter_frames", "config_->localization.health.degrade_enter_frames"},
+    {"recover_frames", "config_->localization.health.recover_frames"},
+    {"lost_enter_frames", "config_->localization.health.lost_enter_frames"},
+    {"degraded_fitness_thres",
+     "config_->localization.health.degraded_fitness_thres"},
+    {"lost_fitness_thres", "config_->localization.health.lost_fitness_thres"},
+    {"nominal_lidar_rate_hz", "config_->localization.health.nominal_lidar_rate_hz"},
+    {"nominal_imu_rate_hz", "config_->localization.health.nominal_imu_rate_hz"},
+    {"min_rate_ratio", "config_->localization.health.min_rate_ratio"},
+    {"lidar_stall_timeout", "config_->localization.health.lidar_stall_timeout"},
+    {"imu_stall_timeout", "config_->localization.health.imu_stall_timeout"},
+    {"result_timeout", "config_->localization.health.result_timeout"},
+    {"base_covariance", "config_->localization.health.base_covariance"},
+    {"max_covariance_scale", "config_->localization.health.max_covariance_scale"},
   }};
 
   for (const auto & parameter : parameters) {
-    ExpectToken("include/slam/config_parameters.h", parameter.member);
+    // The loader owns declaration; the node only reads the immutable nest.
+    ExpectToken("include/common/slam_config.h", parameter.leaf);
     ExpectQuotedParameter(
-      "src/slam/system.cpp", "localization_health." + parameter.leaf);
+      "src/common/slam_config.cpp", "localization_health." + parameter.leaf);
+    ExpectToken("src/slam/system.cpp", parameter.nested_read);
     ExpectLocalizationHealthYamlParameter(parameter.leaf);
   }
 }
@@ -340,18 +344,21 @@ TEST(AutoRelocalizationParameterSurface, ExposesLocalizationHealthParameters) {
 TEST(TfContinuitySurface, ConfiguresAndPublishesTfOnlyFallback) {
   struct TfParameter {
     std::string leaf;
-    std::string member;
+    std::string nested_read;
   };
   const std::array<TfParameter, 3> parameters = {{
-    {"publish_rate_hz", "localization_tf_publish_rate_hz_"},
-    {"max_extrapolation_seconds", "localization_tf_max_extrapolation_seconds_"},
-    {"enable_imu_extrapolation", "localization_tf_enable_imu_extrapolation_"},
+    {"publish_rate_hz", "config_->localization.tf.publish_rate_hz"},
+    {"max_extrapolation_seconds",
+     "config_->localization.tf.max_extrapolation_seconds"},
+    {"enable_imu_extrapolation",
+     "config_->localization.tf.enable_imu_extrapolation"},
   }};
 
   for (const auto & parameter : parameters) {
-    ExpectToken("include/slam/config_parameters.h", parameter.member);
+    ExpectToken("include/common/slam_config.h", parameter.leaf);
     ExpectQuotedParameter(
-      "src/slam/system.cpp", "localization_tf." + parameter.leaf);
+      "src/common/slam_config.cpp", "localization_tf." + parameter.leaf);
+    ExpectToken("src/slam/system.cpp", parameter.nested_read);
     ExpectLocalizationTfYamlParameter(parameter.leaf);
   }
 
@@ -700,20 +707,27 @@ TEST(TimeJumpImuRecoverySurface,
 TEST(SystemRuntimeResourceSurface, ConfiguresWorkersBeforeTheirRunLoops) {
   struct RuntimeParameter {
     std::string leaf;
-    std::string member;
+    std::string nested_read;
   };
   const std::array<RuntimeParameter, 6> parameters = {{
-    {"enable_realtime_scheduling", "runtime_enable_realtime_scheduling_"},
-    {"preprocessing_fifo_priority", "runtime_preprocessing_fifo_priority_"},
-    {"localization_fifo_priority", "runtime_localization_fifo_priority_"},
-    {"preprocessing_cpu_core", "runtime_preprocessing_cpu_core_"},
-    {"localization_cpu_core", "runtime_localization_cpu_core_"},
-    {"frame_processing_timeout_ms", "runtime_frame_processing_timeout_ms_"},
+    {"enable_realtime_scheduling",
+     "config_->localization.runtime.enable_realtime_scheduling"},
+    {"preprocessing_fifo_priority",
+     "config_->localization.runtime.preprocessing_fifo_priority"},
+    {"localization_fifo_priority",
+     "config_->localization.runtime.localization_fifo_priority"},
+    {"preprocessing_cpu_core",
+     "config_->localization.runtime.preprocessing_cpu_core"},
+    {"localization_cpu_core",
+     "config_->localization.runtime.localization_cpu_core"},
+    {"frame_processing_timeout_ms",
+     "config_->localization.runtime.frame_processing_timeout_ms"},
   }};
 
   for (const auto & parameter : parameters) {
-    ExpectToken("include/slam/config_parameters.h", parameter.member);
-    ExpectQuotedParameter("src/slam/system.cpp", "runtime." + parameter.leaf);
+    ExpectToken("include/common/slam_config.h", parameter.leaf);
+    ExpectQuotedParameter("src/common/slam_config.cpp", "runtime." + parameter.leaf);
+    ExpectToken("src/slam/system.cpp", parameter.nested_read);
     ExpectRuntimeYamlParameter(parameter.leaf);
   }
 
@@ -773,7 +787,7 @@ TEST(SystemRuntimeResourceSurface, ConfiguresWorkersBeforeTheirRunLoops) {
   const std::string diagnostics_body = ReadFunctionBody(
     "src/slam/system.cpp", "void System::PublishLocalizationHealth()");
   const std::size_t health_disabled = diagnostics_body.find(
-    "if (!config.health_enable_)");
+    "if (!config_->localization.health.enable)");
   const std::size_t publish_runtime = diagnostics_body.find(
     "PublishRuntimeDiagnostics();", health_disabled);
   ASSERT_NE(health_disabled, std::string::npos);
@@ -867,7 +881,7 @@ TEST(FrameProcessingPipelineSurface, DropsOverdueFramesBeforeStateCommit) {
   const std::size_t restore_navigation_bias = discard_body.find(
     "pre_integration_ptr_->SetGyroAccBias(last_nav_state_.bg_,");
   const std::size_t restore_odometry_bias = discard_body.find(
-    "odom_pre_integration_ptr_->SetGyroAccBias(last_odom_state_.bg_,");
+    "local_pre_integration_ptr_->SetGyroAccBias(last_local_state_.bg_,");
   ASSERT_NE(rebuild_preintegration, std::string::npos);
   ASSERT_NE(restore_navigation_bias, std::string::npos);
   ASSERT_NE(restore_odometry_bias, std::string::npos);
@@ -875,7 +889,7 @@ TEST(FrameProcessingPipelineSurface, DropsOverdueFramesBeforeStateCommit) {
   EXPECT_LT(rebuild_preintegration, restore_odometry_bias);
   EXPECT_NE(discard_body.find("last_nav_state_.ba_", restore_navigation_bias),
     std::string::npos);
-  EXPECT_NE(discard_body.find("last_odom_state_.ba_", restore_odometry_bias),
+  EXPECT_NE(discard_body.find("last_local_state_.ba_", restore_odometry_bias),
     std::string::npos);
 
   const std::string initialization_body = ReadFunctionBody(
@@ -889,7 +903,7 @@ TEST(FrameProcessingPipelineSurface, DropsOverdueFramesBeforeStateCommit) {
     "last_nav_state_ =",
     "delta_pose_ =",
     "last_pose_ =",
-    "last_odom_state_ =",
+    "last_local_state_ =",
     "CacheResultToSystem(",
     "UpdateCurrentLidarCloud(",
   };
@@ -959,11 +973,11 @@ TEST(FrameProcessingPipelineSurface, DropsOverdueFramesBeforeStateCommit) {
     "NavStateData initialized_nav_state = last_nav_state_"),
     std::string::npos);
   EXPECT_NE(initialization_body.find(
-    "NavStateData initialized_odom_state = last_odom_state_"),
+    "NavStateData initialized_local_state = last_local_state_"),
     std::string::npos);
-  EXPECT_EQ(initialization_body.find("initialized_odom_state.bg_ ="),
+  EXPECT_EQ(initialization_body.find("initialized_local_state.bg_ ="),
     std::string::npos);
-  EXPECT_EQ(initialization_body.find("initialized_odom_state.ba_ ="),
+  EXPECT_EQ(initialization_body.find("initialized_local_state.ba_ ="),
     std::string::npos);
   EXPECT_EQ(initialization_body.find("initialized_nav_state.bg_ ="),
     std::string::npos);
@@ -981,7 +995,7 @@ TEST(FrameProcessingPipelineSurface, DropsOverdueFramesBeforeStateCommit) {
     "last_nav_state_ =",
     "delta_pose_ =",
     "last_pose_ =",
-    "last_odom_state_ =",
+    "last_local_state_ =",
     "CacheResultToSystem(",
     "UpdateCurrentLidarCloud(",
   };
@@ -1002,14 +1016,16 @@ TEST(FrameProcessingPipelineSurface, DropsOverdueFramesBeforeStateCommit) {
     "const auto current_lidar_cloud");
   const std::size_t tracking_ground_estimate = localization_run.find(
     "EstimateMapGroundZ(", tracking_lidar_cloud == std::string::npos ? 0 :
-      localization_run.rfind("if (ConfigParameters::Instance()", tracking_lidar_cloud));
+      localization_run.rfind(
+        "if (config_->localization.localization.enable_ground_height_constraint)",
+        tracking_lidar_cloud));
   const std::array<std::string, 6> tracking_atomic_commit_tokens = {
     "CacheResultToSystem(result, tf_continuity_epoch)",
     "UpdateCurrentLidarCloud(",
     "delta_pose_ = delta_pose",
     "last_pose_ = curr_pose",
     "last_nav_state_ = curr_nav_state",
-    "last_odom_state_ = predict_odom_state",
+    "last_local_state_ = predict_local_state",
   };
   ASSERT_NE(tracking_complete, std::string::npos);
   ASSERT_NE(tracking_lidar_cloud, std::string::npos);
@@ -1172,7 +1188,7 @@ TEST(SystemStartupReadinessSurface, PreparesMapBeforeAcceptingInput) {
     "src/slam/system.cpp",
     "System::System(const rclcpp::NodeOptions& options)");
   const std::size_t localization_construction = constructor_body.find(
-    "localization_ptr_ = std::make_shared<Localization>(this);");
+    "localization_ptr_ = std::make_shared<Localization>(this, config_);");
   const std::size_t map_preparation = constructor_body.find(
     "localization_ptr_->PrepareMap()");
   const std::size_t publisher_initialization = constructor_body.find(
@@ -1225,7 +1241,7 @@ TEST(SystemIntegration, WiresLocalizationHealthObservability) {
     ExpectToken("include/slam/system.h", token);
   }
 
-  const std::array<std::string, 35> source_tokens = {
+  const std::array<std::string, 36> source_tokens = {
     "RecordLidar",
     "RecordImu",
     "has_new_result",
@@ -1235,7 +1251,7 @@ TEST(SystemIntegration, WiresLocalizationHealthObservability) {
     "data_stream_watchdog_->Evaluate(steady_now_us)",
     "localization_results.swap(localization_results_deque_)",
     "for (const auto& health_result : localization_results)",
-    "\"/diagnostics\"",
+    "outputs.diagnostics",
     "\"health_score\"",
     "\"s_fitness\"",
     "\"s_stream\"",
@@ -1245,15 +1261,16 @@ TEST(SystemIntegration, WiresLocalizationHealthObservability) {
     "\"covariance_scale\"",
     "status.name = \"lio_sam_hesai: localization\"",
     "status.hardware_id = \"lio_sam_hesai_relocalization\"",
-    "mapping_odom.pose.covariance[0]",
-    "mapping_odom.pose.covariance[7]",
-    "mapping_odom.pose.covariance[14]",
-    "mapping_odom.pose.covariance[21]",
-    "mapping_odom.pose.covariance[28]",
-    "mapping_odom.pose.covariance[35]",
+    "localization_odometry.pose.covariance[0]",
+    "localization_odometry.pose.covariance[7]",
+    "localization_odometry.pose.covariance[14]",
+    "localization_odometry.pose.covariance[21]",
+    "localization_odometry.pose.covariance[28]",
+    "localization_odometry.pose.covariance[35]",
     "current_health_covariance_scale_",
     "PublishLocalizationHealth",
-    "state_config.min_stream_rate_ratio = config.health_min_rate_ratio_",
+    "state_config.min_stream_rate_ratio",
+    "config_->localization.health.min_rate_ratio",
     "LocalizationRecoveryCoordinator",
     "localization_recovery_coordinator_->Update",
     "request_automatic_relocalization",
@@ -1300,7 +1317,7 @@ TEST(LocalizationTfPredictionSurface, UsesReadOnlyPredictionSnapshot) {
   const std::string map_prediction = RemoveWhitespace(ReadFunctionBody(
     "include/slam/localization.h", "struct MapLidarPrediction"));
   ExpectTextToken(
-    map_prediction, "Mat4dmap_lidar_pose{Mat4d::Identity()};");
+    map_prediction, "MapTLidarmap_T_lidar{MapTLidar::Identity()};");
   ExpectTextToken(map_prediction, "TimeStampUstimestamp_{0U};");
   ExpectTextToken(
     header,
@@ -1311,7 +1328,7 @@ TEST(LocalizationTfPredictionSurface, UsesReadOnlyPredictionSnapshot) {
     "include/slam/localization.h", "struct TfPredictionAnchor"));
   ExpectTextToken(prediction_anchor, "NavStateDatanav_state;");
   ExpectTextToken(
-    prediction_anchor, "Mat4dmap_lidar_pose{Mat4d::Identity()};");
+    prediction_anchor, "MapTLidarmap_T_lidar{MapTLidar::Identity()};");
   ExpectTextToken(prediction_anchor, "TimeStampUstimestamp{0U};");
   ExpectTextToken(header, "mutablestd::mutexmutex_tf_prediction_anchor_;");
   ExpectTextToken(header, "std::optional<TfPredictionAnchor>tf_prediction_anchor_;");
@@ -1359,7 +1376,7 @@ TEST(LocalizationTfPredictionSurface, UsesReadOnlyPredictionSnapshot) {
   ExpectTextToken(predict_body, "predictor.SetGyroAccBias(");
   ExpectTextToken(predict_body, "predictor.IntegrateDataSegment(");
   ExpectNoTextToken(predict_body, "pre_integration_ptr_->");
-  ExpectNoTextToken(predict_body, "odom_pre_integration_ptr_->");
+  ExpectNoTextToken(predict_body, "local_pre_integration_ptr_->");
   const std::size_t exact_anchor_start = predict_body.find(
     "imu_segment.front().timestamp_ != anchor->timestamp");
   const std::size_t final_timestamp_advance = predict_body.find(

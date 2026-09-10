@@ -57,7 +57,9 @@ TEST(TiledMapLocalizationSurface, ExportsTilesAndPublishesMapDiagnostics) {
   }
   ExpectToken("include/slam/system.h",
               "localization_local_cloud_map_pub_");
-  ExpectToken(system, "lio_sam/localization/local_map");
+  // The topic default now lives in the shared loader; System consumes it.
+  ExpectToken("src/common/slam_config.cpp", "lio_sam/localization/local_map");
+  ExpectToken(system, "outputs.local_map");
   ExpectToken(system, "localization_ptr_->GetLocalCloudMap()");
   ExpectToken(system, "localization_ptr_->GetGlobalCloudMap()");
   ExpectToken("config/rviz2.rviz", "/lio_sam/localization/local_map");

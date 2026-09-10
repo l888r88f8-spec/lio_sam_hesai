@@ -7,7 +7,7 @@
 
 class LidarDistortionCorrector {
 public:
-    explicit LidarDistortionCorrector(const Mat4d &T_lidar_to_imu);
+    explicit LidarDistortionCorrector(const Mat4d &lidar_T_imu);
 
     void SetDataSearcher(std::shared_ptr<DataSearcher<IMUData>> imu_data_searcher);
 
@@ -38,7 +38,7 @@ private:
 
     Vec3d reference_t_;
     Eigen::Quaterniond q_ref_inv_;
-    Mat4d T_lidar_to_imu_ = Mat4d::Identity();
+    Mat4d lidar_T_imu_ = Mat4d::Identity();
 
     std::shared_ptr<DataSearcher<IMUData>> imu_data_searcher_ = nullptr;
 };

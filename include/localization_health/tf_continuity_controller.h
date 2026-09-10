@@ -2,6 +2,7 @@
 #define LIO_SAM_HESAI_LOCALIZATION_HEALTH_TF_CONTINUITY_CONTROLLER_H
 
 #include "common/data_type.h"
+#include "common/rigid_transform.h"
 
 #include <optional>
 
@@ -17,7 +18,7 @@ enum class TfHoldReason {
 };
 
 struct TfPoseSample {
-  Mat4d map_base_pose;
+  MapTBase map_T_base;
   TimeStampUs sensor_timestamp_us;
 };
 

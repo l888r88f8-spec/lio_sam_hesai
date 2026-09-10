@@ -13,27 +13,28 @@
 #include "common/timer.h"
 #include "imu/imu_interpolator.h"
 #include "lidar/pointcloud_cluster.h"
-#include "slam/config_parameters.h"
 
-PreProcessing::PreProcessing(System* system_ptr)
+PreProcessing::PreProcessing(System* system_ptr,
+                             std::shared_ptr<const SlamConfig> config)
     : system_ptr_(system_ptr),
+      config_(std::move(config)),
       frame_processing_watchdog_(system_ptr->FrameProcessingTimeoutUs()) {
   lidar_distortion_corrector_ptr_ = std::make_shared<LidarDistortionCorrector>(
-      ConfigParameters::Instance().calibration_lidar_to_imu_);
+      config_->calibration.lidar_T_imu.Matrix());
 
-  if (ConfigParameters::Instance().registration_and_searcher_mode_ ==
+  if (config_->localization.frontend.registration_and_searcher_mode ==
       kLoamFull_KdTree) {
     cloud_projector_ptr_ = std::make_shared<loam::PointcloudProjector>(
         lidar_distortion_corrector_ptr_,
         LidarModel::Instance()->horizon_scan_num_,
         LidarModel::Instance()->vertical_scan_num_,
         LidarModel::Instance()->h_res_,
-        ConfigParameters::Instance().lidar_use_min_dist_,
-        ConfigParameters::Instance().lidar_use_max_dist_);
+        static_cast<float>(config_->localization.lidar.min_range),
+        static_cast<float>(config_->localization.lidar.max_range));
 
     feature_extractor_ptr_ = std::make_shared<loam::FeatureExtractor>(
-        ConfigParameters::Instance().loam_feature_corner_thres_,
-        ConfigParameters::Instance().loam_feature_planar_thres_,
+        config_->localization.frontend.feature.corner_thres,
+        config_->localization.frontend.feature.planar_thres,
         LidarModel::Instance()->horizon_scan_num_,
         LidarModel::Instance()->vertical_scan_num_);
   }
@@ -206,7 +207,7 @@ PCLPointCloudXYZIRT::Ptr PreProcessing::ConvertHesaiMessageToCloud(
     point.ring = static_cast<std::uint8_t>(ring);
     point.time = static_cast<float>(
         (point_time - time_base) *
-        ConfigParameters::Instance().lidar_point_time_scale_);
+        config_->localization.lidar.point_time_scale);
 
     if (!pcl::isFinite(point)) {
       continue;
@@ -227,10 +228,10 @@ PCLPointCloudXYZIRT::Ptr PreProcessing::ConvertHesaiMessageToCloud(
 }
 
 void PreProcessing::InitVoxelGridFilter() {
-  auto corner_size =
-      ConfigParameters::Instance().loam_feature_corner_voxel_filter_size_;
-  auto planer_size =
-      ConfigParameters::Instance().loam_feature_planar_voxel_filter_size_;
+  const auto corner_size =
+      config_->localization.frontend.feature.corner_voxel_filter_size;
+  const auto planer_size =
+      config_->localization.frontend.feature.planar_voxel_filter_size;
 
   corner_voxel_filter_.setLeafSize(corner_size, corner_size, corner_size);
   planer_voxel_filter_.setLeafSize(planer_size, planer_size, planer_size);
@@ -488,13 +489,13 @@ void PreProcessing::Run() {
     last_cloud_timestamp = curr_cloud_timestamp;
 
     // When there is no need to extract features, enter the following judgment
-    if (ConfigParameters::Instance().registration_and_searcher_mode_ ==
+    if (config_->localization.frontend.registration_and_searcher_mode ==
             kPointToPlane_IVOX ||
-        ConfigParameters::Instance().registration_and_searcher_mode_ ==
+        config_->localization.frontend.registration_and_searcher_mode ==
             kPointToPlane_KdTree ||
-        ConfigParameters::Instance().registration_and_searcher_mode_ ==
+        config_->localization.frontend.registration_and_searcher_mode ==
             kIcpOptimized ||
-        ConfigParameters::Instance().registration_and_searcher_mode_ ==
+        config_->localization.frontend.registration_and_searcher_mode ==
             kIncrementalNDT) {
       // reserve memory
       cloud_cluster_ptr->planar_cloud_.reserve(
@@ -510,8 +511,8 @@ void PreProcessing::Run() {
         pt_i = cloud_cluster_ptr->raw_cloud_[i].intensity;
 
         float depth = std::sqrt(pt_x * pt_x + pt_y * pt_y + pt_z * pt_z);
-        if (depth < ConfigParameters::Instance().lidar_use_min_dist_ ||
-            depth > ConfigParameters::Instance().lidar_use_max_dist_) {
+        if (depth < static_cast<float>(config_->localization.lidar.min_range) ||
+            depth > static_cast<float>(config_->localization.lidar.max_range)) {
           continue;
         }
 
@@ -529,7 +530,7 @@ void PreProcessing::Run() {
         point_xyzi.intensity = pt_i;
 
         // skip some points
-        if (i % ConfigParameters::Instance().lidar_point_jump_span_ == 0) {
+        if (i % config_->localization.lidar.point_jump_span == 0) {
           cloud_cluster_ptr->planar_cloud_.emplace_back(point_xyzi);
         }
 
@@ -539,7 +540,7 @@ void PreProcessing::Run() {
       planer_voxel_filter_.setInputCloud(
           cloud_cluster_ptr->planar_cloud_.makeShared());
       planer_voxel_filter_.filter(cloud_cluster_ptr->planar_cloud_);
-    } else if (ConfigParameters::Instance().registration_and_searcher_mode_ ==
+    } else if (config_->localization.frontend.registration_and_searcher_mode ==
                kLoamFull_KdTree) {
       // The following are used to extract loam features
       // Order pointcloud
@@ -620,7 +621,7 @@ pcl::PointCloud<relocalization::PointXYZIRT>::Ptr PreProcessing::ConvertMessageT
                         static_cast<uint8_t>(cloud_velodyne[index].ring);
                     point_xyzirt.time = static_cast<float>(
                         cloud_velodyne[index].time *
-                        ConfigParameters::Instance().lidar_point_time_scale_);
+                        config_->localization.lidar.point_time_scale);
                     cloud_in_ptr->at(index) = point_xyzirt;
                   });
 
@@ -661,7 +662,7 @@ pcl::PointCloud<relocalization::PointXYZIRT>::Ptr PreProcessing::ConvertMessageT
                         static_cast<uint8_t>(cloud_ouster[index].ring);
                     point_xyzirt.time = static_cast<float>(
                         cloud_ouster[index].t *
-                        ConfigParameters::Instance().lidar_point_time_scale_);
+                        config_->localization.lidar.point_time_scale);
                     cloud_in_ptr->at(index) = point_xyzirt;
                   });
 
@@ -697,7 +698,7 @@ pcl::PointCloud<relocalization::PointXYZIRT>::Ptr PreProcessing::ConvertMessageT
                         static_cast<uint8_t>(cloud_ls[index].ring);
                     point_xyzirt.time = static_cast<float>(
                         cloud_ls[index].timestamp *
-                        ConfigParameters::Instance().lidar_point_time_scale_);
+                        config_->localization.lidar.point_time_scale);
                     cloud_in_ptr->at(index) = point_xyzirt;
                   });
 
@@ -739,7 +740,7 @@ pcl::PointCloud<relocalization::PointXYZIRT>::Ptr PreProcessing::ConvertMessageT
                         static_cast<uint8_t>(cloud_rs[index].ring);
                     point_xyzirt.time = static_cast<float>(
                         (cloud_rs[index].timestamp - cloud_rs[0].timestamp) *
-                        ConfigParameters::Instance().lidar_point_time_scale_);
+                        config_->localization.lidar.point_time_scale);
                     cloud_in_ptr->at(index) = point_xyzirt;
                   });
 
@@ -779,7 +780,7 @@ pcl::PointCloud<relocalization::PointXYZIRT>::Ptr PreProcessing::ConvertMessageT
                     point_xyzirt.time = static_cast<float>(
                         (cloud_livox_mid_360[index].timestamp -
                          cloud_livox_mid_360[0].timestamp) *
-                        ConfigParameters::Instance().lidar_point_time_scale_);
+                        config_->localization.lidar.point_time_scale);
                     cloud_in_ptr->at(index) = point_xyzirt;
                   });
 
@@ -812,7 +813,7 @@ pcl::PointCloud<relocalization::PointXYZIRT>::Ptr PreProcessing::ConvertMessageT
         point_xyzirt.intensity = cloud_livox.points[i].intensity;
         point_xyzirt.time = static_cast<float>(
             static_cast<double>(cloud_livox.points[i].time) *
-            ConfigParameters::Instance().lidar_point_time_scale_);
+            config_->localization.lidar.point_time_scale);
         cloud_in_ptr->emplace_back(point_xyzirt);
       }
     }

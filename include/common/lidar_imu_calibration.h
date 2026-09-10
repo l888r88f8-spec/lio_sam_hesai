@@ -1,12 +1,20 @@
 #pragma once
 
 #include <Eigen/Dense>
+#include <Eigen/Geometry>
 
 #include <stdexcept>
 #include <vector>
 
+#include "common/rigid_transform.h"
+
+// Canonical calibration semantics are imu_T_lidar: the configured rotation and
+// translation give the lidar pose in the IMU frame. The mapping-specific
+// rotation, lever arm and RPY values are derived from it and are never
+// configured independently.
 struct LidarImuCalibration {
-  Eigen::Matrix4d lidar_to_imu = Eigen::Matrix4d::Identity();
+  ImuTLidar imu_T_lidar{ImuTLidar::Identity()};
+  LidarTImu lidar_T_imu{LidarTImu::Identity()};
   Eigen::Matrix3d mapping_imu_to_lidar_rotation =
       Eigen::Matrix3d::Identity();
   // IMU-to-lidar translation expressed in lidar axes for mapping poses.
@@ -40,9 +48,15 @@ inline LidarImuCalibration ParseLidarImuCalibration(
   const Eigen::Map<const RowMajorMatrix3d> rotation_matrix(rotation.data());
   const Eigen::Map<const RowMajorMatrix3d> rpy_matrix(rpy.data());
 
+  // The configured rotation places the lidar in the IMU frame, so the
+  // validated canonical transform is imu_T_lidar and its inverse follows.
+  Eigen::Isometry3d imu_T_lidar = Eigen::Isometry3d::Identity();
+  imu_T_lidar.linear() = rotation_matrix;
+  imu_T_lidar.translation() = translation_vector;
+
   LidarImuCalibration calibration;
-  calibration.lidar_to_imu.block<3, 3>(0, 0) = rotation_matrix;
-  calibration.lidar_to_imu.block<3, 1>(0, 3) = translation_vector;
+  calibration.imu_T_lidar = ImuTLidar(imu_T_lidar);
+  calibration.lidar_T_imu = calibration.imu_T_lidar.Inverse();
   calibration.mapping_imu_to_lidar_rotation = rotation_matrix.transpose();
   calibration.mapping_imu_to_lidar_lever_arm =
       calibration.mapping_imu_to_lidar_rotation * translation_vector;

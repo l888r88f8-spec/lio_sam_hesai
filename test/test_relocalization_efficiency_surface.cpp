@@ -45,18 +45,19 @@ TEST(RelocalizationEfficiencySurface, MatchersKeepUpdateStatePerInstance) {
 }
 
 TEST(RelocalizationEfficiencySurface, ExposesHighConfidenceEarlyAccept) {
-  ExpectToken("include/slam/config_parameters.h",
-              "localization_sc_accept_fitness_");
-  ExpectToken("src/slam/system.cpp", "localization.sc_accept_fitness");
+  ExpectToken("include/common/slam_config.h", "sc_accept_fitness");
+  ExpectToken("src/common/slam_config.cpp", "\"localization.sc_accept_fitness\"");
   ExpectToken("config/relocalization.yaml", "sc_accept_fitness:");
   ExpectToken("src/slam/localization.cpp",
               "ShouldEarlyAcceptRelocalization");
+  ExpectToken("src/slam/localization.cpp",
+              "config_->localization.localization.sc_accept_fitness");
 }
 
 TEST(RelocalizationEfficiencySurface, ExposesDedicatedGroundMap) {
-  ExpectToken("include/slam/config_parameters.h",
-              "localization_ground_map_path_");
-  ExpectToken("src/slam/system.cpp", "localization.ground_map_path");
+  ExpectToken("include/common/slam_config.h", "ground_map_path");
+  ExpectToken("src/common/slam_config.cpp", "\"localization.ground_map_path\"");
+  ExpectToken("src/slam/localization.cpp", "map_config.ground_map_path");
   ExpectToken("config/relocalization.yaml", "ground_map_path:");
   ExpectToken("src/slam/localization.cpp", "provider_config.ground_map_path");
   ExpectToken("src/localization_map/global_map_provider.cpp",

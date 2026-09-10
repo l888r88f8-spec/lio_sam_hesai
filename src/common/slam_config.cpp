@@ -122,6 +122,8 @@ void LoadCalibration(rclcpp::Node& node, SlamConfig& config,
   const std::vector<double> rpy = ReadParam<std::vector<double>>(
       node, "calibration.rpy", std::string("extrinsicRPY"), identity, warnings);
 
+  // The parser validates finiteness, the homogeneous last row, orthonormality
+  // and a +1 determinant, so a malformed rotation is rejected here.
   LidarImuCalibration parsed;
   try {
     parsed = ParseLidarImuCalibration(translation, rotation, rpy);
@@ -129,16 +131,8 @@ void LoadCalibration(rclcpp::Node& node, SlamConfig& config,
     Reject("calibration", std::string("is invalid: ") + error.what());
   }
 
-  // FromMatrix validates finiteness, the homogeneous last row, orthonormality
-  // and a +1 determinant, so a malformed rotation is rejected here.
-  Eigen::Matrix4d lidar_to_imu = parsed.lidar_to_imu;
-  try {
-    config.calibration.imu_T_lidar = ImuTLidar::FromMatrix(lidar_to_imu);
-  } catch (const std::exception& error) {
-    Reject("calibration", std::string("is not a rigid transform: ") +
-                              error.what());
-  }
-  config.calibration.lidar_T_imu = config.calibration.imu_T_lidar.Inverse();
+  config.calibration.imu_T_lidar = parsed.imu_T_lidar;
+  config.calibration.lidar_T_imu = parsed.lidar_T_imu;
   config.calibration.mapping_imu_to_lidar_rotation =
       parsed.mapping_imu_to_lidar_rotation;
   config.calibration.mapping_imu_to_lidar_lever_arm =

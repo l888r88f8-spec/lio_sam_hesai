@@ -4,8 +4,8 @@
 #include "lidar/lidar_distortion_corrector.h"
 #include "common/motion_interpolator.h"
 
-LidarDistortionCorrector::LidarDistortionCorrector(const Mat4d &T_lidar_to_imu) {
-    T_lidar_to_imu_ = T_lidar_to_imu;
+LidarDistortionCorrector::LidarDistortionCorrector(const Mat4d &lidar_T_imu) {
+    lidar_T_imu_ = lidar_T_imu;
 }
 
 void LidarDistortionCorrector::SetDataSearcher(std::shared_ptr<DataSearcher<IMUData>> imu_data_searcher) {
@@ -50,7 +50,7 @@ bool LidarDistortionCorrector::ProcessPoint(float x, float y, float z, float &x_
     }
 
     // transform cloud from lidar to imu
-    Vec3d pt_imu = T_lidar_to_imu_.block<3, 3>(0, 0) * pt_lidar + T_lidar_to_imu_.block<3, 1>(0, 3);
+    Vec3d pt_imu = lidar_T_imu_.block<3, 3>(0, 0) * pt_lidar + lidar_T_imu_.block<3, 1>(0, 3);
 
     Vec3d pt_corrected = q_ref_inv_ * q_curr * pt_imu;
     x_corrected = static_cast<float>(pt_corrected.x());

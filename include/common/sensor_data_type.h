@@ -3,6 +3,7 @@
 #define FUNNY_LIDAR_SLAM_SENSOR_DATA_TYPE_H
 
 #include "common/data_type.h"
+#include "common/rigid_transform.h"
 
 #include <limits>
 #include <memory>
@@ -61,10 +62,12 @@ struct NavStateData : DataBase {
 struct LocalizationResult : DataBase {
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-    // Localization keeps the original funny_lidar_slam pose convention:
-    // map_pose is map->lidar. System converts it to map->base_link for output.
-    Mat4d map_pose = Mat4d::Identity();
-    Mat4d odom_pose = Mat4d::Identity();
+    // map_T_lidar is the matcher result; System converts it to map_T_base for
+    // output. local_T_imu is the localization-internal relative preintegration
+    // state: it is deliberately not an OdomFrame and must never reach a ROS
+    // frame ID or TF.
+    MapTLidar map_T_lidar{MapTLidar::Identity()};
+    LocalTImu local_T_imu{LocalTImu::Identity()};
     bool has_map_ground_z = false;
     double map_ground_z = 0.0;
 

@@ -143,15 +143,17 @@ TEST(LidarImuCalibration, PreservesCanonicalLidarToImuDirection)
   const auto calibration =
       ParseLidarImuCalibration(translation, rotation, rpy);
 
-  EXPECT_TRUE((calibration.lidar_to_imu.block<3, 3>(0, 0).isApprox(
-      expected_rotation)));
-  EXPECT_TRUE((calibration.lidar_to_imu.block<3, 1>(0, 3).isApprox(
-      Eigen::Vector3d(0.0, 0.0, 0.10))));
+  EXPECT_TRUE(calibration.imu_T_lidar.Rotation().isApprox(expected_rotation));
+  EXPECT_TRUE(calibration.imu_T_lidar.Translation().isApprox(
+      Eigen::Vector3d(0.0, 0.0, 0.10)));
   EXPECT_TRUE(calibration.mapping_imu_to_lidar_rotation.isApprox(
       expected_rotation.transpose()));
   EXPECT_TRUE(calibration.mapping_rpy_rotation.isApprox(expected_rpy));
-  EXPECT_TRUE(calibration.lidar_to_imu.row(3).isApprox(
+  EXPECT_TRUE(calibration.imu_T_lidar.Matrix().row(3).isApprox(
       Eigen::RowVector4d(0.0, 0.0, 0.0, 1.0)));
+  // The inverse is derived rather than configured independently.
+  EXPECT_TRUE((calibration.imu_T_lidar * calibration.lidar_T_imu)
+                  .Matrix().isApprox(Eigen::Matrix4d::Identity()));
 }
 
 TEST(LidarImuCalibration, DerivesMappingLeverArmsInLidarAxes)
@@ -202,13 +204,18 @@ TEST(LidarImuCalibration, MappingPreintegrationUsesDerivedLeverArm)
       "gtsam::Point3(-extTrans.x(), -extTrans.y(), -extTrans.z())"),
       std::string::npos);
 
-  const std::string system = ReadProjectFile("src/slam/system.cpp");
-  EXPECT_NE(system.find("ParseLidarImuCalibration("), std::string::npos);
-  EXPECT_NE(system.find(
-      "config.calibration_lidar_to_imu_ = calibration.lidar_to_imu;"),
+  // The canonical transform is stored un-inverted by the shared loader; the
+  // inverse is derived from it rather than configured separately.
+  const std::string loader = ReadProjectFile("src/common/slam_config.cpp");
+  EXPECT_NE(loader.find("ParseLidarImuCalibration("), std::string::npos);
+  EXPECT_NE(loader.find(
+      "config.calibration.imu_T_lidar = parsed.imu_T_lidar;"),
       std::string::npos);
-  EXPECT_EQ(system.find(
-      "config.calibration_lidar_to_imu_ = calibration.lidar_to_imu.inverse();"),
+  EXPECT_NE(loader.find(
+      "config.calibration.lidar_T_imu = parsed.lidar_T_imu;"),
+      std::string::npos);
+  EXPECT_EQ(loader.find(
+      "config.calibration.imu_T_lidar = parsed.imu_T_lidar.Inverse();"),
       std::string::npos);
 }
 

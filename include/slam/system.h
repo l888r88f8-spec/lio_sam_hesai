@@ -25,6 +25,7 @@
 #include <thread>
 
 #include "common/sensor_data_type.h"
+#include "common/slam_config.h"
 #include "imu/imu_data_searcher.h"
 #include "lidar/pointcloud_cluster.h"
 #include "localization_health/data_stream_watchdog.h"
@@ -45,8 +46,9 @@ class System : public rclcpp::Node {
 
   void Run();
 
-  // lookupTransform(lidar, base) returns the transform from base to lidar.
-  std::optional<Mat4d> GetBaseToLidarTransform();
+  // lookupTransform(lidar, base) returns lidar_T_base: the base frame
+  // expressed in the lidar frame.
+  std::optional<LidarTBase> GetLidarTBase();
 
   [[nodiscard]] std::uint64_t FrameProcessingTimeoutUs() const;
 
@@ -70,11 +72,11 @@ class System : public rclcpp::Node {
   }
 
  private:
-  static void InitLidarModel();
+  // Reads the injected lidar configuration, so it is a non-static member.
+  void InitLidarModel();
 
   void InitSubscriber();
   void InitPublisher();
-  void InitConfigParameters();
 
   void PublishLocalizationPath();
   void PublishLocalizationHealth();
@@ -85,7 +87,7 @@ class System : public rclcpp::Node {
       diagnostic_msgs::msg::DiagnosticStatus& status) const;
   void ResetTfContinuityOnTimeJump(TimeStampUs now_us);
   void PublishTfFallback();
-  void PublishTF(const Mat4d& map_base_pose, TimeStampUs timestamp);
+  void PublishTF(const MapTBase& map_T_base, TimeStampUs timestamp);
 
   void LidarMsgCallBack(
       const sensor_msgs::msg::PointCloud2::ConstSharedPtr& cloud_ros_ptr);
@@ -96,13 +98,19 @@ class System : public rclcpp::Node {
   bool ProcessLocalizationResultCache(bool& had_new_result);
   void ApplyLocalizationZOffset(PCLPointCloudXYZI& cloud) const;
 
-  static bool InitIMU(const IMUData& imu_data, Vec3d& init_mean_acc);
+  // Estimates gravity_vector_ from a stationary IMU segment, so it is a
+  // non-static member.
+  bool InitIMU(const IMUData& imu_data, Vec3d& init_mean_acc);
   void ResetImuOrientationState();
   void UpdateImuOrientationFromAngularVelocity(IMUData& imu_data);
 
-  bool UpdateBaseToLidarTransform();
+  bool UpdateLidarTBase();
 
  private:
+  // Immutable configuration, loaded exactly once for localization mode. No
+  // ambient accessor or setter may be added for it.
+  std::shared_ptr<const SlamConfig> config_;
+
   // ros2 subscribers
   rclcpp::CallbackGroup::SharedPtr imu_cb_group_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
@@ -162,12 +170,17 @@ class System : public rclcpp::Node {
 
   std::atomic_bool has_imu_init_{false};
 
+  // Gravity vector estimated from a stationary IMU segment. This is runtime
+  // state rather than configuration, so it lives here instead of in
+  // SlamConfig, which stays immutable.
+  Vec3d gravity_vector_ = Vec3d::Zero();
+
   // mutex
   std::mutex mutex_raw_cloud_deque_;
   std::mutex mutex_cloud_cluster_deque_;
   std::mutex mutex_localization_results_deque_;
   std::mutex mutex_health_result_;
-  std::mutex mutex_base_to_lidar_transform_;
+  std::mutex mutex_lidar_t_base_;
   std::mutex mutex_imu_orientation_state_;
 
   // deque
@@ -179,8 +192,8 @@ class System : public rclcpp::Node {
   // localization ros path
   nav_msgs::msg::Path localization_path_;
 
-  Mat4d T_base_to_lidar_ = Mat4d::Identity();
-  bool has_base_to_lidar_ = false;
+  LidarTBase lidar_T_base_ = LidarTBase::Identity();
+  bool has_lidar_t_base_ = false;
   Vec3d last_imu_angular_velocity_ = Vec3d::Zero();
   Eigen::Quaterniond last_imu_orientation_ = Eigen::Quaterniond::Identity();
   std::optional<TimeStampUs> last_imu_timestamp_;

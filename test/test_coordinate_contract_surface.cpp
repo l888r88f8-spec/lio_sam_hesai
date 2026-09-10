@@ -57,7 +57,9 @@ TEST(CoordinateContractSurface, MappingTopicLiteralsAreFrozen)
 
 TEST(CoordinateContractSurface, LocalizationTopicLiteralsAreFrozen)
 {
-  const auto system = ReadProjectFile("src/slam/system.cpp");
+  // Localization topics now resolve from the shared configuration loader rather
+  // than from hardcoded literals in src/slam/system.cpp.
+  const auto loader = ReadProjectFile("src/common/slam_config.cpp");
   const std::array<std::string, 4> topics = {
     "lio_sam/localization/path",
     "lio_sam/localization/global_map",
@@ -65,13 +67,36 @@ TEST(CoordinateContractSurface, LocalizationTopicLiteralsAreFrozen)
     "lio_sam/localization/current_lidar",
   };
   for (const auto & topic : topics) {
-    EXPECT_NE(system.find(topic), std::string::npos)
-      << topic << " is missing from src/slam/system.cpp";
+    EXPECT_NE(loader.find(topic), std::string::npos)
+      << topic << " is missing from src/common/slam_config.cpp";
   }
 
   const auto yaml = ReadProjectFile("config/relocalization.yaml");
   EXPECT_NE(yaml.find("lio_sam/localization/odometry"), std::string::npos)
     << "lio_sam/localization/odometry is missing from config/relocalization.yaml";
+}
+
+TEST(CoordinateContractSurface, LocalizationBindsTransformsWithoutSingletonOrOdom)
+{
+  const std::array<std::string, 6> files = {
+    "include/slam/system.h",
+    "include/slam/localization.h",
+    "include/slam/preprocessing.h",
+    "src/slam/system.cpp",
+    "src/slam/localization.cpp",
+    "src/slam/preprocessing.cpp",
+  };
+  for (const auto & file : files) {
+    const auto text = ReadProjectFile(file);
+    EXPECT_EQ(text.find("ConfigParameters::Instance"), std::string::npos)
+      << file << " must read injected configuration, not the singleton";
+    EXPECT_EQ(text.find("slam/config_parameters.h"), std::string::npos)
+      << file << " must not include the removed singleton header";
+    EXPECT_EQ(text.find("last_odom_state_"), std::string::npos)
+      << file << " must name the internal state last_local_state_";
+    EXPECT_EQ(text.find("frames.odometry"), std::string::npos)
+      << file << " must not depend on an odom frame";
+  }
 }
 
 TEST(CoordinateContractSurface, LaunchStaticTranslationsAreFrozen)

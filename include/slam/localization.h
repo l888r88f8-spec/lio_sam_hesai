@@ -3,8 +3,8 @@
 #define FUNNY_LIDAR_SLAM_LOCALIZATION_H
 
 #include "slam/system.h"
-#include "slam/config_parameters.h"
 #include "common/data_type.h"
+#include "common/slam_config.h"
 #include "imu/pre_integration.h"
 #include "localization_health/reinitialization_control.h"
 #include "localization_map/map_provider.h"
@@ -26,7 +26,8 @@ class Localization {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-    explicit Localization(System* system_ptr);
+    Localization(System* system_ptr,
+                 std::shared_ptr<const SlamConfig> config);
 
     PCLPointCloudXYZI::ConstPtr GetGlobalCloudMap();
 
@@ -36,7 +37,10 @@ public:
 
     PCLPointCloudXYZI GetCurrentLidarCloudMap();
 
-    void SetInitPose(const Mat4d& pose);
+    // System converts the initial-pose message (map_T_base) through
+    // base_T_lidar, so localization receives map_T_lidar. Registration then
+    // consumes map_T_imu internally.
+    void SetInitPose(const MapTLidar& map_T_lidar);
 
     void RequestAutomaticRelocalization();
 
@@ -57,7 +61,7 @@ public:
     struct MapLidarPrediction {
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-        Mat4d map_lidar_pose{Mat4d::Identity()};
+        MapTLidar map_T_lidar{MapTLidar::Identity()};
         TimeStampUs timestamp_{0U};
     };
 
@@ -97,7 +101,7 @@ private:
     void SetLidarPoseInformation();
 
     [[nodiscard]] Mat4d MapLidarPoseToMapImuPose(
-        const Mat4d& map_lidar_pose) const;
+        const MapTLidar& map_T_lidar) const;
 
     [[nodiscard]] Mat4d MapImuPoseToMapLidarPose(
         const Mat4d& map_imu_pose) const;
@@ -120,13 +124,15 @@ private:
         std::shared_ptr<const localization_map::MapSnapshot> snapshot);
 
     [[nodiscard]] NavStateData IntegrateImuMeasures(const NavStateData& last_nav_state) const;
-    [[nodiscard]] NavStateData IntegrateImuMeasuresOdom(
-        const NavStateData& last_odom_state) const;
+    // Integrates the localization-internal relative state. This state is not a
+    // ROS odom frame and must never reach TF or a ROS frame ID.
+    [[nodiscard]] NavStateData IntegrateImuMeasuresLocal(
+        const NavStateData& last_local_state) const;
 
     void Optimize(NavStateData& curr_nav_state, const Mat4d& lidar_pose);
 
     [[nodiscard]] std::optional<double> EstimateMapGroundZ(
-        const Mat4d& map_lidar_pose,
+        const Mat4d& map_T_lidar_matrix,
         const std::shared_ptr<const localization_map::MapSnapshot>& snapshot =
             nullptr);
 
@@ -135,12 +141,13 @@ private:
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
         NavStateData nav_state;
-        Mat4d map_lidar_pose{Mat4d::Identity()};
+        MapTLidar map_T_lidar{MapTLidar::Identity()};
         TimeStampUs timestamp{0U};
     };
 
+    std::shared_ptr<const SlamConfig> config_;
     std::shared_ptr<PreIntegration> pre_integration_ptr_ = nullptr;
-    std::shared_ptr<PreIntegration> odom_pre_integration_ptr_ = nullptr;
+    std::shared_ptr<PreIntegration> local_pre_integration_ptr_ = nullptr;
     std::shared_ptr<RegistrationInterface> matcher_ = nullptr;
     PointcloudClusterPtr curr_cloud_cluster_ptr_ = nullptr;
 
@@ -152,7 +159,7 @@ private:
 
     // navigation state and bias
     NavStateData last_nav_state_;
-    NavStateData last_odom_state_;
+    NavStateData last_local_state_;
 
     Mat4d delta_pose_ = Mat4d::Identity();
     Mat4d curr_pose_ = Mat4d::Identity();

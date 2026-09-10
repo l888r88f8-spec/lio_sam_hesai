@@ -108,6 +108,10 @@ ament_target_dependencies(${PROJECT_NAME}_contracts
   rclcpp geometry_msgs nav_msgs)
 target_include_directories(${PROJECT_NAME}_contracts PUBLIC include)
 target_link_libraries(${PROJECT_NAME}_contracts ${LIO_SAM_EIGEN_TARGET})
+# Consumers include the shared relocalization library, so this archive's
+# objects must be position independent.
+set_target_properties(${PROJECT_NAME}_contracts PROPERTIES
+  POSITION_INDEPENDENT_CODE ON)
 
 
 
@@ -168,7 +172,6 @@ add_library(${PROJECT_NAME}_relocalization_lib
   src/localization_health/tf_continuity_controller.cpp
   src/runtime/thread_runtime_controller.cpp
   src/runtime/frame_processing_watchdog.cpp
-  src/slam/config_parameters.cpp
   src/slam/preprocessing.cpp
   src/slam/localization.cpp
   src/slam/split_map.cpp
