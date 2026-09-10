@@ -743,3 +743,89 @@ Verification at this checkpoint:
 
 Tasks 5-9 are not started. The branch is NOT merged to `main`; the user requires
 explicit approval before merging.
+
+---
+
+## Progress: Task 5 complete (2026-09-10)
+
+Commit `58b6b36` `refactor(localization): enforce explicit coordinate contracts`.
+Task 5 Steps 1-6 all ran as written. `ConfigParameters` and both of its files are
+gone; `rg 'ConfigParameters::Instance' include src` returns nothing.
+
+Verification at this checkpoint:
+
+- Full serial build (`make -j1`, every target): exit 0, no errors.
+- Full non-license CTest run: 39/40 gtest pass.
+- `test_unified_parameter_schema` FAILS and is expected to: see note 3 below.
+- `uncrustify`, `lint_cmake`, `flake8`, `xmllint` still FAIL as on `main`.
+- Task 9's `rg 'T_[A-Za-z0-9_]+_to_[A-Za-z0-9_]+'` now returns no matches.
+- The three tests named in Step 6 pass; `test_coordinate_contract_surface` now
+  also asserts the singleton, the removed header, `last_odom_state_` and
+  `frames.odometry` are absent from all six localization production files.
+
+### Changes outside the Task 5 file list
+
+The plan's list was incomplete; these were required to keep the tree building and
+green, and are all direct consequences of the migration:
+
+1. `include/localization_health/tf_continuity_controller.h` — the rename table
+   renames `TfPoseSample::map_base_pose`, which is declared here.
+2. `include/slam/loop_closure.h` — dead header (no `.cpp`, absent from CMake)
+   that included the deleted `slam/config_parameters.h`. Include dropped.
+3. `src/common/slam_config.cpp` — `LoadCalibration` now consumes the typed
+   `parsed.imu_T_lidar` / `parsed.lidar_T_imu` instead of `parsed.lidar_to_imu`.
+4. `include/lidar/lidar_distortion_corrector.{h,cpp}` — member was
+   `T_lidar_to_imu_`, holding `lidar_T_imu`; renamed to `lidar_T_imu_`. Only
+   `preprocessing.cpp` constructs it.
+5. `test/test_lidar_imu_calibration.cpp`, `test/test_relocalization_efficiency_surface.cpp`,
+   `test/test_tiled_map_localization_surface.cpp` — all consume the changed
+   calibration fields or frozen topic literals and had to be retargeted.
+6. `CMakeLists.txt` — `lio_sam_hesai_contracts` needed
+   `POSITION_INDEPENDENT_CODE ON`. It was compiled without PIC and previously
+   never linked into `liblio_sam_hesai_relocalization_lib.so` because no object
+   in it was referenced; the first real `LoadSlamConfig` call pulls
+   `slam_config.cpp.o` in and the link fails without this.
+
+### Notes for Tasks 6-9
+
+1. **`test_unified_parameter_schema` is red by design of this handoff.** It
+   asserts the relocalization surface is declared in `src/slam/system.cpp`, but
+   Task 4 already moved declarations to `src/common/slam_config.cpp`. Fixing it
+   needs two coordinated edits that the plan assigns elsewhere: the contract
+   entry `{"output.mapping_odom_topic", "output_topic.mapping_odom_topic",
+   kRelocalizationSurfaces}` must become legacy
+   `output_topic.mapping_odom_topic` -> canonical `output_topic.odometry`
+   (Task 6 Step 5), and `config/relocalization.yaml` must switch to
+   `output_topic.odometry` (Task 8 Step 1). Changing either alone leaves the
+   suite red, so both were left to their owning tasks. `ReadCppParameterNames`
+   also only recognises `declare_parameter`/`get_parameter`/`util::param`;
+   Task 6 will need to add `ReadParam` for the loader to be readable.
+
+2. **Gravity is runtime state, not configuration.** `InitIMU` estimates
+   `gravity_vector_` after ~200 stationary samples and `MakePreIntegrationConfig`
+   reads it. It cannot live in the immutable `SlamConfig`, so it moved to
+   `System::gravity_vector_` (public, next to `has_imu_init_`) and Localization
+   reads it through `system_ptr_`. It is still written and read without a lock,
+   exactly as before; adding one would change behaviour and was out of scope.
+
+3. **Three functions lost `static`** because they now read `config_`:
+   `System::InitLidarModel`, `System::InitIMU`,
+   `PreProcessing::ConvertMessageToCloud`, `PreProcessing::ConvertHesaiMessageToCloud`.
+
+4. **One behaviour-relevant risk to watch in Task 9's replay.**
+   `MapTLidar::FromMatrix` / `LocalTImu::FromMatrix` validate orthonormality
+   (relative tolerance 1e-12) on the optimizer and preintegration pose path,
+   where the code previously smuggled raw `Mat4d` through unchecked. The
+   rotations come from `SO3Exp` products so they should be orthonormal to
+   ~1e-14, but a replay that throws `std::invalid_argument` out of
+   `Localization::Run` would be this. `EstimateMapGroundZ` was deliberately left
+   taking `Mat4d`: it only reads the translation, and it also receives candidate
+   matrices straight from the Scan Context database, which are not guaranteed
+   orthonormal.
+
+5. `eigen2Transform` was removed from `include/common/ros_utility.h` as
+   scheduled; `RosPoseAdapter::ToTransformStamped` replaced its last caller.
+
+Task 6's earlier note about the duplicate `declare_parameter` calls in
+`src/imageProjection.cpp` still applies. The branch is still NOT merged to
+`main`.
