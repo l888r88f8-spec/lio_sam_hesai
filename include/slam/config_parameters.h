@@ -45,8 +45,6 @@ public:
     double system_keyframe_delta_dist_{};
     double system_keyframe_delta_rotation_{};
     bool system_enable_loopclosure_{};
-    bool system_enable_visualize_global_map_{};
-    float system_global_map_visualization_resolution_{};
 
     // loopclosure
     int lc_skip_near_loopclosure_threshold_{};

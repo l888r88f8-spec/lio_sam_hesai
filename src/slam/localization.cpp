@@ -548,8 +548,9 @@ bool Localization::PrepareMap() {
         config.localization_tiled_max_cached_tiles_);
     provider_config.max_cache_bytes = static_cast<std::size_t>(
         config.localization_tiled_max_cache_mib_) * 1024U * 1024U;
-    provider_config.load_overview =
-        config.system_enable_visualize_global_map_;
+    // Always load the overview so tiled mode publishes a global-map overview;
+    // it is a small 5 m resolution cloud.
+    provider_config.load_overview = true;
     // Match the legacy GlobalMapProvider density. Some registration backends
     // leave local_map_cloud_filter_size unset at the numeric sentinel.
     provider_config.registration_voxel_size = 0.3F;

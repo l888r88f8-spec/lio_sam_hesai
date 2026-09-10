@@ -18,7 +18,7 @@
       non_ground_cloud_topic: "lio_sam/cloud_nonground"        # 非地面点云话题
 
     localization:
-      map_path: "/home/robot/map/hesai_sim2/GlobalMap.pcd"      # 全局地图
+      map_path: "/home/robot/map/hesai_sim2/tiled"      # 全局地图
       map_mode: auto                                            # auto, global, or tiled
       tiled_map:
         active_radius_tiles: 1
@@ -154,7 +154,3 @@
       candidate_local_map_right_range: 20
       loopclosure_local_map_left_range: 20
       near_neighbor_distance_threshold: 10.0
-
-    visualization:
-      enable_global_map: false
-      global_map_resolution: 0.7

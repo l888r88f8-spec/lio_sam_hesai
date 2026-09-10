@@ -256,10 +256,6 @@ const std::vector<ParameterContract> kParameterContracts = {
     "visualization.global_map_pose_density", kMappingSurfaces},
   {"globalMapVisualizationLeafSize", "visualization.global_map_leaf_size",
     kMappingSurfaces},
-  {"system.enable_visualize_global_map",
-    "visualization.enable_global_map", kRelocalizationSurfaces},
-  {"system.global_map_visualization_resolution",
-    "visualization.global_map_resolution", kRelocalizationSurfaces},
 };
 
 std::string ReadProjectFile(const std::string & relative_path)

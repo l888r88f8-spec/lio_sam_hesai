@@ -527,10 +527,6 @@ void System::InitConfigParameters() {
               config.system_keyframe_delta_rotation_, DoubleNaN);
   util::param(this, "loop_closure.enable",
               config.system_enable_loopclosure_, false);
-  util::param(this, "visualization.enable_global_map",
-              config.system_enable_visualize_global_map_, false);
-  util::param(this, "visualization.global_map_resolution",
-              config.system_global_map_visualization_resolution_, FloatNaN);
 
   // split map
   util::param(this, "system.tile_map_grid_size", config.tile_map_grid_size_,

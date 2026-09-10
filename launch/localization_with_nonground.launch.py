@@ -22,12 +22,12 @@ def generate_launch_description():
     )
     use_sim_time_declare = DeclareLaunchArgument(
         "use_sim",
-        default_value="false",
+        default_value="true",
         description="Use simulation clock if true.",
     )
     use_rviz_declare = DeclareLaunchArgument(
         "use_rviz",
-        default_value="false",
+        default_value="true",
         description="Launch RViz if true.",
     )
     publish_static_tf_declare = DeclareLaunchArgument(
