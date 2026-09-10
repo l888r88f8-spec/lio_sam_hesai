@@ -308,6 +308,8 @@ if(BUILD_TESTING)
   target_include_directories(test_frame_processing_watchdog PRIVATE include)
   ament_add_gtest(test_unified_parameter_schema
     test/test_unified_parameter_schema.cpp)
+  ament_add_gtest(test_coordinate_contract_surface
+    test/test_coordinate_contract_surface.cpp)
   ament_add_gtest(test_tile_index test/test_tile_index.cpp)
   target_include_directories(test_tile_index PRIVATE include)
   ament_add_gtest(test_tile_cache
