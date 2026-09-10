@@ -102,6 +102,7 @@ rosidl_generate_interfaces(${PROJECT_NAME} "msg/CloudInfo.msg" "srv/SaveMap.srv"
 # of re-deriving frames, aliases, or artifact paths themselves.
 add_library(${PROJECT_NAME}_contracts STATIC
   src/common/ros_pose_adapter.cpp
+  src/common/slam_config.cpp
 )
 ament_target_dependencies(${PROJECT_NAME}_contracts
   rclcpp geometry_msgs nav_msgs)
@@ -338,6 +339,12 @@ if(BUILD_TESTING)
   ament_add_gtest(test_ros_pose_adapter test/test_ros_pose_adapter.cpp)
   target_include_directories(test_ros_pose_adapter PRIVATE include)
   target_link_libraries(test_ros_pose_adapter ${PROJECT_NAME}_contracts)
+  ament_add_gtest(test_parameter_alias test/test_parameter_alias.cpp)
+  target_include_directories(test_parameter_alias PRIVATE include)
+  ament_add_gtest(test_slam_config test/test_slam_config.cpp
+    SKIP_LINKING_MAIN_LIBRARIES)
+  target_include_directories(test_slam_config PRIVATE include)
+  target_link_libraries(test_slam_config ${PROJECT_NAME}_contracts)
   ament_add_gtest(test_tile_index test/test_tile_index.cpp)
   target_include_directories(test_tile_index PRIVATE include)
   ament_add_gtest(test_tile_cache
