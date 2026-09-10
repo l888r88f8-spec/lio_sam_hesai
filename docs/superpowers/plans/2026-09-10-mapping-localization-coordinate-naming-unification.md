@@ -23,7 +23,7 @@
 - Create: `test/test_coordinate_contract_surface.cpp`
 - Modify: `CMakeLists.txt`
 
-- [ ] **Step 1: Write source-level topology tests**
+- [x] **Step 1: Write source-level topology tests**
 
 Reuse `ReadProjectFile()` from `test/test_unified_parameter_schema.cpp` and add:
 
@@ -49,7 +49,7 @@ TEST(CoordinateContractSurface, LocalizationHasNoOdomTfDependency) {
 
 Assert these current literals: mapping `lio_sam/mapping/odometry`, `lio_sam/mapping/path`, `lio_sam/mapping/map_global`, `lio_sam/mapping/map_local`, `lio_sam/mapping/cloud_registered`; localization `lio_sam/localization/odometry`, `lio_sam/localization/path`, `lio_sam/localization/global_map`, `lio_sam/localization/local_map`, `lio_sam/localization/current_lidar`; and the three launch files' static translations `[0.02, 0, 0.32]` and `[0.02, 0, 0.22]`.
 
-- [ ] **Step 2: Register and run the baseline**
+- [x] **Step 2: Register and run the baseline**
 
 Add:
 
@@ -64,7 +64,7 @@ Run: `ctest --test-dir /home/robot/slam_ws/build/lio_sam_hesai -R '^(test_coordi
 
 Expected: both pass before production edits.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add CMakeLists.txt test/test_coordinate_contract_surface.cpp
@@ -78,7 +78,7 @@ git commit -m "test(contract): freeze mapping and localization coordinates"
 - Create: `test/test_rigid_transform.cpp`
 - Modify: `CMakeLists.txt`
 
-- [ ] **Step 1: Write failing composition and validation tests**
+- [x] **Step 1: Write failing composition and validation tests**
 
 ```cpp
 #include "common/rigid_transform.h"
@@ -108,11 +108,11 @@ TEST(RigidTransform, RejectsInvalidHomogeneousMatrix) {
 }
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Register `test_rigid_transform`, build it, and verify compilation fails because the header/types do not exist.
 
-- [ ] **Step 3: Implement the header-only type**
+- [x] **Step 3: Implement the header-only type**
 
 Define empty tags `MapFrame`, `OdomFrame`, `BaseFrame`, `ImuFrame`, `LidarFrame`, and `LocalIntegrationFrame`. Implement:
 
@@ -147,7 +147,7 @@ class RigidTransform3d {
 
 `Validate` rejects non-finite values, a non-homogeneous last row, a non-orthogonal rotation, or determinant not near `+1`. Add aliases `MapTLidar`, `MapTBase`, `OdomTLidar`, `OdomTBase`, `BaseTLidar`, `LidarTBase`, `ImuTLidar`, `LidarTImu`, `BaseTImu`, `ImuTBase`, and `LocalTImu`.
 
-- [ ] **Step 4: Run GREEN and commit**
+- [x] **Step 4: Run GREEN and commit**
 
 Run: `cmake --build /home/robot/slam_ws/build/lio_sam_hesai --target test_rigid_transform -- -j1`
 
@@ -169,7 +169,7 @@ git commit -m "feat(contract): add direction-safe rigid transforms"
 - Modify: `include/common/ros_utility.h`
 - Modify: `CMakeLists.txt`
 
-- [ ] **Step 1: Write failing adapter tests**
+- [x] **Step 1: Write failing adapter tests**
 
 Test `MapTBase` conversion, frame IDs, initial-pose validation, and invalid quaternion rejection:
 
@@ -189,11 +189,11 @@ EXPECT_FALSE(RosPoseAdapter::ParseMapTBase(message, "map", &error));
 
 Also test NaN position, zero quaternion, quaternion normalization, and `Odometry.header.frame_id`/`child_frame_id`.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Register the test with `rclcpp`, `geometry_msgs`, `nav_msgs`, and `tf2_geometry_msgs`; verify missing adapter symbols.
 
-- [ ] **Step 3: Implement the adapter API**
+- [x] **Step 3: Implement the adapter API**
 
 ```cpp
 struct FrameIds {
@@ -229,7 +229,7 @@ Keep templates in the header. Normalize valid quaternions. Accept an empty initi
 
 Create `${PROJECT_NAME}_contracts` as a static library containing `src/common/ros_pose_adapter.cpp`, link it to all four mapping executables and `${PROJECT_NAME}_relocalization_lib`, and append the Task 4 and Task 7 common sources to this target when introduced.
 
-- [ ] **Step 4: Run GREEN and commit**
+- [x] **Step 4: Run GREEN and commit**
 
 Run: `cmake --build /home/robot/slam_ws/build/lio_sam_hesai --target test_ros_pose_adapter -- -j1`
 
@@ -250,7 +250,7 @@ git commit -m "refactor(ros): centralize pose and TF conversion"
 - Create: `test/test_slam_config.cpp`
 - Modify: `CMakeLists.txt`
 
-- [ ] **Step 1: Write failing pure alias tests**
+- [x] **Step 1: Write failing pure alias tests**
 
 ```cpp
 TEST(ParameterAlias, UsesCanonical) {
@@ -268,7 +268,7 @@ TEST(ParameterAlias, RejectsConflict) {
 
 Use `std::optional<T>` inputs. Vector equality is element-wise exact.
 
-- [ ] **Step 2: Define the configuration hierarchy**
+- [x] **Step 2: Define the configuration hierarchy**
 
 ```cpp
 enum class SlamMode { kMapping, kLocalization };
@@ -305,7 +305,7 @@ SlamConfig LoadSlamConfig(rclcpp::Node& node, SlamMode mode);
 
 Move current `ParamServer` fields into nested `MappingConfig` groups matching their ROS prefixes. Move current `ConfigParameters` fields into nested `LocalizationConfig` groups. Use snake_case leaf names without repeating the group name.
 
-- [ ] **Step 3: Implement parameter declaration, aliases, and validation**
+- [x] **Step 3: Implement parameter declaration, aliases, and validation**
 
 Implement:
 
@@ -352,7 +352,7 @@ Add these remaining exact defaults. Empty mode-inapplicable topics are valid and
 | `output_topic.loop_history` | `lio_sam/mapping/icp_loop_closure_history_cloud` |
 | `output_topic.loop_constraints` | `/lio_sam/mapping/loop_closure_constraints` |
 
-- [ ] **Step 4: Test the ROS loader**
+- [x] **Step 4: Test the ROS loader**
 
 Instantiate `rclcpp::Node` with `NodeOptions().parameter_overrides(...)`. Test both modes, canonical override, legacy-only, equal dual, conflicting dual, empty frame, and bad calibration matrix.
 
@@ -360,7 +360,7 @@ Run: `cmake --build /home/robot/slam_ws/build/lio_sam_hesai --target test_parame
 
 Run: `ctest --test-dir /home/robot/slam_ws/build/lio_sam_hesai -R '^(test_parameter_alias|test_slam_config)$' --output-on-failure`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add CMakeLists.txt include/common/parameter_alias.h include/common/slam_config.h src/common/slam_config.cpp test/test_parameter_alias.cpp test/test_slam_config.cpp
@@ -688,3 +688,58 @@ Run: `git log -9 --oneline`
 Run: `git diff HEAD~8 --stat`
 
 Expected: only planned P2.2 files are included and the user's pre-existing edits are preserved.
+
+---
+
+## Progress: Tasks 1-4 complete (2026-09-10)
+
+Branch `p2.2-coordinate-naming-unification`, branched from `main` after
+preserving the user's P2.1 working-tree edits as commit `45df657`.
+
+Commits:
+
+- `a0fd37f` Task 1 - contract surface tests (`test_coordinate_contract_surface`)
+- `f1ac095` Task 2 - `include/common/rigid_transform.h` + `test_rigid_transform`
+- `3fd0919` Task 3 - `RosPoseAdapter` + `liblio_sam_hesai_contracts`
+  (`test_ros_pose_adapter`)
+- `4f30b44` Task 4 - `ParameterAlias` + `SlamConfig`
+  (`test_parameter_alias`, `test_slam_config`)
+
+Verification at this checkpoint:
+
+- Full serial build (`make -j1`, every target): exit 0, no errors.
+- Full non-license CTest run: 34/34 gtest pass.
+- `uncrustify`, `lint_cmake`, `flake8`, `xmllint` FAIL, but they already fail on
+  a clean `main` checkout (verified with a throwaway worktree running the lint
+  tools directly). They flag ~200 untouched files. Task 9's expectation that
+  `ctest -E '(copyright|cpplint)'` passes does not hold on `main` today either;
+  resolve that separately before relying on Task 9 Step 2.
+
+### Notes for Tasks 5-7
+
+1. **Most vexing parse.** In `test_rigid_transform.cpp`, `EXPECT_THROW(
+   LidarTBase(value), ...)` silently passed nothing: `LidarTBase(value);` parses
+   as a declaration of a variable named `value`, so the validating constructor
+   never ran. Use brace initialization (`LidarTBase{value}`) for any
+   `EXPECT_THROW` on a single-argument constructor. Tasks 5-7 have similar
+   assertions.
+
+2. **Spec conflict, resolved in favour of this plan.** Design section 6 classifies
+   `loop_closure_hint` under `command_topic.*`, but the Task 4 defaults table and
+   the plan's own `PipelineTopics` struct both put it at
+   `pipeline_topic.loop_closure_hint`. The plan was followed. Flip it if the
+   design should win.
+
+3. **`SlamConfig` is currently unconsumed.** Nothing links against it yet; Task 5
+   (localization) and Task 6 (mapping) are what migrate production code onto it.
+   `LoadSlamConfig` already declares `ground_segmentation.only_mode` and
+   `output_topic.non_ground_cloud_topic` for mapping, so Task 6 must delete the
+   duplicate `declare_parameter` calls in `src/imageProjection.cpp` (currently
+   lines ~332-339) or the node will throw `ParameterAlreadyDeclaredException` at
+   startup.
+
+4. **`eigen2Transform` in `include/common/ros_utility.h`** is annotated as
+   superseded and must be removed once its last caller migrates (Task 5).
+
+Tasks 5-9 are not started. The branch is NOT merged to `main`; the user requires
+explicit approval before merging.
