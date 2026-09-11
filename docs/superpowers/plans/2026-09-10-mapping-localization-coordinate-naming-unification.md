@@ -829,3 +829,68 @@ green, and are all direct consequences of the migration:
 Task 6's earlier note about the duplicate `declare_parameter` calls in
 `src/imageProjection.cpp` still applies. The branch is still NOT merged to
 `main`.
+
+---
+
+## Progress: Task 6 complete (2026-09-10)
+
+Commit `f66ec8b` `refactor(mapping): use shared configuration and pose
+semantics`. All 7 steps ran. `ParamServer` no longer holds any flat camelCase
+config member, and no mapping node hardcodes a `lio_sam/...` topic string.
+
+Verification at this checkpoint:
+
+- Full serial build (`make -j1`, every target): exit 0, no errors.
+- Full non-license CTest run: 41/41 gtest pass (Task 5's
+  `test_unified_parameter_schema` failure is resolved; see below).
+- `uncrustify`, `lint_cmake`, `flake8`, `xmllint` still FAIL as on `main`.
+- `test_coordinate_contract_surface` now requires the four mapping nodes to be
+  free of the 19 hardcoded topic literals and to resolve them from
+  `pipeline_topics`/`outputs` instead.
+
+### Changes outside the Task 6 file list
+
+1. `config/mapping.yaml`, `config/relocalization.yaml` — the two legacy odometry
+   keys were renamed to the canonical `output_topic.odometry`, keeping the exact
+   same strings. **This pre-empts part of Task 8 Step 1.** It was necessary
+   because Task 6 Step 5 reclassifies `output_topic.mapping_odom_topic` as a
+   legacy alias, and `ProjectSurfaceRejectsLegacyExternalNames` then rejects the
+   repository YAML until the keys move. Task 8 still owns `pipeline_topic.*`,
+   `command_topic.*`, RViz, launch argument naming, and the migration document.
+2. `test_ground_patch_parameter_surface.cpp`,
+   `test_relocalization_efficiency_surface.cpp` (Task 5),
+   `test_tiled_map_localization_surface.cpp` — surface tests that asserted the
+   old flat field names or the old declaration site.
+
+### Notes for Tasks 7-9
+
+1. **Two runtime overrides replaced in-place config mutation.**
+   `mapOptimization` used to do `loopClosureEnableFlag = false` and
+   `savePCD = false` on itself when `mappingMode` was false. The config is now
+   immutable, so those became `loop_closure_enabled_` / `save_map_enabled_`
+   members initialised from the config and then flipped. Same behaviour, same
+   warning text.
+2. **`main()` needed one narrow predicate.** It read `MO->config_...` directly,
+   which is no longer reachable now that `config_` is protected. Added
+   `ParamServer::MappingMode()` rather than exposing the whole config.
+3. **`publishOdometry` is the typed mapping output boundary.** The global
+   odometry message is now built from `OdomTLidar` via `RosPoseAdapter`. The
+   rotation is taken from `trans2Affine3f(transformTobeMapped)` (float) rather
+   than the previous `tf2::setRPY` (double), so the published quaternion can
+   differ by ~1e-7. That is float-serialisation noise, well below any baseline
+   threshold, but it is the one place Task 9's replay could in principle show a
+   numeric delta. The incremental odometry still uses its original slerp filter
+   untouched.
+4. **Parameter logging changed.** The constructor no longer logs each parameter
+   via `util::param` (the shared loader does not log), and the trailing
+   `usleep(100)` workaround was dropped along with the declarations. Startup
+   output is quieter; no parameter value changed.
+5. `test_unified_parameter_schema`'s `ReadCppParameterNames` now also recognises
+   `ReadParam`, so the shared loader counts as a parameter reader. Both the
+   mapping and relocalization reader assertions point at
+   `src/common/slam_config.cpp` plus the node that consumes the nest.
+6. Log strings that my bulk field rename had rewritten
+   (`"mappingMode=false: ..."`) were restored to their original text; the two
+   RCLCPP_WARN messages are byte-identical to pre-P2.2.
+
+The branch is still NOT merged to `main`.
