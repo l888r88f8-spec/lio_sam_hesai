@@ -894,3 +894,60 @@ Verification at this checkpoint:
    RCLCPP_WARN messages are byte-identical to pre-P2.2.
 
 The branch is still NOT merged to `main`.
+
+---
+
+## Progress: Task 7 complete (2026-09-10)
+
+Commit `bd1419f` `refactor(map): centralize artifact path conventions`. All 5
+steps ran. `MapArtifactLayout` is the single source of truth for the on-disk
+map layout, and `kGlobalMapFileName = "map.pcd"` is gone.
+
+Verification at this checkpoint:
+
+- Full serial build (`make -j1`, every target): exit 0, no errors.
+- Full non-license CTest run: 42/46 pass. `uncrustify`, `lint_cmake`, `flake8`,
+  `xmllint` still FAIL as on `main`; no functional test regressed.
+- Step 4's regression set (`test_map_artifact_layout`, `test_tile_map_generator`,
+  `test_global_map_provider`, `test_tiled_map_provider`,
+  `test_localization_stability_common`) all pass.
+
+### Changes outside the Task 7 file list
+
+1. `src/localization_map/tile_manifest.cpp` — the manifest codec still spelled
+   `manifest.yaml` itself while `MapArtifactLayout::TiledManifest()` also names
+   it. Two independent constants for one file name is a correctness coupling, so
+   the codec now uses `MapArtifactLayout::kManifestName`. Only the *name* is
+   shared; the manifest contents are untouched.
+2. `test_auto_relocalization_parameter_surface.cpp` — asserted the literal
+   `sc_db.bin` lived in `src/mapOptimization.cpp`; it now asserts the saver calls
+   `ScanContextDb()` and that the layout owns the name.
+3. `CMakeLists.txt` — `test_tile_map_generator` needed to link
+   `${PROJECT_NAME}_contracts` because the test fixtures now build a layout.
+
+### Notes for Tasks 8-9
+
+1. **One intentional default changed.** The empty `localization.map_path` used to
+   resolve to `<PROJECT_SOURCE_DIR>/data/map.pcd`; it now resolves through
+   `MapArtifactLayout(kDataPath).GlobalMap()` to
+   `<PROJECT_SOURCE_DIR>/data/GlobalMap.pcd`. That is the plan's stated intent
+   ("Remove `kGlobalMapFileName = "map.pcd"`"), and `map.pcd` never existed under
+   `data/`, so the old default was dead. No configured path is affected.
+2. **The shutdown auto-save keeps its legacy file names.** `visualizeGlobalMapThread`
+   writes `cloudCorner.pcd`, `cloudSurf.pcd`, `cloudGlobal.pcd`, `cloudGround.pcd`,
+   where the save-map service writes `CornerMap.pcd`, `SurfMap.pcd`,
+   `GlobalMap.pcd`, `GroundMap.pcd`. P2.2 does not rename on-disk artifacts, so
+   the four legacy names are exposed from the layout as `SavedCornerCloud()`,
+   `SavedSurfaceCloud()`, `SavedGlobalCloud()`, `SavedGroundCloud()` instead of
+   being concatenated at the call site. **This looks like a real defect**:
+   nothing reads the `cloud*.pcd` names back, so a map saved only by Ctrl+C
+   cannot be loaded by localization or tiled by the generator, which both look
+   for `GlobalMap.pcd`. Fixing it means renaming files, which is explicitly out
+   of P2.2 scope — worth a separate change.
+3. `FromGlobalMap` rejects any global map not named `GlobalMap.pcd`, but it is
+   deliberately *not* used on the user-configured `localization.map_path`, which
+   may be any regular file. The artifact derivations there use
+   `MapArtifactLayout(resolved_map_path_.parent_path())` instead, so a custom
+   global map file name still works exactly as before.
+
+The branch is still NOT merged to `main`.
