@@ -285,22 +285,22 @@ TEST(AutoRelocalizationParameterSurface, ExposesMappingDatabaseExport) {
   };
 
   for (const auto & parameter : canonical_parameters) {
-    ExpectQuotedParameter("include/lio_sam/utility.hpp", parameter);
+    ExpectQuotedParameter("src/common/slam_config.cpp", parameter);
   }
   for (const auto & leaf : yaml_leaves) {
     ExpectMappingYamlParameter(leaf);
   }
 
   const std::array<std::string, 9> tokens = {
-    "generateScDb",
+    "config_.mapping.map_save.generate_scan_context_db",
     "relocalization/scan_context.h",
     "ScanContext",
     "sc_db.bin",
     "SaveDB",
-    "alignSavedMapGroundToZero",
-    "savedMapGroundZOffset",
+    "config_.mapping.map_save.align_ground_to_zero",
+    "config_.mapping.map_save.ground_z_offset",
     "pclPointToAffine3f",
-    "keyFramePose(2, 3) += savedMapGroundZOffset",
+    "keyFramePose(2, 3) += config_.mapping.map_save.ground_z_offset",
   };
 
   for (const auto & token : tokens) {

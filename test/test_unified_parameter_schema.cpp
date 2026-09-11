@@ -49,13 +49,14 @@ struct ParameterContract
 const std::vector<ParameterContract> kParameterContracts = {
   {"pointCloudTopic", "sensor_topic.lidar_topic", kSharedSurfaces},
   {"imuTopic", "sensor_topic.imu_topic", kSharedSurfaces},
-  {"odomTopic", "sensor_topic.odom_topic", kMappingSurfaces},
+  {"odomTopic", "output_topic.odometry", kMappingSurfaces},
+  {"sensor_topic.odom_topic", "output_topic.odometry", kMappingSurfaces},
   {"gpsTopic", "sensor_topic.gps_topic", kMappingSurfaces},
   {"nonGroundCloudTopic", "output_topic.non_ground_cloud_topic",
     kGroundSegmentationSurfaces},
   {"sensor_topic.non_ground_cloud_topic", "output_topic.non_ground_cloud_topic",
     kGroundSegmentationSurfaces},
-  {"output.mapping_odom_topic", "output_topic.mapping_odom_topic",
+  {"output_topic.mapping_odom_topic", "output_topic.odometry",
     kRelocalizationSurfaces},
   {"mapFrame", "frames.map", kSharedSurfaces},
   {"odometryFrame", "frames.odometry", kMappingSurfaces},
@@ -381,10 +382,11 @@ std::set<std::string> ReadCppParameterNamesFromText(
   const std::string & source_text)
 {
   const std::string text = StripCppComments(source_text);
-  const std::array<std::string, 3> parameter_functions = {
+  const std::array<std::string, 4> parameter_functions = {
     "declare_parameter",
     "get_parameter",
     "util::param",
+    "ReadParam",
   };
   std::set<std::string> parameter_names;
 
@@ -583,20 +585,25 @@ bool HasLegacyYamlName(
 }  // namespace
 
 TEST(UnifiedParameterSchema, MappingReadersUseCanonicalNames) {
+  // Mapping nodes no longer declare parameters themselves; the shared loader
+  // declares and validates every one of them.
   const std::set<std::string> actual =
-    Union(
-    ReadCppParameterNames("include/lio_sam/utility.hpp"),
-    ReadCppParameterNames("src/imageProjection.cpp"));
+    ReadCppParameterNames("src/common/slam_config.cpp");
   ExpectContainsAll(
     actual, CanonicalNamesForSurface(kMappingReader),
-    "mapping C++ readers");
+    "src/common/slam_config.cpp");
 }
 
 TEST(UnifiedParameterSchema, RelocalizationReaderUsesCanonicalNames) {
+  const std::set<std::string> actual =
+    Union(
+    Union(
+      ReadCppParameterNames("src/common/slam_config.cpp"),
+      ReadCppParameterNames("src/slam/system.cpp")),
+    ReadCppParameterNames("src/slam/localization.cpp"));
   ExpectContainsAll(
-    ReadCppParameterNames("src/slam/system.cpp"),
-    CanonicalNamesForSurface(kRelocalizationReader),
-    "src/slam/system.cpp");
+    actual, CanonicalNamesForSurface(kRelocalizationReader),
+    "relocalization C++ readers");
 }
 
 TEST(UnifiedParameterSchema, MappingYamlUsesCanonicalNames) {
@@ -629,12 +636,12 @@ TEST(UnifiedParameterSchema, TiledMapParametersUseCanonicalNames) {
     "map_save.tiled_map.overview_resolution_m",
   };
 
-  ExpectContainsAll(ReadCppParameterNames("src/slam/system.cpp"),
-                    localization_names, "src/slam/system.cpp");
+  ExpectContainsAll(ReadCppParameterNames("src/common/slam_config.cpp"),
+                    localization_names, "src/common/slam_config.cpp");
   ExpectYamlContainsAll(ReadYamlParameterSurface("config/relocalization.yaml"),
                         localization_names, "config/relocalization.yaml");
-  ExpectContainsAll(ReadCppParameterNames("include/lio_sam/utility.hpp"),
-                    map_save_names, "include/lio_sam/utility.hpp");
+  ExpectContainsAll(ReadCppParameterNames("src/common/slam_config.cpp"),
+                    map_save_names, "src/common/slam_config.cpp");
   ExpectYamlContainsAll(ReadYamlParameterSurface("config/mapping.yaml"),
                         map_save_names, "config/mapping.yaml");
   const std::string mapping_yaml = ReadProjectFile("config/mapping.yaml");

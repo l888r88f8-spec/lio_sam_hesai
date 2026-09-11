@@ -14,7 +14,7 @@
       lidar: "hesai_lidar"                                     # 雷达坐标
 
     output_topic:
-      mapping_odom_topic: "lio_sam/localization/odometry"      # 全局定位里程计
+      odometry: "lio_sam/localization/odometry"                # 全局定位里程计
       non_ground_cloud_topic: "lio_sam/cloud_nonground"        # 非地面点云话题
 
     localization:

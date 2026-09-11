@@ -254,6 +254,10 @@ public:
 
     float transformTobeMapped[6];
 
+    // Runtime overrides of two configured flags: see the constructor.
+    bool loop_closure_enabled_ = false;
+    bool save_map_enabled_ = false;
+
     std::mutex mtx;
     std::mutex mtxLoopInfo;
 
@@ -289,40 +293,45 @@ public:
         parameters.relinearizeSkip = 1;
         isam = new ISAM2(parameters);
 
-        if (!mappingMode)
+        // Runtime overrides rather than configuration: the node turns these
+        // off for itself when it is not running in mapping mode, so they live
+        // here instead of in the immutable config_.
+        loop_closure_enabled_ = config_.mapping.loop_closure.enable;
+        save_map_enabled_ = config_.mapping.map_save.enabled;
+        if (!config_.mapping.system.mapping_mode)
         {
-            loopClosureEnableFlag = false;
-            savePCD = false;
+            loop_closure_enabled_ = false;
+            save_map_enabled_ = false;
             RCLCPP_WARN(get_logger(), "mappingMode=false: disable loop closure and map saving");
         }
 
-        pubKeyPoses = create_publisher<sensor_msgs::msg::PointCloud2>("lio_sam/mapping/trajectory", 1);
-        pubLaserCloudSurround = create_publisher<sensor_msgs::msg::PointCloud2>("lio_sam/mapping/map_global", 1);
-        pubGroundCloudSurround = create_publisher<sensor_msgs::msg::PointCloud2>("lio_sam/mapping/ground_cloud_global", 1);
-        pubLaserOdometryGlobal = create_publisher<nav_msgs::msg::Odometry>("lio_sam/mapping/odometry", qos);
+        pubKeyPoses = create_publisher<sensor_msgs::msg::PointCloud2>(config_.outputs.trajectory, 1);
+        pubLaserCloudSurround = create_publisher<sensor_msgs::msg::PointCloud2>(config_.outputs.global_map, 1);
+        pubGroundCloudSurround = create_publisher<sensor_msgs::msg::PointCloud2>(config_.outputs.ground_map, 1);
+        pubLaserOdometryGlobal = create_publisher<nav_msgs::msg::Odometry>(config_.pipeline_topics.mapping_odometry, qos);
         pubLaserOdometryIncremental = create_publisher<nav_msgs::msg::Odometry>(
-            "lio_sam/mapping/odometry_incremental", qos);
-        pubPath = create_publisher<nav_msgs::msg::Path>("lio_sam/mapping/path", 1);
+            config_.pipeline_topics.mapping_odometry_incremental, qos);
+        pubPath = create_publisher<nav_msgs::msg::Path>(config_.outputs.path, 1);
         br = std::make_unique<tf2_ros::TransformBroadcaster>(this);
 
         subCloud = create_subscription<lio_sam_hesai::msg::CloudInfo>(
-            "lio_sam/feature/cloud_info", qos,
+            config_.pipeline_topics.feature_cloud_info, qos,
             std::bind(&mapOptimization::laserCloudInfoHandler, this, std::placeholders::_1));
         subGPS = create_subscription<nav_msgs::msg::Odometry>(
-            gpsTopic, 200,
+            config_.sensors.gps, 200,
             std::bind(&mapOptimization::gpsHandler, this, std::placeholders::_1));
         subLoop = create_subscription<std_msgs::msg::Float64MultiArray>(
             "lio_loop/loop_closure_detection", qos,
             std::bind(&mapOptimization::loopInfoHandler, this, std::placeholders::_1));
 
-        if (mappingMode)
+        if (config_.mapping.system.mapping_mode)
         {
             auto saveMapService = [this](const std::shared_ptr<rmw_request_id_t> request_header, const std::shared_ptr<lio_sam_hesai::srv::SaveMap::Request> req, std::shared_ptr<lio_sam_hesai::srv::SaveMap::Response> res) -> void {
             (void)request_header;
             std::string saveMapDirectory;
             std::cout << "****************************************************" << std::endl;
             std::cout << "Saving map to pcd files ..." << std::endl;
-            if(req->destination.empty()) saveMapDirectory = std::getenv("HOME") + savePCDDirectory;
+            if(req->destination.empty()) saveMapDirectory = std::getenv("HOME") + config_.mapping.map_save.directory;
             else saveMapDirectory = std::getenv("HOME") + req->destination;
             std::cout << "Save destination: " << saveMapDirectory << std::endl;
             // create directory and remove old files;
@@ -362,7 +371,7 @@ public:
             pcl::PointCloud<PointType>::Ptr globalSurfCloud(new pcl::PointCloud<PointType>());
             pcl::PointCloud<PointType>::Ptr globalSurfCloudDS(new pcl::PointCloud<PointType>());
             pcl::PointCloud<PointType>::Ptr globalMapCloud(new pcl::PointCloud<PointType>());
-            const bool useStaticFilter = globalStaticMapFilterEnable && globalStaticVoxelSize > 1e-3f && globalStaticMinKF > 1;
+            const bool useStaticFilter = config_.mapping.static_map_filter.enable && config_.mapping.static_map_filter.voxel_size > 1e-3f && config_.mapping.static_map_filter.min_keyframes > 1;
 
             std::unordered_map<VoxelIndex, VoxelAcc, VoxelIndexHash> voxSurf;
             std::unordered_map<VoxelIndex, VoxelAcc, VoxelIndexHash> voxCorner;
@@ -374,12 +383,12 @@ public:
             {
                 // Reserve a rough amount to reduce rehash; tune if needed.
                 voxSurf.reserve((size_t)keyPoses3DSnapshot->size() * 2000);
-                if (globalStaticFilterCorners)
+                if (config_.mapping.static_map_filter.filter_corners)
                     voxCorner.reserve((size_t)keyPoses3DSnapshot->size() * 400);
             }
 
             relocalization::ScanContext scanContextGenerator;
-            const bool generateScanContextDb = generateScDb;
+            const bool generateScanContextDb = config_.mapping.map_save.generate_scan_context_db;
             for (int i = 0; i < (int)keyPoses3DSnapshot->size(); i++)
             {
                 if (cornerKeyFramesSnapshot[i] == nullptr ||
@@ -405,8 +414,8 @@ public:
                             pclPointToAffine3f(keyPoses6DSnapshot->points[i])
                                 .cast<double>()
                                 .matrix();
-                        if (alignSavedMapGroundToZero)
-                            keyFramePose(2, 3) += savedMapGroundZOffset;
+                        if (config_.mapping.map_save.align_ground_to_zero)
+                            keyFramePose(2, 3) += config_.mapping.map_save.ground_z_offset;
                         scanContextGenerator.AddKeyFrame(
                             scanContextGenerator.MakeDescriptor(localFeatureCloud),
                             keyFramePose);
@@ -418,13 +427,13 @@ public:
 
                 if (useStaticFilter)
                 {
-                    if (globalStaticFilterCorners)
-                        accumulateVoxelMap(voxCorner, cornerT, i, globalStaticVoxelSize);
+                    if (config_.mapping.static_map_filter.filter_corners)
+                        accumulateVoxelMap(voxCorner, cornerT, i, config_.mapping.static_map_filter.voxel_size);
                     else
                         *globalCornerCloud += *cornerT;
 
                     // 对surf做静态一致性筛选
-                    accumulateVoxelMap(voxSurf, surfT, i, globalStaticVoxelSize);
+                    accumulateVoxelMap(voxSurf, surfT, i, config_.mapping.static_map_filter.voxel_size);
                 }
                 else
                 {
@@ -438,15 +447,15 @@ public:
             if (useStaticFilter)
             {
                 // 把大于等于minKF次观测的体素输出成点
-                if (globalStaticFilterCorners)
-                    globalCornerCloud = voxelMapToCloud(voxCorner, globalStaticMinKF);
+                if (config_.mapping.static_map_filter.filter_corners)
+                    globalCornerCloud = voxelMapToCloud(voxCorner, config_.mapping.static_map_filter.min_keyframes);
 
-                globalSurfCloud = voxelMapToCloud(voxSurf, globalStaticMinKF);
+                globalSurfCloud = voxelMapToCloud(voxSurf, config_.mapping.static_map_filter.min_keyframes);
 
                 std::cout
                     << "Static-map filter: voxel=" << std::fixed << std::setprecision(2)
-                    << globalStaticVoxelSize << " m, minKF=" << globalStaticMinKF
-                    << ", filterCorner=" << (globalStaticFilterCorners ? "true" : "false")
+                    << config_.mapping.static_map_filter.voxel_size << " m, minKF=" << config_.mapping.static_map_filter.min_keyframes
+                    << ", filterCorner=" << (config_.mapping.static_map_filter.filter_corners ? "true" : "false")
                     << " | corner " << rawCornerPts << " -> " << globalCornerCloud->size()
                     << " | surf "   << rawSurfPts   << " -> " << globalSurfCloud->size()
                 << std::endl;
@@ -454,9 +463,9 @@ public:
 
             shiftSavedMapCloudZ(globalCornerCloud);
             shiftSavedMapCloudZ(globalSurfCloud);
-            if (alignSavedMapGroundToZero)
+            if (config_.mapping.map_save.align_ground_to_zero)
             {
-                std::cout << "Saved map Z offset: " << savedMapGroundZOffset
+                std::cout << "Saved map Z offset: " << config_.mapping.map_save.ground_z_offset
                      << " m (align ground to map z=0)" << std::endl;
             }
 
@@ -517,15 +526,15 @@ public:
             }
             if (groundRes != req->resolution)
                 std::cout << "Ground save resolution: " << groundRes << std::endl;
-            bool tiledMapSaved = !saveTiledMap;
-            if (saveTiledMap && ret == 0 && groundSaved && scanContextDbSaved)
+            bool tiledMapSaved = !config_.mapping.map_save.save_tiled_map;
+            if (config_.mapping.map_save.save_tiled_map && ret == 0 && groundSaved && scanContextDbSaved)
             {
                 localization_map::TileMapGeneratorOptions options;
                 options.map_directory = saveMapDirectory;
-                options.output_subdirectory = tiledMapOutputSubdirectory;
-                options.tile_size_m = tiledMapSizeMeters;
-                options.overview_resolution_m = tiledMapOverviewResolutionMeters;
-                options.frame_id = mapFrame;
+                options.output_subdirectory = config_.mapping.map_save.tiled_map.output_subdirectory;
+                options.tile_size_m = config_.mapping.map_save.tiled_map.tile_size_m;
+                options.overview_resolution_m = config_.mapping.map_save.tiled_map.overview_resolution_m;
+                options.frame_id = config_.frames.map;
                 try
                 {
                     const auto result = localization_map::GenerateTileMap(options);
@@ -542,8 +551,8 @@ public:
             }
             res->success =
                 (ret == 0) && groundSaved && scanContextDbSaved && tiledMapSaved;
-            downSizeFilterCorner.setLeafSize(mappingCornerLeafSize, mappingCornerLeafSize, mappingCornerLeafSize);
-            downSizeFilterSurf.setLeafSize(mappingSurfLeafSize, mappingSurfLeafSize, mappingSurfLeafSize);
+            downSizeFilterCorner.setLeafSize(config_.mapping.voxel_filter.mapping_corner_leaf_size, config_.mapping.voxel_filter.mapping_corner_leaf_size, config_.mapping.voxel_filter.mapping_corner_leaf_size);
+            downSizeFilterSurf.setLeafSize(config_.mapping.voxel_filter.mapping_surface_leaf_size, config_.mapping.voxel_filter.mapping_surface_leaf_size, config_.mapping.voxel_filter.mapping_surface_leaf_size);
             std::cout << "****************************************************" << std::endl;
             std::cout << "Saving map to pcd files completed\n" << std::endl;
             return;
@@ -555,18 +564,18 @@ public:
         {
             RCLCPP_WARN(get_logger(), "mappingMode=false: save_map service disabled");
         }
-        pubHistoryKeyFrames = create_publisher<sensor_msgs::msg::PointCloud2>("lio_sam/mapping/icp_loop_closure_history_cloud", 1);
-        pubIcpKeyFrames = create_publisher<sensor_msgs::msg::PointCloud2>("lio_sam/mapping/icp_loop_closure_history_cloud", 1);
-        pubLoopConstraintEdge = create_publisher<visualization_msgs::msg::MarkerArray>("/lio_sam/mapping/loop_closure_constraints", 1);
+        pubHistoryKeyFrames = create_publisher<sensor_msgs::msg::PointCloud2>(config_.outputs.loop_history, 1);
+        pubIcpKeyFrames = create_publisher<sensor_msgs::msg::PointCloud2>(config_.outputs.loop_history, 1);
+        pubLoopConstraintEdge = create_publisher<visualization_msgs::msg::MarkerArray>(config_.outputs.loop_constraints, 1);
 
-        pubRecentKeyFrames = create_publisher<sensor_msgs::msg::PointCloud2>("lio_sam/mapping/map_local", 1);
-        pubRecentKeyFrame = create_publisher<sensor_msgs::msg::PointCloud2>("lio_sam/mapping/cloud_registered", 1);
-        pubCloudRegisteredRaw = create_publisher<sensor_msgs::msg::PointCloud2>("lio_sam/mapping/cloud_registered_raw", 1);
+        pubRecentKeyFrames = create_publisher<sensor_msgs::msg::PointCloud2>(config_.outputs.local_map, 1);
+        pubRecentKeyFrame = create_publisher<sensor_msgs::msg::PointCloud2>(config_.outputs.registered_cloud, 1);
+        pubCloudRegisteredRaw = create_publisher<sensor_msgs::msg::PointCloud2>(config_.outputs.registered_cloud_raw, 1);
 
-        downSizeFilterCorner.setLeafSize(mappingCornerLeafSize, mappingCornerLeafSize, mappingCornerLeafSize);
-        downSizeFilterSurf.setLeafSize(mappingSurfLeafSize, mappingSurfLeafSize, mappingSurfLeafSize);
-        downSizeFilterICP.setLeafSize(mappingSurfLeafSize, mappingSurfLeafSize, mappingSurfLeafSize);
-        downSizeFilterSurroundingKeyPoses.setLeafSize(surroundingKeyframeDensity, surroundingKeyframeDensity, surroundingKeyframeDensity); // for surrounding key poses of scan-to-map optimization
+        downSizeFilterCorner.setLeafSize(config_.mapping.voxel_filter.mapping_corner_leaf_size, config_.mapping.voxel_filter.mapping_corner_leaf_size, config_.mapping.voxel_filter.mapping_corner_leaf_size);
+        downSizeFilterSurf.setLeafSize(config_.mapping.voxel_filter.mapping_surface_leaf_size, config_.mapping.voxel_filter.mapping_surface_leaf_size, config_.mapping.voxel_filter.mapping_surface_leaf_size);
+        downSizeFilterICP.setLeafSize(config_.mapping.voxel_filter.mapping_surface_leaf_size, config_.mapping.voxel_filter.mapping_surface_leaf_size, config_.mapping.voxel_filter.mapping_surface_leaf_size);
+        downSizeFilterSurroundingKeyPoses.setLeafSize(config_.mapping.local_map.keyframe_density, config_.mapping.local_map.keyframe_density, config_.mapping.local_map.keyframe_density); // for surrounding key poses of scan-to-map optimization
 
         allocateMemory();
     }
@@ -574,7 +583,9 @@ public:
     std::shared_ptr<IVoxMap> CreateSurfIVoxMap() const
     {
         IVoxMap::Options options;
-        options.resolution_ = std::max(kSurfIVoxResolution, mappingSurfLeafSize);
+        options.resolution_ = std::max(
+            kSurfIVoxResolution,
+            static_cast<float>(config_.mapping.voxel_filter.mapping_surface_leaf_size));
         options.nearby_type_ = IVoxMap::NearbyType::NEARBY18;
         options.capacity_ = 1000000;
         options.num_nearest_points_ = kSurfMapNeighborCount;
@@ -584,7 +595,9 @@ public:
     std::shared_ptr<IVoxMap> CreateCornerIVoxMap() const
     {
         IVoxMap::Options options;
-        options.resolution_ = std::max(kCornerIVoxResolution, mappingCornerLeafSize);
+        options.resolution_ = std::max(
+            kCornerIVoxResolution,
+            static_cast<float>(config_.mapping.voxel_filter.mapping_corner_leaf_size));
         options.nearby_type_ = IVoxMap::NearbyType::NEARBY18;
         options.capacity_ = 1000000;
         options.num_nearest_points_ = kCornerMapNeighborCount;
@@ -681,7 +694,7 @@ public:
 
         kdtreeSurroundingKeyPoses->setInputCloud(cloudKeyPoses3D);
         kdtreeSurroundingKeyPoses->radiusSearch(
-            cloudKeyPoses3D->back(), static_cast<double>(surroundingKeyframeSearchRadius),
+            cloudKeyPoses3D->back(), static_cast<double>(config_.mapping.local_map.search_radius),
             pointSearchInd, pointSearchSqDis);
 
         surroundingKeyPoses->reserve(pointSearchInd.size());
@@ -741,7 +754,7 @@ public:
                 continue;
 
             if (pointDistance(cloudKeyPoses3D->points[thisKeyInd], cloudKeyPoses3D->back()) >
-                surroundingKeyframeSearchRadius)
+                config_.mapping.local_map.search_radius)
             {
                 continue;
             }
@@ -799,12 +812,12 @@ public:
         laserCloudOri.reset(new pcl::PointCloud<PointType>());
         coeffSel.reset(new pcl::PointCloud<PointType>());
 
-        laserCloudOriCornerVec.resize(N_SCAN * Horizon_SCAN);
-        coeffSelCornerVec.resize(N_SCAN * Horizon_SCAN);
-        laserCloudOriCornerFlag.resize(N_SCAN * Horizon_SCAN);
-        laserCloudOriSurfVec.resize(N_SCAN * Horizon_SCAN);
-        coeffSelSurfVec.resize(N_SCAN * Horizon_SCAN);
-        laserCloudOriSurfFlag.resize(N_SCAN * Horizon_SCAN);
+        laserCloudOriCornerVec.resize(config_.mapping.lidar.scan_lines * config_.mapping.lidar.horizon_scan);
+        coeffSelCornerVec.resize(config_.mapping.lidar.scan_lines * config_.mapping.lidar.horizon_scan);
+        laserCloudOriCornerFlag.resize(config_.mapping.lidar.scan_lines * config_.mapping.lidar.horizon_scan);
+        laserCloudOriSurfVec.resize(config_.mapping.lidar.scan_lines * config_.mapping.lidar.horizon_scan);
+        coeffSelSurfVec.resize(config_.mapping.lidar.scan_lines * config_.mapping.lidar.horizon_scan);
+        laserCloudOriSurfFlag.resize(config_.mapping.lidar.scan_lines * config_.mapping.lidar.horizon_scan);
 
         std::fill(laserCloudOriCornerFlag.begin(), laserCloudOriCornerFlag.end(), false);
         std::fill(laserCloudOriSurfFlag.begin(), laserCloudOriSurfFlag.end(), false);
@@ -840,7 +853,7 @@ public:
         std::lock_guard<std::mutex> lock(mtx);
 
         static double timeLastProcessing = -1;
-        if (timeLaserInfoCur - timeLastProcessing >= mappingProcessInterval)
+        if (timeLaserInfoCur - timeLastProcessing >= config_.mapping.system.mapping_process_interval)
         {
             timeLastProcessing = timeLaserInfoCur;
 
@@ -855,7 +868,7 @@ public:
 
             publishOdometry();
 
-            if (mappingMode)
+            if (config_.mapping.system.mapping_mode)
                 publishFrames();
         }
     }
@@ -882,7 +895,7 @@ public:
 
         Eigen::Affine3f transCur = pcl::getTransformation(transformIn->x, transformIn->y, transformIn->z, transformIn->roll, transformIn->pitch, transformIn->yaw);
         
-        #pragma omp parallel for num_threads(numberOfCores)
+        #pragma omp parallel for num_threads(config_.mapping.system.number_of_cores)
         for (int i = 0; i < cloudSize; ++i)
         {
             const auto &pointFrom = cloudIn->points[i];
@@ -933,22 +946,25 @@ public:
         rclcpp::Rate rate(1.0);
         while (rclcpp::ok()){
             rate.sleep();
-            if (!mappingMode)
+            if (!config_.mapping.system.mapping_mode)
                 continue;
             publishGlobalMap();
             publishGlobalGroundMap();
         }
-        if (savePCD == false)
+        if (save_map_enabled_ == false)
             return;
         std::cout << "****************************************************" << std::endl;
         std::cout << "Saving map to pcd files ..." << std::endl;
 
-        savePCDDirectory = std::getenv("HOME") + savePCDDirectory;
-        int unused = system((std::string("exec rm -r ") + savePCDDirectory).c_str());
-        unused = system((std::string("mkdir ") + savePCDDirectory).c_str());
+        // Resolve the configured directory against $HOME for this run only;
+        // the shared configuration itself stays immutable.
+        const std::string save_directory =
+            std::getenv("HOME") + config_.mapping.map_save.directory;
+        int unused = system((std::string("exec rm -r ") + save_directory).c_str());
+        unused = system((std::string("mkdir ") + save_directory).c_str());
 
-        pcl::io::savePCDFileASCII(savePCDDirectory + "trajectory.pcd", *cloudKeyPoses3D);
-        pcl::io::savePCDFileASCII(savePCDDirectory + "transformations.pcd", *cloudKeyPoses6D);
+        pcl::io::savePCDFileASCII(save_directory + "trajectory.pcd", *cloudKeyPoses3D);
+        pcl::io::savePCDFileASCII(save_directory + "transformations.pcd", *cloudKeyPoses6D);
 
         pcl::PointCloud<PointType>::Ptr globalCornerCloud(new pcl::PointCloud<PointType>());
         pcl::PointCloud<PointType>::Ptr globalCornerCloudDS(new pcl::PointCloud<PointType>());
@@ -965,19 +981,19 @@ public:
         }
         shiftSavedMapCloudZ(globalCornerCloud);
         shiftSavedMapCloudZ(globalSurfCloud);
-        if (alignSavedMapGroundToZero)
+        if (config_.mapping.map_save.align_ground_to_zero)
         {
-            std::cout << "Saved map Z offset: " << savedMapGroundZOffset
+            std::cout << "Saved map Z offset: " << config_.mapping.map_save.ground_z_offset
                  << " m (align ground to map z=0)" << std::endl;
         }
 
-        if (savePCDResolution > 0.0f)
+        if (config_.mapping.map_save.resolution > 0.0f)
         {
-            downSizeFilterCorner.setLeafSize(savePCDResolution, savePCDResolution, savePCDResolution);
+            downSizeFilterCorner.setLeafSize(config_.mapping.map_save.resolution, config_.mapping.map_save.resolution, config_.mapping.map_save.resolution);
             downSizeFilterCorner.setInputCloud(globalCornerCloud);
             downSizeFilterCorner.filter(*globalCornerCloudDS);
 
-            downSizeFilterSurf.setLeafSize(savePCDResolution, savePCDResolution, savePCDResolution);
+            downSizeFilterSurf.setLeafSize(config_.mapping.map_save.resolution, config_.mapping.map_save.resolution, config_.mapping.map_save.resolution);
             downSizeFilterSurf.setInputCloud(globalSurfCloud);
             downSizeFilterSurf.filter(*globalSurfCloudDS);
 
@@ -992,12 +1008,12 @@ public:
             *globalMapCloud += *globalSurfCloud;
         }
 
-        pcl::io::savePCDFileASCII(savePCDDirectory + "cloudCorner.pcd", *globalCornerCloudDS);
-        pcl::io::savePCDFileASCII(savePCDDirectory + "cloudSurf.pcd", *globalSurfCloudDS);
-        pcl::io::savePCDFileASCII(savePCDDirectory + "cloudGlobal.pcd", *globalMapCloud);
-        saveGlobalGroundMap(savePCDDirectory + "cloudGround.pcd", saveGroundPCDResolution, false);
-        downSizeFilterCorner.setLeafSize(mappingCornerLeafSize, mappingCornerLeafSize, mappingCornerLeafSize);
-        downSizeFilterSurf.setLeafSize(mappingSurfLeafSize, mappingSurfLeafSize, mappingSurfLeafSize);
+        pcl::io::savePCDFileASCII(save_directory + "cloudCorner.pcd", *globalCornerCloudDS);
+        pcl::io::savePCDFileASCII(save_directory + "cloudSurf.pcd", *globalSurfCloudDS);
+        pcl::io::savePCDFileASCII(save_directory + "cloudGlobal.pcd", *globalMapCloud);
+        saveGlobalGroundMap(save_directory + "cloudGround.pcd", config_.mapping.map_save.ground_resolution, false);
+        downSizeFilterCorner.setLeafSize(config_.mapping.voxel_filter.mapping_corner_leaf_size, config_.mapping.voxel_filter.mapping_corner_leaf_size, config_.mapping.voxel_filter.mapping_corner_leaf_size);
+        downSizeFilterSurf.setLeafSize(config_.mapping.voxel_filter.mapping_surface_leaf_size, config_.mapping.voxel_filter.mapping_surface_leaf_size, config_.mapping.voxel_filter.mapping_surface_leaf_size);
         std::cout << "****************************************************" << std::endl;
         std::cout << "Saving map to pcd files completed" << std::endl;
     }
@@ -1005,40 +1021,40 @@ public:
     // 保存地图时可整体平移Z，使导出的PCD地面落到map.z=0。
     void shiftSavedMapCloudZ(const pcl::PointCloud<PointType>::Ptr &cloud) const
     {
-        if (!alignSavedMapGroundToZero || cloud == nullptr)
+        if (!config_.mapping.map_save.align_ground_to_zero || cloud == nullptr)
             return;
 
         for (auto &point : cloud->points)
-            point.z += savedMapGroundZOffset;
+            point.z += config_.mapping.map_save.ground_z_offset;
     }
 
     // 在导出地面地图前按配置压平高度，便于与现有地面导出参数兼容。
     void flattenGroundCloudForSave(const pcl::PointCloud<PointType>::Ptr &cloud) const
     {
-        if (!groundFlattenZ || cloud == nullptr)
+        if (!config_.mapping.ground_segmentation.flatten_z || cloud == nullptr)
             return;
 
-        const float target_z = alignSavedMapGroundToZero ? 0.0f : groundFlattenValue;
+        const float target_z = config_.mapping.map_save.align_ground_to_zero ? 0.0f : config_.mapping.ground_segmentation.flatten_value;
         for (auto &point : cloud->points)
             point.z = target_z;
     }
 
     void appendGlobalGroundGridPatches(pcl::PointCloud<PointType>::Ptr cloud) const
     {
-        if (!groundGridPatchEnable)
+        if (!config_.mapping.ground_segmentation.grid_patch.enable)
             return;
 
         lio_sam_hesai::GroundGridPatchOptions options;
-        options.resolution = groundGridPatchResolution;
-        options.search_radius = groundGridPatchSearchRadius;
-        options.max_slope_deg = groundGridPatchMaxSlopeDeg;
-        options.plane_distance_threshold = groundPlaneDistance;
-        options.max_height_range = groundGridPatchMaxHeightRange;
-        options.max_roughness = groundGridPatchMaxRoughness;
-        options.max_prediction_margin = groundGridPatchMaxPredictionMargin;
-        options.min_plane_inlier_ratio = groundGridPatchMinInlierRatio;
-        options.min_neighbor_cells = groundGridPatchMinNeighborCells;
-        options.min_support_quadrants = groundGridPatchMinSupportQuadrants;
+        options.resolution = config_.mapping.ground_segmentation.grid_patch.resolution;
+        options.search_radius = config_.mapping.ground_segmentation.grid_patch.search_radius;
+        options.max_slope_deg = config_.mapping.ground_segmentation.grid_patch.max_slope_deg;
+        options.plane_distance_threshold = config_.mapping.ground_segmentation.plane_distance;
+        options.max_height_range = config_.mapping.ground_segmentation.grid_patch.max_height_range;
+        options.max_roughness = config_.mapping.ground_segmentation.grid_patch.max_roughness;
+        options.max_prediction_margin = config_.mapping.ground_segmentation.grid_patch.max_prediction_margin;
+        options.min_plane_inlier_ratio = config_.mapping.ground_segmentation.grid_patch.min_inlier_ratio;
+        options.min_neighbor_cells = config_.mapping.ground_segmentation.grid_patch.min_neighbor_cells;
+        options.min_support_quadrants = config_.mapping.ground_segmentation.grid_patch.min_support_quadrants;
         lio_sam_hesai::appendGroundGridPatches(cloud, options);
     }
 
@@ -1080,8 +1096,8 @@ public:
             return globalGroundKeyFrames;
 
         const bool useStaticFilter =
-            globalStaticMapFilterEnable && globalStaticVoxelSize > 1e-3f &&
-            globalStaticMinKF > 1;
+            config_.mapping.static_map_filter.enable && config_.mapping.static_map_filter.voxel_size > 1e-3f &&
+            config_.mapping.static_map_filter.min_keyframes > 1;
 
         if (useStaticFilter)
         {
@@ -1098,9 +1114,9 @@ public:
 
                 pcl::PointCloud<PointType>::Ptr ground = transformPointCloud(
                     groundCloudKeyFrames[keyIndex], &cloudKeyPoses6D->points[keyIndex]);
-                accumulateVoxelMap(vox, ground, keyIndex, globalStaticVoxelSize);
+                accumulateVoxelMap(vox, ground, keyIndex, config_.mapping.static_map_filter.voxel_size);
             }
-            globalGroundKeyFrames = voxelMapToCloud(vox, globalStaticMinKF);
+            globalGroundKeyFrames = voxelMapToCloud(vox, config_.mapping.static_map_filter.min_keyframes);
         }
         else
         {
@@ -1135,7 +1151,7 @@ public:
     // 将全局地面点云保存到与全局地图相同的输出目录中。
     bool saveGlobalGroundMap(const std::string &filePath, float leafSize, bool useBinary)
     {
-        if (!saveGroundPCD)
+        if (!config_.mapping.map_save.save_ground_map)
             return true;
 
         pcl::PointCloud<PointType>::Ptr globalGroundMap =
@@ -1169,7 +1185,7 @@ public:
         for (const auto &pose : globalMapKeyPosesDS->points)
         {
             if (pointDistance(pose, cloudKeyPoses3D->back()) >
-                globalMapVisualizationSearchRadius)
+                config_.mapping.visualization.global_map_search_radius)
             {
                 continue;
             }
@@ -1178,12 +1194,12 @@ public:
         }
 
         return buildGlobalGroundMapFromIndices(
-            keyFrameIndices, globalMapVisualizationLeafSize);
+            keyFrameIndices, config_.mapping.visualization.global_map_leaf_size);
     }
 
     void publishGlobalGroundMap()
     {
-        if (!mappingMode)
+        if (!config_.mapping.system.mapping_mode)
             return;
         if (pubGroundCloudSurround->get_subscription_count() == 0)
             return;
@@ -1201,7 +1217,7 @@ public:
         kdtreeGlobalMap->setInputCloud(cloudKeyPoses3D);
         kdtreeGlobalMap->radiusSearch(
             cloudKeyPoses3D->back(),
-            globalMapVisualizationSearchRadius,
+            config_.mapping.visualization.global_map_search_radius,
             pointSearchIndGlobalMap,
             pointSearchSqDisGlobalMap,
             0);
@@ -1212,9 +1228,9 @@ public:
 
         pcl::VoxelGrid<PointType> downSizeFilterGlobalMapKeyPoses;
         downSizeFilterGlobalMapKeyPoses.setLeafSize(
-            globalMapVisualizationPoseDensity,
-            globalMapVisualizationPoseDensity,
-            globalMapVisualizationPoseDensity);
+            config_.mapping.visualization.global_map_pose_density,
+            config_.mapping.visualization.global_map_pose_density,
+            config_.mapping.visualization.global_map_pose_density);
         downSizeFilterGlobalMapKeyPoses.setInputCloud(globalMapKeyPoses);
         downSizeFilterGlobalMapKeyPoses.filter(*globalMapKeyPosesDS);
 
@@ -1226,12 +1242,12 @@ public:
 
         pcl::PointCloud<PointType>::Ptr globalGroundKeyFramesDS =
             buildGlobalGroundMapFromKeyPoses(globalMapKeyPosesDS);
-        publishCloud(pubGroundCloudSurround, globalGroundKeyFramesDS, timeLaserInfoStamp, odometryFrame);
+        publishCloud(pubGroundCloudSurround, globalGroundKeyFramesDS, timeLaserInfoStamp, config_.frames.odometry);
     }
 
     void publishGlobalMap()
     {
-        if (!mappingMode)
+        if (!config_.mapping.system.mapping_mode)
             return;
         if (pubLaserCloudSurround->get_subscription_count() == 0)
             return;
@@ -1251,14 +1267,14 @@ public:
         // search near key frames to visualize
         mtx.lock();
         kdtreeGlobalMap->setInputCloud(cloudKeyPoses3D);
-        kdtreeGlobalMap->radiusSearch(cloudKeyPoses3D->back(), globalMapVisualizationSearchRadius, pointSearchIndGlobalMap, pointSearchSqDisGlobalMap, 0);
+        kdtreeGlobalMap->radiusSearch(cloudKeyPoses3D->back(), config_.mapping.visualization.global_map_search_radius, pointSearchIndGlobalMap, pointSearchSqDisGlobalMap, 0);
         mtx.unlock();
 
         for (int i = 0; i < (int)pointSearchIndGlobalMap.size(); ++i)
             globalMapKeyPoses->push_back(cloudKeyPoses3D->points[pointSearchIndGlobalMap[i]]);
         // downsample near selected key frames
         pcl::VoxelGrid<PointType> downSizeFilterGlobalMapKeyPoses; // for global map visualization
-        downSizeFilterGlobalMapKeyPoses.setLeafSize(globalMapVisualizationPoseDensity, globalMapVisualizationPoseDensity, globalMapVisualizationPoseDensity); // for global map visualization
+        downSizeFilterGlobalMapKeyPoses.setLeafSize(config_.mapping.visualization.global_map_pose_density, config_.mapping.visualization.global_map_pose_density, config_.mapping.visualization.global_map_pose_density); // for global map visualization
         downSizeFilterGlobalMapKeyPoses.setInputCloud(globalMapKeyPoses);
         downSizeFilterGlobalMapKeyPoses.filter(*globalMapKeyPosesDS);
 
@@ -1269,31 +1285,31 @@ public:
         }
 
         // extract visualized and downsampled key frames
-        if (globalStaticMapFilterEnable && globalStaticVoxelSize > 1e-3f && globalStaticMinKF > 1)
+        if (config_.mapping.static_map_filter.enable && config_.mapping.static_map_filter.voxel_size > 1e-3f && config_.mapping.static_map_filter.min_keyframes > 1)
         {
             std::unordered_map<VoxelIndex, VoxelAcc, VoxelIndexHash> vox;
             // Rough reserve: (num keyframes) * (points per keyframe / (voxel aggregation factor))
             vox.reserve((size_t)globalMapKeyPosesDS->size() * 200);
 
             for (int i = 0; i < (int)globalMapKeyPosesDS->size(); ++i){
-                if (pointDistance(globalMapKeyPosesDS->points[i], cloudKeyPoses3D->back()) > globalMapVisualizationSearchRadius)
+                if (pointDistance(globalMapKeyPosesDS->points[i], cloudKeyPoses3D->back()) > config_.mapping.visualization.global_map_search_radius)
                     continue;
                 int thisKeyInd = (int)globalMapKeyPosesDS->points[i].intensity;
 
                 pcl::PointCloud<PointType>::Ptr corner = transformPointCloud(cornerCloudKeyFrames[thisKeyInd], &cloudKeyPoses6D->points[thisKeyInd]);
                 pcl::PointCloud<PointType>::Ptr surf   = transformPointCloud(surfCloudKeyFrames[thisKeyInd],   &cloudKeyPoses6D->points[thisKeyInd]);
 
-                if (globalStaticFilterCorners)
-                    accumulateVoxelMap(vox, corner, thisKeyInd, globalStaticVoxelSize);
-                accumulateVoxelMap(vox, surf, thisKeyInd, globalStaticVoxelSize);
+                if (config_.mapping.static_map_filter.filter_corners)
+                    accumulateVoxelMap(vox, corner, thisKeyInd, config_.mapping.static_map_filter.voxel_size);
+                accumulateVoxelMap(vox, surf, thisKeyInd, config_.mapping.static_map_filter.voxel_size);
             }
 
-            globalMapKeyFrames = voxelMapToCloud(vox, globalStaticMinKF);
+            globalMapKeyFrames = voxelMapToCloud(vox, config_.mapping.static_map_filter.min_keyframes);
         }
         else
         {
             for (int i = 0; i < (int)globalMapKeyPosesDS->size(); ++i){
-                if (pointDistance(globalMapKeyPosesDS->points[i], cloudKeyPoses3D->back()) > globalMapVisualizationSearchRadius)
+                if (pointDistance(globalMapKeyPosesDS->points[i], cloudKeyPoses3D->back()) > config_.mapping.visualization.global_map_search_radius)
                     continue;
                 int thisKeyInd = (int)globalMapKeyPosesDS->points[i].intensity;
                 *globalMapKeyFrames += *transformPointCloud(cornerCloudKeyFrames[thisKeyInd],  &cloudKeyPoses6D->points[thisKeyInd]);
@@ -1302,19 +1318,19 @@ public:
         }
         // downsample visualized points
         pcl::VoxelGrid<PointType> downSizeFilterGlobalMapKeyFrames; // for global map visualization
-        downSizeFilterGlobalMapKeyFrames.setLeafSize(globalMapVisualizationLeafSize, globalMapVisualizationLeafSize, globalMapVisualizationLeafSize); // for global map visualization
+        downSizeFilterGlobalMapKeyFrames.setLeafSize(config_.mapping.visualization.global_map_leaf_size, config_.mapping.visualization.global_map_leaf_size, config_.mapping.visualization.global_map_leaf_size); // for global map visualization
         downSizeFilterGlobalMapKeyFrames.setInputCloud(globalMapKeyFrames);
         downSizeFilterGlobalMapKeyFrames.filter(*globalMapKeyFramesDS);
 
-        publishCloud(pubLaserCloudSurround, globalMapKeyFramesDS, timeLaserInfoStamp, odometryFrame);
+        publishCloud(pubLaserCloudSurround, globalMapKeyFramesDS, timeLaserInfoStamp, config_.frames.odometry);
     }
 
     void loopClosureThread()
     {
-        if (loopClosureEnableFlag == false)
+        if (loop_closure_enabled_ == false)
             return;
 
-        rclcpp::Rate rate(loopClosureFrequency);
+        rclcpp::Rate rate(config_.mapping.loop_closure.frequency);
         while (rclcpp::ok())
         {
             rate.sleep();
@@ -1357,16 +1373,16 @@ public:
         pcl::PointCloud<PointType>::Ptr prevKeyframeCloud(new pcl::PointCloud<PointType>());
         {
             loopFindNearKeyframes(cureKeyframeCloud, loopKeyCur, 0);
-            loopFindNearKeyframes(prevKeyframeCloud, loopKeyPre, historyKeyframeSearchNum);
+            loopFindNearKeyframes(prevKeyframeCloud, loopKeyPre, config_.mapping.loop_closure.history_search_count);
             if (cureKeyframeCloud->size() < 300 || prevKeyframeCloud->size() < 1000)
                 return;
             if (pubHistoryKeyFrames->get_subscription_count() != 0)
-                publishCloud(pubHistoryKeyFrames, prevKeyframeCloud, timeLaserInfoStamp, odometryFrame);
+                publishCloud(pubHistoryKeyFrames, prevKeyframeCloud, timeLaserInfoStamp, config_.frames.odometry);
         }
 
         // ICP Settings
         static pcl::IterativeClosestPoint<PointType, PointType> icp;
-        icp.setMaxCorrespondenceDistance(historyKeyframeSearchRadius*2);
+        icp.setMaxCorrespondenceDistance(config_.mapping.loop_closure.history_search_radius*2);
         icp.setMaximumIterations(100);
         icp.setTransformationEpsilon(1e-6);
         icp.setEuclideanFitnessEpsilon(1e-6);
@@ -1378,7 +1394,7 @@ public:
         pcl::PointCloud<PointType>::Ptr unused_result(new pcl::PointCloud<PointType>());
         icp.align(*unused_result);
 
-        if (icp.hasConverged() == false || icp.getFitnessScore() > historyKeyframeFitnessScore)
+        if (icp.hasConverged() == false || icp.getFitnessScore() > config_.mapping.loop_closure.fitness_threshold)
             return;
 
         // publish corrected cloud
@@ -1386,7 +1402,7 @@ public:
         {
             pcl::PointCloud<PointType>::Ptr closed_cloud(new pcl::PointCloud<PointType>());
             pcl::transformPointCloud(*cureKeyframeCloud, *closed_cloud, icp.getFinalTransformation());
-            publishCloud(pubIcpKeyFrames, closed_cloud, timeLaserInfoStamp, odometryFrame);
+            publishCloud(pubIcpKeyFrames, closed_cloud, timeLaserInfoStamp, config_.frames.odometry);
         }
 
         // Get pose transformation
@@ -1430,12 +1446,12 @@ public:
         std::vector<int> pointSearchIndLoop;
         std::vector<float> pointSearchSqDisLoop;
         kdtreeHistoryKeyPoses->setInputCloud(copy_cloudKeyPoses3D);
-        kdtreeHistoryKeyPoses->radiusSearch(copy_cloudKeyPoses3D->back(), historyKeyframeSearchRadius, pointSearchIndLoop, pointSearchSqDisLoop, 0);
+        kdtreeHistoryKeyPoses->radiusSearch(copy_cloudKeyPoses3D->back(), config_.mapping.loop_closure.history_search_radius, pointSearchIndLoop, pointSearchSqDisLoop, 0);
         
         for (int i = 0; i < (int)pointSearchIndLoop.size(); ++i)
         {
             int id = pointSearchIndLoop[i];
-            if (abs(copy_cloudKeyPoses6D->points[id].time - timeLaserInfoCur) > historyKeyframeSearchTimeDiff)
+            if (abs(copy_cloudKeyPoses6D->points[id].time - timeLaserInfoCur) > config_.mapping.loop_closure.history_search_time_difference)
             {
                 loopKeyPre = id;
                 break;
@@ -1465,7 +1481,7 @@ public:
         double loopTimePre = loopInfoVec.front().data[1];
         loopInfoVec.pop_front();
 
-        if (abs(loopTimeCur - loopTimePre) < historyKeyframeSearchTimeDiff)
+        if (abs(loopTimeCur - loopTimePre) < config_.mapping.loop_closure.history_search_time_difference)
             return false;
 
         int cloudSize = copy_cloudKeyPoses6D->size();
@@ -1537,7 +1553,7 @@ public:
         visualization_msgs::msg::MarkerArray markerArray;
         // loop nodes
         visualization_msgs::msg::Marker markerNode;
-        markerNode.header.frame_id = odometryFrame;
+        markerNode.header.frame_id = config_.frames.odometry;
         markerNode.header.stamp = timeLaserInfoStamp;
         markerNode.action = visualization_msgs::msg::Marker::ADD;
         markerNode.type = visualization_msgs::msg::Marker::SPHERE_LIST;
@@ -1549,7 +1565,7 @@ public:
         markerNode.color.a = 1;
         // loop edges
         visualization_msgs::msg::Marker markerEdge;
-        markerEdge.header.frame_id = odometryFrame;
+        markerEdge.header.frame_id = config_.frames.odometry;
         markerEdge.header.stamp = timeLaserInfoStamp;
         markerEdge.action = visualization_msgs::msg::Marker::ADD;
         markerEdge.type = visualization_msgs::msg::Marker::LINE_LIST;
@@ -1605,7 +1621,7 @@ public:
             transformTobeMapped[1] = cloudInfo.imu_pitch_init;
             transformTobeMapped[2] = cloudInfo.imu_yaw_init;
 
-            if (!useImuHeadingInitialization)
+            if (!config_.mapping.gps.use_imu_heading_initialization)
                 transformTobeMapped[2] = 0;
 
             lastImuTransformation = pcl::getTransformation(0, 0, 0, cloudInfo.imu_roll_init, cloudInfo.imu_pitch_init, cloudInfo.imu_yaw_init); // save imu before return;
@@ -1660,7 +1676,7 @@ public:
         int numPoses = cloudKeyPoses3D->size();
         for (int i = numPoses-1; i >= 0; --i)
         {
-            if ((int)cloudToExtract->size() <= surroundingKeyframeSize)
+            if ((int)cloudToExtract->size() <= config_.mapping.loop_closure.surrounding_keyframe_size)
                 cloudToExtract->push_back(cloudKeyPoses3D->points[i]);
             else
                 break;
@@ -1687,7 +1703,7 @@ public:
         laserCloudSurfFromMap->clear(); 
         for (int i = 0; i < (int)cloudToExtract->size(); ++i)
         {
-            if (pointDistance(cloudToExtract->points[i], cloudKeyPoses3D->back()) > surroundingKeyframeSearchRadius)
+            if (pointDistance(cloudToExtract->points[i], cloudKeyPoses3D->back()) > config_.mapping.local_map.search_radius)
                 continue;
 
             int thisKeyInd = (int)cloudToExtract->points[i].intensity;
@@ -1728,7 +1744,7 @@ public:
         if (cloudKeyPoses3D->points.empty() == true)
             return; 
         
-        // if (loopClosureEnableFlag == true)
+        // if (config_.mapping.loop_closure.enable == true)
         // {
         //     extractForLoopClosure();    
         // } else {
@@ -1761,7 +1777,7 @@ public:
     {
         updatePointAssociateToMap();
 
-        #pragma omp parallel for num_threads(numberOfCores)
+        #pragma omp parallel for num_threads(config_.mapping.system.number_of_cores)
         for (int i = 0; i < laserCloudCornerLastDSNum; i++)
         {
             PointType pointOri, pointSel, coeff;
@@ -1874,7 +1890,7 @@ public:
     {
         updatePointAssociateToMap();
 
-        #pragma omp parallel for num_threads(numberOfCores)
+        #pragma omp parallel for num_threads(config_.mapping.system.number_of_cores)
         for (int i = 0; i < laserCloudSurfLastDSNum; i++)
         {
             PointType pointOri, pointSel, coeff;
@@ -2090,7 +2106,7 @@ public:
         if (cloudKeyPoses3D->points.empty())
             return;
 
-        if (laserCloudCornerLastDSNum > edgeFeatureMinValidNum && laserCloudSurfLastDSNum > surfFeatureMinValidNum)
+        if (laserCloudCornerLastDSNum > config_.mapping.feature_extraction.min_edge_features && laserCloudSurfLastDSNum > config_.mapping.feature_extraction.min_surface_features)
         {
             for (int iterCount = 0; iterCount < 15; iterCount++)
             {
@@ -2118,7 +2134,7 @@ public:
         {
             if (std::abs(cloudInfo.imu_pitch_init) < 1.4)
             {
-                double imuWeight = imuRPYWeight;
+                double imuWeight = config_.mapping.imu.rpy_weight;
                 tf2::Quaternion imuQuaternion;
                 tf2::Quaternion transformQuaternion;
                 double rollMid, pitchMid, yawMid;
@@ -2137,9 +2153,9 @@ public:
             }
         }
 
-        transformTobeMapped[0] = constraintTransformation(transformTobeMapped[0], rotation_tollerance);
-        transformTobeMapped[1] = constraintTransformation(transformTobeMapped[1], rotation_tollerance);
-        transformTobeMapped[5] = constraintTransformation(transformTobeMapped[5], z_tollerance);
+        transformTobeMapped[0] = constraintTransformation(transformTobeMapped[0], config_.mapping.motion_constraint.rotation_tolerance);
+        transformTobeMapped[1] = constraintTransformation(transformTobeMapped[1], config_.mapping.motion_constraint.rotation_tolerance);
+        transformTobeMapped[5] = constraintTransformation(transformTobeMapped[5], config_.mapping.motion_constraint.z_tolerance);
 
         incrementalOdometryAffineBack = trans2Affine3f(transformTobeMapped);
     }
@@ -2172,10 +2188,10 @@ public:
         float x, y, z, roll, pitch, yaw;
         pcl::getTranslationAndEulerAngles(transBetween, x, y, z, roll, pitch, yaw);
 
-        if (abs(roll)  < surroundingkeyframeAddingAngleThreshold &&
-            abs(pitch) < surroundingkeyframeAddingAngleThreshold &&
-            abs(yaw)   < surroundingkeyframeAddingAngleThreshold &&
-            sqrt(x*x + y*y + z*z) < surroundingkeyframeAddingDistThreshold)
+        if (abs(roll)  < config_.mapping.local_map.keyframe_angle_threshold &&
+            abs(pitch) < config_.mapping.local_map.keyframe_angle_threshold &&
+            abs(yaw)   < config_.mapping.local_map.keyframe_angle_threshold &&
+            sqrt(x*x + y*y + z*z) < config_.mapping.local_map.keyframe_distance_threshold)
             return false;
 
         return true;
@@ -2212,7 +2228,7 @@ public:
         }
 
         // pose covariance small, no need to correct
-        if (poseCovariance(3,3) < poseCovThreshold && poseCovariance(4,4) < poseCovThreshold)
+        if (poseCovariance(3,3) < config_.mapping.gps.pose_covariance_threshold && poseCovariance(4,4) < config_.mapping.gps.pose_covariance_threshold)
             return;
 
         // last gps position
@@ -2239,12 +2255,12 @@ public:
                 float noise_x = thisGPS.pose.covariance[0];
                 float noise_y = thisGPS.pose.covariance[7];
                 float noise_z = thisGPS.pose.covariance[14];
-                if (noise_x > gpsCovThreshold || noise_y > gpsCovThreshold)
+                if (noise_x > config_.mapping.gps.covariance_threshold || noise_y > config_.mapping.gps.covariance_threshold)
                     continue;
                 float gps_x = thisGPS.pose.pose.position.x;
                 float gps_y = thisGPS.pose.pose.position.y;
                 float gps_z = thisGPS.pose.pose.position.z;
-                if (!useGpsElevation)
+                if (!config_.mapping.gps.use_elevation)
                 {
                     gps_z = transformTobeMapped[5];
                     noise_z = 0.01;
@@ -2301,7 +2317,7 @@ public:
         pcl::PointCloud<PointType>::Ptr out(new pcl::PointCloud<PointType>());
 
         const bool canFilter =
-            dynamicKeyframeFilterEnable &&
+            config_.mapping.dynamic_filter.enable &&
             (cloudKeyPoses3D->size() > 3) &&
             (laserCloudSurfFromMapDS->size() > 200);
 
@@ -2313,7 +2329,7 @@ public:
         // 保证坐标变换矩阵是最新的
         updatePointAssociateToMap();
 
-        const float knnMaxSq = dynamicSurfKnnMaxDist * dynamicSurfKnnMaxDist;
+        const float knnMaxSq = config_.mapping.dynamic_filter.surface_knn_max_distance * config_.mapping.dynamic_filter.surface_knn_max_distance;
         IVoxMap::PointVector nearestPoints;
 
         out->reserve(laserCloudSurfLastDS->size());
@@ -2338,7 +2354,7 @@ public:
             const bool found = ivoxSurfFromMap &&
                                ivoxSurfFromMap->GetClosestPoint(
                                    pointSel, nearestPoints, kSurfMapNeighborCount,
-                                   dynamicSurfKnnMaxDist);
+                                   config_.mapping.dynamic_filter.surface_knn_max_distance);
             float maxNeighborSqDist = 0.0f;
             for (const auto &neighborPoint : nearestPoints) {
                 const float dx = pointSel.x - neighborPoint.x;
@@ -2402,7 +2418,7 @@ public:
             float pd2 = pa*pointSel.x + pb*pointSel.y + pc*pointSel.z + pd;
 
             // 最终门控：点到平面距离过大 => 不一致 => 不入 keyframe
-            if (std::fabs(pd2) > dynamicSurfPlaneMaxDist) {
+            if (std::fabs(pd2) > config_.mapping.dynamic_filter.surface_plane_max_distance) {
                 dropped++;
                 continue;
             }
@@ -2427,7 +2443,7 @@ public:
             pcl::PointCloud<PointType>::Ptr noMatchDS(new pcl::PointCloud<PointType>());
             pcl::VoxelGrid<PointType> vg;
 
-            float leaf = mappingSurfLeafSize * 4.0f;   // 强下采样，降低动态细节残留
+            float leaf = config_.mapping.voxel_filter.mapping_surface_leaf_size * 4.0f;   // 强下采样，降低动态细节残留
             vg.setLeafSize(leaf, leaf, leaf);
             vg.setInputCloud(noMatchCloud); 
             vg.filter(*noMatchDS);
@@ -2585,7 +2601,7 @@ public:
     {
         geometry_msgs::msg::PoseStamped pose_stamped;
         pose_stamped.header.stamp = rclcpp::Time(pose_in.time * 1e9);
-        pose_stamped.header.frame_id = odometryFrame;
+        pose_stamped.header.frame_id = config_.frames.odometry;
         pose_stamped.pose.position.x = pose_in.x;
         pose_stamped.pose.position.y = pose_in.y;
         pose_stamped.pose.position.z = pose_in.z;
@@ -2602,18 +2618,14 @@ public:
     void publishOdometry()
     {
         // Publish odometry for ROS (global)
-        nav_msgs::msg::Odometry laserOdometryROS;
-        laserOdometryROS.header.stamp = timeLaserInfoStamp;
-        laserOdometryROS.header.frame_id = odometryFrame;
-        laserOdometryROS.child_frame_id = "odom_mapping";
-        laserOdometryROS.pose.pose.position.x = transformTobeMapped[3];
-        laserOdometryROS.pose.pose.position.y = transformTobeMapped[4];
-        laserOdometryROS.pose.pose.position.z = transformTobeMapped[5];
-        tf2::Quaternion quat_tf;
-        quat_tf.setRPY(transformTobeMapped[0], transformTobeMapped[1], transformTobeMapped[2]);
-        geometry_msgs::msg::Quaternion quat_msg;
-        tf2::convert(quat_tf, quat_msg);
-        laserOdometryROS.pose.pose.orientation = quat_msg;
+        // The optimizer keeps its own float[6] RPY representation; this
+        // publication point is the boundary where it becomes a direction-safe
+        // odom_T_lidar. The child frame string is unchanged.
+        const OdomTLidar odom_T_lidar = OdomTLidar::FromMatrix(
+            trans2Affine3f(transformTobeMapped).matrix().cast<double>());
+        const nav_msgs::msg::Odometry laserOdometryROS =
+            RosPoseAdapter::ToOdometry(odom_T_lidar, config_.frames.odometry,
+                                       "odom_mapping", timeLaserInfoStamp);
         pubLaserOdometryGlobal->publish(laserOdometryROS);
 
         // Publish odometry for ROS (incremental)
@@ -2653,7 +2665,7 @@ public:
                 }
             }
             laserOdomIncremental.header.stamp = timeLaserInfoStamp;
-            laserOdomIncremental.header.frame_id = odometryFrame;
+            laserOdomIncremental.header.frame_id = config_.frames.odometry;
             laserOdomIncremental.child_frame_id = "odom_mapping";
             laserOdomIncremental.pose.pose.position.x = x;
             laserOdomIncremental.pose.pose.position.y = y;
@@ -2673,14 +2685,14 @@ public:
 
     void publishFrames()
     {
-        if (!mappingMode)
+        if (!config_.mapping.system.mapping_mode)
             return;
         if (cloudKeyPoses3D->points.empty())
             return;
         // publish key poses
-        publishCloud(pubKeyPoses, cloudKeyPoses3D, timeLaserInfoStamp, odometryFrame);
+        publishCloud(pubKeyPoses, cloudKeyPoses3D, timeLaserInfoStamp, config_.frames.odometry);
         // Publish surrounding key frames
-        publishCloud(pubRecentKeyFrames, laserCloudSurfFromMapDS, timeLaserInfoStamp, odometryFrame);
+        publishCloud(pubRecentKeyFrames, laserCloudSurfFromMapDS, timeLaserInfoStamp, config_.frames.odometry);
         // publish registered key frame
         if (pubRecentKeyFrame->get_subscription_count() != 0)
         {
@@ -2688,7 +2700,7 @@ public:
             PointTypePose thisPose6D = trans2PointTypePose(transformTobeMapped);
             *cloudOut += *transformPointCloud(laserCloudCornerLastDS,  &thisPose6D);
             *cloudOut += *transformPointCloud(laserCloudSurfLastDS,    &thisPose6D);
-            publishCloud(pubRecentKeyFrame, cloudOut, timeLaserInfoStamp, odometryFrame);
+            publishCloud(pubRecentKeyFrame, cloudOut, timeLaserInfoStamp, config_.frames.odometry);
         }
         // publish registered high-res raw cloud
         if (pubCloudRegisteredRaw->get_subscription_count() != 0)
@@ -2697,13 +2709,13 @@ public:
             pcl::fromROSMsg(cloudInfo.cloud_deskewed, *cloudOut);
             PointTypePose thisPose6D = trans2PointTypePose(transformTobeMapped);
             *cloudOut = *transformPointCloud(cloudOut,  &thisPose6D);
-            publishCloud(pubCloudRegisteredRaw, cloudOut, timeLaserInfoStamp, odometryFrame);
+            publishCloud(pubCloudRegisteredRaw, cloudOut, timeLaserInfoStamp, config_.frames.odometry);
         }
         // publish path
         if (pubPath->get_subscription_count() != 0)
         {
             globalPath.header.stamp = timeLaserInfoStamp;
-            globalPath.header.frame_id = odometryFrame;
+            globalPath.header.frame_id = config_.frames.odometry;
             pubPath->publish(globalPath);
         }
     }
@@ -2725,7 +2737,7 @@ int main(int argc, char** argv)
 
     std::thread loopthread(&mapOptimization::loopClosureThread, MO);
     std::unique_ptr<std::thread> visualizeMapThread;
-    if (MO->mappingMode)
+    if (MO->MappingMode())
         visualizeMapThread = std::make_unique<std::thread>(&mapOptimization::visualizeGlobalMapThread, MO);
 
     exec.spin();

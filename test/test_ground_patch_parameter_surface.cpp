@@ -46,9 +46,11 @@ void expectAbsentFromParameterSurface(const std::string & token)
 
 void expectPresentInParameterSurface(const std::string & token)
 {
-  const std::string text = readProjectFile("include/lio_sam/utility.hpp");
+  // The shared loader declares and validates these; the mapping nodes no
+  // longer declare any of them.
+  const std::string text = readProjectFile("src/common/slam_config.cpp");
   EXPECT_NE(text.find("\"" + token + "\""), std::string::npos)
-    << token << " is missing from include/lio_sam/utility.hpp";
+    << token << " is missing from src/common/slam_config.cpp";
 }
 
 std::size_t findYamlBlockEnd(

@@ -34,14 +34,13 @@ public:
     rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pubImuOdometry;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pubImuPath;
 
-    Eigen::Isometry3d lidarOdomAffine;
-    Eigen::Isometry3d imuOdomAffineFront;
-    Eigen::Isometry3d imuOdomAffineBack;
+    // odom_T_lidar as published by mapOptimization at its last correction.
+    OdomTLidar odom_T_lidar_at_correction_{OdomTLidar::Identity()};
 
     std::shared_ptr<tf2_ros::Buffer> tfBuffer;
     std::shared_ptr<tf2_ros::TransformBroadcaster> tfBroadcaster;
     std::shared_ptr<tf2_ros::TransformListener> tfListener;
-    tf2::Stamped<tf2::Transform> lidar2Baselink;
+    LidarTBase lidar_T_base_{LidarTBase::Identity()};
     bool lidarToBaselinkCached = false;
 
     double lidarOdomTime = -1;
@@ -63,16 +62,16 @@ public:
         laserOdomOpt.callback_group = callbackGroupLaserOdometry;
 
         subLaserOdometry = create_subscription<nav_msgs::msg::Odometry>(
-            "lio_sam/mapping/odometry", qos,
+            config_.pipeline_topics.mapping_odometry, qos,
             std::bind(&TransformFusion::lidarOdometryHandler, this, std::placeholders::_1),
             laserOdomOpt);
         subImuOdometry = create_subscription<nav_msgs::msg::Odometry>(
-            odomTopic+"_incremental", qos_imu,
+            config_.pipeline_topics.imu_odometry_incremental, qos_imu,
             std::bind(&TransformFusion::imuOdometryHandler, this, std::placeholders::_1),
             imuOdomOpt);
 
-        pubImuOdometry = create_publisher<nav_msgs::msg::Odometry>(odomTopic, qos_imu);
-        pubImuPath = create_publisher<nav_msgs::msg::Path>("lio_sam/imu/path", qos);
+        pubImuOdometry = create_publisher<nav_msgs::msg::Odometry>(config_.outputs.odometry, qos_imu);
+        pubImuPath = create_publisher<nav_msgs::msg::Path>(config_.outputs.imu_path, qos);
 
         tfBroadcaster = std::make_unique<tf2_ros::TransformBroadcaster>(this);
     }
@@ -86,7 +85,7 @@ public:
 
     bool cacheLidarToBaselinkTransform()
     {
-        if (lidarFrame == baselinkFrame)
+        if (config_.frames.lidar == config_.frames.base_link)
             return true;
 
         if (lidarToBaselinkCached)
@@ -94,9 +93,12 @@ public:
 
         try
         {
-            tf2::fromMsg(
-                tfBuffer->lookupTransform(lidarFrame, baselinkFrame, rclcpp::Time(0)),
-                lidar2Baselink);
+            // lookupTransform(lidar, base) yields lidar_T_base.
+            lidar_T_base_ = LidarTBase(
+                tf2::transformToEigen(
+                    tfBuffer->lookupTransform(
+                        config_.frames.lidar, config_.frames.base_link,
+                        rclcpp::Time(0))));
             lidarToBaselinkCached = true;
         }
         catch (const tf2::TransformException &ex)
@@ -112,7 +114,8 @@ public:
     {
         std::lock_guard<std::mutex> lock(mtx);
 
-        lidarOdomAffine = odom2affine(*odomMsg);
+        odom_T_lidar_at_correction_ =
+            OdomTLidar::FromMatrix(odom2affine(*odomMsg).matrix());
 
         lidarOdomTime = stamp2Sec(odomMsg->header.stamp);
     }
@@ -133,11 +136,16 @@ public:
             else
                 break;
         }
-        Eigen::Isometry3d imuOdomAffineFront = odom2affine(imuOdomQueue.front());
-        Eigen::Isometry3d imuOdomAffineBack = odom2affine(imuOdomQueue.back());
-        Eigen::Isometry3d imuOdomAffineIncre = imuOdomAffineFront.inverse() * imuOdomAffineBack;
-        Eigen::Isometry3d imuOdomAffineLast = lidarOdomAffine * imuOdomAffineIncre;
-        auto t = tf2::eigenToTransform(imuOdomAffineLast);
+        const Eigen::Isometry3d odom_T_lidar_front =
+            odom2affine(imuOdomQueue.front());
+        const Eigen::Isometry3d odom_T_lidar_back =
+            odom2affine(imuOdomQueue.back());
+        // IMU-incremental motion since the last lidar correction.
+        const Eigen::Isometry3d local_delta =
+            odom_T_lidar_front.inverse() * odom_T_lidar_back;
+        const OdomTLidar odom_T_lidar_now = OdomTLidar::FromMatrix(
+            odom_T_lidar_at_correction_.Matrix() * local_delta.matrix());
+        auto t = tf2::eigenToTransform(Eigen::Isometry3d(odom_T_lidar_now.Matrix()));
         tf2::Stamped<tf2::Transform> tCur;
         tf2::convert(t, tCur);
 
@@ -150,17 +158,23 @@ public:
         pubImuOdometry->publish(laserOdometry);
 
         // publish tf
-        if(lidarFrame != baselinkFrame)
+        if(config_.frames.lidar != config_.frames.base_link)
         {
             if (!cacheLidarToBaselinkTransform())
                 return;
+            // odom_T_base = odom_T_lidar_now * lidar_T_base
+            const OdomTBase odom_T_base = odom_T_lidar_now * lidar_T_base_;
+            tf2::Transform odom_T_base_tf;
+            tf2::fromMsg(
+                tf2::eigenToTransform(Eigen::Isometry3d(odom_T_base.Matrix())).transform,
+                odom_T_base_tf);
             tf2::Stamped<tf2::Transform> tb(
-                tCur * lidar2Baselink, tf2_ros::fromMsg(odomMsg->header.stamp), odometryFrame);
+                odom_T_base_tf, tf2_ros::fromMsg(odomMsg->header.stamp), config_.frames.odometry);
             tCur = tb;
         }
         geometry_msgs::msg::TransformStamped ts;
         tf2::convert(tCur, ts);
-        ts.child_frame_id = baselinkFrame;
+        ts.child_frame_id = config_.frames.base_link;
         tfBroadcaster->sendTransform(ts);
 
         // publish IMU path
@@ -172,7 +186,7 @@ public:
             last_path_time = imuTime;
             geometry_msgs::msg::PoseStamped pose_stamped;
             pose_stamped.header.stamp = imuOdomQueue.back().header.stamp;
-            pose_stamped.header.frame_id = odometryFrame;
+            pose_stamped.header.frame_id = config_.frames.odometry;
             pose_stamped.pose = laserOdometry.pose.pose;
             imuPath.poses.push_back(pose_stamped);
             while(!imuPath.poses.empty() && stamp2Sec(imuPath.poses.front().header.stamp) < lidarOdomTime - 1.0)
@@ -180,7 +194,7 @@ public:
             if (pubImuPath->get_subscription_count() != 0)
             {
                 imuPath.header.stamp = imuOdomQueue.back().header.stamp;
-                imuPath.header.frame_id = odometryFrame;
+                imuPath.header.frame_id = config_.frames.odometry;
                 pubImuPath->publish(imuPath);
             }
         }
@@ -240,7 +254,7 @@ public:
     // apply only the lidar-axis lever arm and intentionally keep identity rotation.
     gtsam::Pose3 imu2Lidar = gtsam::Pose3(
         gtsam::Rot3(1, 0, 0, 0),
-        gtsam::Point3(extTrans.x(), extTrans.y(), extTrans.z()));
+        gtsam::Point3(config_.calibration.mapping_imu_to_lidar_lever_arm.x(), config_.calibration.mapping_imu_to_lidar_lever_arm.y(), config_.calibration.mapping_imu_to_lidar_lever_arm.z()));
     gtsam::Pose3 lidar2Imu = imu2Lidar.inverse();
 
     IMUPreintegration(const rclcpp::NodeOptions & options) :
@@ -257,19 +271,19 @@ public:
         odomOpt.callback_group = callbackGroupOdom;
 
         subImu = create_subscription<sensor_msgs::msg::Imu>(
-            imuTopic, qos_imu,
+            config_.sensors.imu, qos_imu,
             std::bind(&IMUPreintegration::imuHandler, this, std::placeholders::_1),
             imuOpt);
         subOdometry = create_subscription<nav_msgs::msg::Odometry>(
-            "lio_sam/mapping/odometry_incremental", qos,
+            config_.pipeline_topics.mapping_odometry_incremental, qos,
             std::bind(&IMUPreintegration::odometryHandler, this, std::placeholders::_1),
             odomOpt);
 
-        pubImuOdometry = create_publisher<nav_msgs::msg::Odometry>(odomTopic+"_incremental", qos_imu);
+        pubImuOdometry = create_publisher<nav_msgs::msg::Odometry>(config_.pipeline_topics.imu_odometry_incremental, qos_imu);
 
-        boost::shared_ptr<gtsam::PreintegrationParams> p = gtsam::PreintegrationParams::MakeSharedU(imuGravity);
-        p->accelerometerCovariance  = gtsam::Matrix33::Identity(3,3) * pow(imuAccNoise, 2); // acc white noise in continuous
-        p->gyroscopeCovariance      = gtsam::Matrix33::Identity(3,3) * pow(imuGyrNoise, 2); // gyro white noise in continuous
+        boost::shared_ptr<gtsam::PreintegrationParams> p = gtsam::PreintegrationParams::MakeSharedU(config_.mapping.imu.gravity);
+        p->accelerometerCovariance  = gtsam::Matrix33::Identity(3,3) * pow(config_.mapping.imu.acc_noise_std, 2); // acc white noise in continuous
+        p->gyroscopeCovariance      = gtsam::Matrix33::Identity(3,3) * pow(config_.mapping.imu.gyro_noise_std, 2); // gyro white noise in continuous
         p->integrationCovariance    = gtsam::Matrix33::Identity(3,3) * pow(1e-4, 2); // error committed in integrating position from velocities
         gtsam::imuBias::ConstantBias prior_imu_bias((gtsam::Vector(6) << 0, 0, 0, 0, 0, 0).finished());; // assume zero initial bias
 
@@ -278,7 +292,7 @@ public:
         priorBiasNoise  = gtsam::noiseModel::Isotropic::Sigma(6, 1e-3); // 1e-2 ~ 1e-3 seems to be good
         correctionNoise = gtsam::noiseModel::Diagonal::Sigmas((gtsam::Vector(6) << 0.05, 0.05, 0.05, 0.1, 0.1, 0.1).finished()); // rad,rad,rad,m, m, m
         correctionNoise2 = gtsam::noiseModel::Diagonal::Sigmas((gtsam::Vector(6) << 1, 1, 1, 1, 1, 1).finished()); // rad,rad,rad,m, m, m
-        noiseModelBetweenBias = (gtsam::Vector(6) << imuAccBiasN, imuAccBiasN, imuAccBiasN, imuGyrBiasN, imuGyrBiasN, imuGyrBiasN).finished();
+        noiseModelBetweenBias = (gtsam::Vector(6) << config_.mapping.imu.acc_bias_rw_noise_std, config_.mapping.imu.acc_bias_rw_noise_std, config_.mapping.imu.acc_bias_rw_noise_std, config_.mapping.imu.gyro_bias_rw_noise_std, config_.mapping.imu.gyro_bias_rw_noise_std, config_.mapping.imu.gyro_bias_rw_noise_std).finished();
         
         imuIntegratorImu_ = new gtsam::PreintegratedImuMeasurements(p, prior_imu_bias); // setting up the IMU integration for IMU message thread
         imuIntegratorOpt_ = new gtsam::PreintegratedImuMeasurements(p, prior_imu_bias); // setting up the IMU integration for optimization        
@@ -537,7 +551,7 @@ public:
         // publish odometry
         auto odometry = nav_msgs::msg::Odometry();
         odometry.header.stamp = thisImu.header.stamp;
-        odometry.header.frame_id = odometryFrame;
+        odometry.header.frame_id = config_.frames.odometry;
         odometry.child_frame_id = "odom_imu";
 
         // transform imu pose to ldiar

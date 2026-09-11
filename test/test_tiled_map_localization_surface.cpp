@@ -45,7 +45,8 @@ TEST(TiledMapLocalizationSurface, UsesProviderForEveryMapRequest) {
 }
 
 TEST(TiledMapLocalizationSurface, ExportsTilesAndPublishesMapDiagnostics) {
-  ExpectToken("src/mapOptimization.cpp", "saveTiledMap");
+  ExpectToken("src/mapOptimization.cpp",
+              "config_.mapping.map_save.save_tiled_map");
   ExpectToken("src/mapOptimization.cpp", "GenerateTileMap");
   const std::string system = "src/slam/system.cpp";
   for (const char* key : {

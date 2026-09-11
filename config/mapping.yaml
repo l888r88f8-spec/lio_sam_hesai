@@ -5,11 +5,11 @@
     sensor_topic:
       lidar_topic: "/lidar_points"                       # "/ls/lslidar_point_cloud"# Point cloud data in
       imu_topic: "/imu"                                  # IMU data in
-      odom_topic: "odometry/imu"                         # IMU pre-preintegration odometry out
       gps_topic: "odometry/gps"                          # GPS odometry topic from navsat out
 
     # Output Topics
     output_topic:
+      odometry: "odometry/imu"                           # IMU pre-preintegration odometry out
       non_ground_cloud_topic: "lio_sam/cloud_nonground"
 
     # Frames

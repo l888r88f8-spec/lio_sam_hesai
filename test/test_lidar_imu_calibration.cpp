@@ -177,13 +177,13 @@ TEST(LidarImuCalibration, DerivesMappingLeverArmsInLidarAxes)
 
 TEST(LidarImuCalibration, MappingPreintegrationUsesDerivedLeverArm)
 {
-  const std::string utility =
-      ReadProjectFile("include/lio_sam/utility.hpp");
+  const std::string loader =
+      ReadProjectFile("src/common/slam_config.cpp");
   const std::string preintegration =
       ReadProjectFile("src/imuPreintegration.cpp");
 
-  EXPECT_NE(utility.find(
-      "extTrans = calibration.mapping_imu_to_lidar_lever_arm;"),
+  EXPECT_NE(loader.find(
+      "config.calibration.mapping_imu_to_lidar_lever_arm ="),
       std::string::npos);
   const std::size_t imu2_lidar = preintegration.find(
       "gtsam::Pose3 imu2Lidar = gtsam::Pose3(");
@@ -198,15 +198,14 @@ TEST(LidarImuCalibration, MappingPreintegrationUsesDerivedLeverArm)
   EXPECT_NE(imu2_lidar_definition.find("gtsam::Rot3(1, 0, 0, 0)"),
       std::string::npos);
   EXPECT_NE(imu2_lidar_definition.find(
-      "gtsam::Point3(extTrans.x(), extTrans.y(), extTrans.z())"),
+      "config_.calibration.mapping_imu_to_lidar_lever_arm.x()"),
       std::string::npos);
   EXPECT_EQ(imu2_lidar_definition.find(
-      "gtsam::Point3(-extTrans.x(), -extTrans.y(), -extTrans.z())"),
+      "gtsam::Point3(-config_.calibration.mapping_imu_to_lidar_lever_arm"),
       std::string::npos);
 
   // The canonical transform is stored un-inverted by the shared loader; the
   // inverse is derived from it rather than configured separately.
-  const std::string loader = ReadProjectFile("src/common/slam_config.cpp");
   EXPECT_NE(loader.find("ParseLidarImuCalibration("), std::string::npos);
   EXPECT_NE(loader.find(
       "config.calibration.imu_T_lidar = parsed.imu_T_lidar;"),

@@ -43,24 +43,24 @@ public:
         ParamServer("lio_sam_featureExtraction", options)
     {
         subLaserCloudInfo = create_subscription<lio_sam_hesai::msg::CloudInfo>(
-            "lio_sam/deskew/cloud_info", qos,
+            config_.pipeline_topics.cloud_info, qos,
             std::bind(&FeatureExtraction::laserCloudInfoHandler, this, std::placeholders::_1));
 
         pubLaserCloudInfo = create_publisher<lio_sam_hesai::msg::CloudInfo>(
-            "lio_sam/feature/cloud_info", qos);
+            config_.pipeline_topics.feature_cloud_info, qos);
         pubCornerPoints = create_publisher<sensor_msgs::msg::PointCloud2>(
-            "lio_sam/feature/cloud_corner", 1);
+            config_.pipeline_topics.corner_cloud, 1);
         pubSurfacePoints = create_publisher<sensor_msgs::msg::PointCloud2>(
-            "lio_sam/feature/cloud_surface", 1);
+            config_.pipeline_topics.surface_cloud, 1);
 
         initializationValue();
     }
 
     void initializationValue()
     {
-        cloudSmoothness.resize(N_SCAN*Horizon_SCAN);
+        cloudSmoothness.resize(config_.mapping.lidar.scan_lines*config_.mapping.lidar.horizon_scan);
 
-        downSizeFilter.setLeafSize(odometrySurfLeafSize, odometrySurfLeafSize, odometrySurfLeafSize);
+        downSizeFilter.setLeafSize(config_.mapping.voxel_filter.odometry_surface_leaf_size, config_.mapping.voxel_filter.odometry_surface_leaf_size, config_.mapping.voxel_filter.odometry_surface_leaf_size);
 
         extractedCloud.reset(new pcl::PointCloud<PointType>());
         cornerCloud.reset(new pcl::PointCloud<PointType>());
@@ -68,9 +68,9 @@ public:
         surfaceCloudScanBuffer.reset(new pcl::PointCloud<PointType>());
         surfaceCloudScanDSBuffer.reset(new pcl::PointCloud<PointType>());
 
-        cloudCurvature = new float[N_SCAN*Horizon_SCAN];
-        cloudNeighborPicked = new int[N_SCAN*Horizon_SCAN];
-        cloudLabel = new int[N_SCAN*Horizon_SCAN];
+        cloudCurvature = new float[config_.mapping.lidar.scan_lines*config_.mapping.lidar.horizon_scan];
+        cloudNeighborPicked = new int[config_.mapping.lidar.scan_lines*config_.mapping.lidar.horizon_scan];
+        cloudLabel = new int[config_.mapping.lidar.scan_lines*config_.mapping.lidar.horizon_scan];
     }
 
     void laserCloudInfoHandler(const lio_sam_hesai::msg::CloudInfo::SharedPtr msgIn)
@@ -155,7 +155,7 @@ public:
         surfaceCloudScanBuffer->clear();
         surfaceCloudScanDSBuffer->clear();
 
-        for (int i = 0; i < N_SCAN; i++)
+        for (int i = 0; i < config_.mapping.lidar.scan_lines; i++)
         {
             surfaceCloudScanBuffer->clear();
 
@@ -174,7 +174,7 @@ public:
                 for (int k = ep; k >= sp; k--)
                 {
                     int ind = cloudSmoothness[k].ind;
-                    if (cloudNeighborPicked[ind] == 0 && cloudCurvature[ind] > edgeThreshold)
+                    if (cloudNeighborPicked[ind] == 0 && cloudCurvature[ind] > config_.mapping.feature_extraction.edge_threshold)
                     {
                         largestPickedNum++;
                         if (largestPickedNum <= 20){
@@ -205,7 +205,7 @@ public:
                 for (int k = sp; k <= ep; k++)
                 {
                     int ind = cloudSmoothness[k].ind;
-                    if (cloudNeighborPicked[ind] == 0 && cloudCurvature[ind] < surfThreshold)
+                    if (cloudNeighborPicked[ind] == 0 && cloudCurvature[ind] < config_.mapping.feature_extraction.surface_threshold)
                     {
 
                         cloudLabel[ind] = -1;
@@ -257,8 +257,8 @@ public:
         // free cloud info memory
         freeCloudInfoMemory();
         // save newly extracted features
-        cloudInfo.cloud_corner = publishCloud(pubCornerPoints,  cornerCloud,  cloudHeader.stamp, lidarFrame);
-        cloudInfo.cloud_surface = publishCloud(pubSurfacePoints, surfaceCloud, cloudHeader.stamp, lidarFrame);
+        cloudInfo.cloud_corner = publishCloud(pubCornerPoints,  cornerCloud,  cloudHeader.stamp, config_.frames.lidar);
+        cloudInfo.cloud_surface = publishCloud(pubSurfacePoints, surfaceCloud, cloudHeader.stamp, config_.frames.lidar);
         // publish to mapOptimization
         pubLaserCloudInfo->publish(cloudInfo);
     }

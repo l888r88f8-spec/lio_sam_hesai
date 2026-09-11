@@ -329,14 +329,10 @@ public:
             ParamServer("lio_sam_imageProjection", options), deskewFlag(0),
             firstFrameProcessed(0)
     {
-        declare_parameter("ground_segmentation.only_mode", false);
-        get_parameter("ground_segmentation.only_mode", segmentationOnlyMode_);
-        declare_parameter(
-            "output_topic.non_ground_cloud_topic",
-            "lio_sam/deskew/cloud_nonground");
-        get_parameter(
-            "output_topic.non_ground_cloud_topic",
-            nonGroundCloudTopic_);
+        // Both keys are declared and validated by the shared loader; declaring
+        // them again here would throw ParameterAlreadyDeclaredException.
+        segmentationOnlyMode_ = config_.mapping.ground_segmentation.only_mode;
+        nonGroundCloudTopic_ = config_.outputs.non_ground_cloud;
 
         callbackGroupLidar = create_callback_group(
             rclcpp::CallbackGroupType::MutuallyExclusive);
@@ -353,23 +349,23 @@ public:
         odomOpt.callback_group = callbackGroupOdom;
 
         subImu = create_subscription<sensor_msgs::msg::Imu>(
-            imuTopic, qos_imu,
+            config_.sensors.imu, qos_imu,
             std::bind(&ImageProjection::imuHandler, this, std::placeholders::_1),
             imuOpt);
         subOdom = create_subscription<nav_msgs::msg::Odometry>(
-            odomTopic + "_incremental", qos_imu,
+            config_.pipeline_topics.imu_odometry_incremental, qos_imu,
             std::bind(&ImageProjection::odometryHandler, this, std::placeholders::_1),
             odomOpt);
         subLaserCloud = create_subscription<sensor_msgs::msg::PointCloud2>(
-            pointCloudTopic, qos_lidar,
+            config_.sensors.lidar, qos_lidar,
             std::bind(&ImageProjection::cloudHandler, this, std::placeholders::_1),
             lidarOpt);
         pubExtractedCloud = create_publisher<sensor_msgs::msg::PointCloud2>(
-            "lio_sam/deskew/cloud_deskewed", 1);
+            config_.pipeline_topics.deskewed_cloud, 1);
         pubGroundCloudGlobal = create_publisher<sensor_msgs::msg::PointCloud2>(
-            "lio_sam/deskew/ground_cloud_global", 1);
+            config_.pipeline_topics.ground_cloud, 1);
         pubLaserCloudInfo = create_publisher<lio_sam_hesai::msg::CloudInfo>(
-            "lio_sam/deskew/cloud_info", qos);
+            config_.pipeline_topics.cloud_info, qos);
         pubNonGroundCloud = create_publisher<sensor_msgs::msg::PointCloud2>(
             nonGroundCloudTopic_, 1);
 
@@ -396,15 +392,15 @@ public:
         groundCloudDS.reset(new pcl::PointCloud<PointType>());
         groundCloudScanOnly.reset(new pcl::PointCloud<PointType>());
         groundCloudScanOnlyDS.reset(new pcl::PointCloud<PointType>());
-        fullCloud->points.resize(N_SCAN*Horizon_SCAN);
-        rangeMat = cv::Mat(N_SCAN, Horizon_SCAN, CV_32F, cv::Scalar::all(FLT_MAX));
-        groundMat = cv::Mat(N_SCAN, Horizon_SCAN, CV_8S, cv::Scalar::all(0));
+        fullCloud->points.resize(config_.mapping.lidar.scan_lines*config_.mapping.lidar.horizon_scan);
+        rangeMat = cv::Mat(config_.mapping.lidar.scan_lines, config_.mapping.lidar.horizon_scan, CV_32F, cv::Scalar::all(FLT_MAX));
+        groundMat = cv::Mat(config_.mapping.lidar.scan_lines, config_.mapping.lidar.horizon_scan, CV_8S, cv::Scalar::all(0));
 
-        cloudInfo.start_ring_index.assign(N_SCAN, 0);
-        cloudInfo.end_ring_index.assign(N_SCAN, 0);
+        cloudInfo.start_ring_index.assign(config_.mapping.lidar.scan_lines, 0);
+        cloudInfo.end_ring_index.assign(config_.mapping.lidar.scan_lines, 0);
 
-        cloudInfo.point_col_ind.assign(N_SCAN*Horizon_SCAN, 0);
-        cloudInfo.point_range.assign(N_SCAN*Horizon_SCAN, 0);
+        cloudInfo.point_col_ind.assign(config_.mapping.lidar.scan_lines*config_.mapping.lidar.horizon_scan, 0);
+        cloudInfo.point_range.assign(config_.mapping.lidar.scan_lines*config_.mapping.lidar.horizon_scan, 0);
 
         resetParameters();
     }
@@ -513,11 +509,11 @@ public:
         float minVerticalAngle = -7.0; // degrees
         float maxVerticalAngle = 52.0;  // degrees
         
-        // Normalize to [0, N_SCAN-1]
-        int ring = (int)((verticalAngle - minVerticalAngle) / (maxVerticalAngle - minVerticalAngle) * (N_SCAN - 1));
+        // Normalize to [0, config_.mapping.lidar.scan_lines-1]
+        int ring = (int)((verticalAngle - minVerticalAngle) / (maxVerticalAngle - minVerticalAngle) * (config_.mapping.lidar.scan_lines - 1));
         
         // Clamp to valid range
-        ring = std::max(0, std::min(ring, N_SCAN - 1));
+        ring = std::max(0, std::min(ring, config_.mapping.lidar.scan_lines - 1));
         
         return ring;
     }
@@ -977,34 +973,34 @@ public:
             thisPoint.intensity = laserCloudIn->points[i].intensity;
 
             float range = pointDistance(thisPoint);
-            if (range < lidarMinRange || range > lidarMaxRange)
+            if (range < config_.mapping.lidar.min_range || range > config_.mapping.lidar.max_range)
                 continue;
 
             int rowIdn = laserCloudIn->points[i].ring;
             // if sensor is a velodyne (ringFlag = 2) calculate rowIdn based on number of scans
             if (ringFlag == 2) { 
                 float verticalAngle = atan2(thisPoint.z, sqrt(thisPoint.x * thisPoint.x + thisPoint.y * thisPoint.y)) * 180 / M_PI;
-                rowIdn = (verticalAngle + (N_SCAN - 1)) / 2.0;
+                rowIdn = (verticalAngle + (config_.mapping.lidar.scan_lines - 1)) / 2.0;
             }
             
             else if (ringFlag == 3) { // Livox - use artificial ring
             	rowIdn = calculateLivoxRing(thisPoint);
             }
 
-            if (rowIdn < 0 || rowIdn >= N_SCAN)
+            if (rowIdn < 0 || rowIdn >= config_.mapping.lidar.scan_lines)
                 continue;
 
-            if (rowIdn % downsampleRate != 0)
+            if (rowIdn % config_.mapping.lidar.downsample_rate != 0)
                 continue;
 
             int columnIdn = -1;
             if (sensor == SensorType::VELODYNE || sensor == SensorType::OUSTER || sensor == SensorType::HESAI)
             {
                 float horizonAngle = atan2(thisPoint.x, thisPoint.y) * 180 / M_PI;
-                static float ang_res_x = 360.0/float(Horizon_SCAN);
-                columnIdn = -round((horizonAngle-90.0)/ang_res_x) + Horizon_SCAN/2;
-                if (columnIdn >= Horizon_SCAN)
-                    columnIdn -= Horizon_SCAN;
+                static float ang_res_x = 360.0/float(config_.mapping.lidar.horizon_scan);
+                columnIdn = -round((horizonAngle-90.0)/ang_res_x) + config_.mapping.lidar.horizon_scan/2;
+                if (columnIdn >= config_.mapping.lidar.horizon_scan)
+                    columnIdn -= config_.mapping.lidar.horizon_scan;
             }
             else if (sensor == SensorType::LSLIDAR || sensor == SensorType::LIVOX)
             {
@@ -1014,13 +1010,13 @@ public:
                 columnIdnCountVec[rowIdn] += 1;
                 
                 // Handle overlapping points in the same cell
-                while (columnIdn < Horizon_SCAN && rangeMat.at<float>(rowIdn, columnIdn) != FLT_MAX)    {
+                while (columnIdn < config_.mapping.lidar.horizon_scan && rangeMat.at<float>(rowIdn, columnIdn) != FLT_MAX)    {
                     columnIdn++;
 
                 }
-                if (columnIdn >= Horizon_SCAN) {
+                if (columnIdn >= config_.mapping.lidar.horizon_scan) {
                     // Try wrapping around or skip this point
-                for (int col = 0; col < Horizon_SCAN; col++) {
+                for (int col = 0; col < config_.mapping.lidar.horizon_scan; col++) {
                         if (rangeMat.at<float>(rowIdn, col) == FLT_MAX) {
                             columnIdn = col;
                             break;
@@ -1030,7 +1026,7 @@ public:
             }
 
 
-            if (columnIdn < 0 || columnIdn >= Horizon_SCAN)
+            if (columnIdn < 0 || columnIdn >= config_.mapping.lidar.horizon_scan)
                 continue;
 
             if (rangeMat.at<float>(rowIdn, columnIdn) != FLT_MAX)
@@ -1040,7 +1036,7 @@ public:
 
             rangeMat.at<float>(rowIdn, columnIdn) = range;
 
-            int index = columnIdn + rowIdn * Horizon_SCAN;
+            int index = columnIdn + rowIdn * config_.mapping.lidar.horizon_scan;
             fullCloud->points[index] = thisPoint;
         }
     }
@@ -1048,9 +1044,9 @@ public:
     // 清空或重建当前帧的地面分类矩阵。
     void resetGroundMatrix()
     {
-        if (groundMat.rows != N_SCAN || groundMat.cols != Horizon_SCAN)
+        if (groundMat.rows != config_.mapping.lidar.scan_lines || groundMat.cols != config_.mapping.lidar.horizon_scan)
         {
-            groundMat = cv::Mat(N_SCAN, Horizon_SCAN, CV_8S, cv::Scalar::all(0));
+            groundMat = cv::Mat(config_.mapping.lidar.scan_lines, config_.mapping.lidar.horizon_scan, CV_8S, cv::Scalar::all(0));
             return;
         }
         groundMat.setTo(cv::Scalar::all(0));
@@ -1065,8 +1061,8 @@ public:
         if (groundScanEnd <= groundScanStart)
             return;
 
-        const float groundAngleThresholdRad = groundAngleThreshold * kDegToRad;
-        for (int j = 0; j < Horizon_SCAN; ++j)
+        const float groundAngleThresholdRad = config_.mapping.ground_segmentation.angle_threshold_deg * kDegToRad;
+        for (int j = 0; j < config_.mapping.lidar.horizon_scan; ++j)
         {
             for (int i = groundScanStart; i < groundScanEnd; ++i)
             {
@@ -1077,8 +1073,8 @@ public:
                     continue;
                 }
 
-                const int lowerInd = j + i * Horizon_SCAN;
-                const int upperInd = j + (i + 1) * Horizon_SCAN;
+                const int lowerInd = j + i * config_.mapping.lidar.horizon_scan;
+                const int upperInd = j + (i + 1) * config_.mapping.lidar.horizon_scan;
                 const PointType &lowerPoint = fullCloud->points[lowerInd];
                 const PointType &upperPoint = fullCloud->points[upperInd];
 
@@ -1106,7 +1102,7 @@ public:
                         pcl::ModelCoefficients::Ptr coefficients,
                         pcl::PointIndices::Ptr inliers)
     {
-        if (seedCloud->size() < static_cast<size_t>(groundPlaneMinPoints))
+        if (seedCloud->size() < static_cast<size_t>(config_.mapping.ground_segmentation.plane_min_points))
             return false;
 
         pcl::SACSegmentation<PointType> segmentation;
@@ -1114,21 +1110,21 @@ public:
         segmentation.setModelType(pcl::SACMODEL_PLANE);
         segmentation.setMethodType(pcl::SAC_RANSAC);
         segmentation.setMaxIterations(200);
-        segmentation.setDistanceThreshold(groundPlaneDistance);
+        segmentation.setDistanceThreshold(config_.mapping.ground_segmentation.plane_distance);
         segmentation.setInputCloud(seedCloud);
         segmentation.segment(*inliers, *coefficients);
 
-        if (inliers->indices.size() < static_cast<size_t>(groundPlaneMinPoints))
+        if (inliers->indices.size() < static_cast<size_t>(config_.mapping.ground_segmentation.plane_min_points))
             return false;
 
-        return isPlaneNormalWithinAngle(*coefficients, groundPlaneMaxAngle * kDegToRad);
+        return isPlaneNormalWithinAngle(*coefficients, config_.mapping.ground_segmentation.plane_max_angle_deg * kDegToRad);
     }
 
     // 判断距离图中的指定单元是否包含有效点。
     bool hasValidGroundCell(int row, int column) const
     {
-        return row >= 0 && row < N_SCAN &&
-               column >= 0 && column < Horizon_SCAN &&
+        return row >= 0 && row < config_.mapping.lidar.scan_lines &&
+               column >= 0 && column < config_.mapping.lidar.horizon_scan &&
                rangeMat.at<float>(row, column) != FLT_MAX;
     }
 
@@ -1136,7 +1132,7 @@ public:
     std::pair<int, int> getGroundScanRange() const
     {
         const auto range = lio_sam_hesai::normalizeGroundScanRange(
-            groundScanStartIndex, groundScanEndIndex, N_SCAN);
+            config_.mapping.ground_segmentation.scan_start_index, config_.mapping.ground_segmentation.scan_end_index, config_.mapping.lidar.scan_lines);
         return {range.start, range.end};
     }
 
@@ -1144,7 +1140,7 @@ public:
     // 非地面点云需要从全部 ring 中剔除地面点。
     std::pair<int, int> getGroundClassificationRange() const
     {
-        const auto range = lio_sam_hesai::fullGroundClassificationRange(N_SCAN);
+        const auto range = lio_sam_hesai::fullGroundClassificationRange(config_.mapping.lidar.scan_lines);
         return {range.start, range.end};
     }
 
@@ -1176,20 +1172,20 @@ public:
         }
 
         const PointType &fromPoint =
-            fullCloud->points[fromColumn + fromRow * Horizon_SCAN];
+            fullCloud->points[fromColumn + fromRow * config_.mapping.lidar.horizon_scan];
         const PointType &toPoint =
-            fullCloud->points[toColumn + toRow * Horizon_SCAN];
+            fullCloud->points[toColumn + toRow * config_.mapping.lidar.horizon_scan];
 
         const float dX = toPoint.x - fromPoint.x;
         const float dY = toPoint.y - fromPoint.y;
         const float dZ = toPoint.z - fromPoint.z;
         const float horizontalDistance = std::sqrt(dX * dX + dY * dY);
         if (horizontalDistance < kMinPlaneNorm)
-            return std::fabs(dZ) <= groundPlaneDistance;
+            return std::fabs(dZ) <= config_.mapping.ground_segmentation.plane_distance;
 
         const float localAngle = std::atan2(std::fabs(dZ), horizontalDistance);
-        const float maxLinkAngle = std::max(groundPlaneMaxAngle * kDegToRad,
-                                            groundAngleThreshold * 2.0f * kDegToRad);
+        const float maxLinkAngle = std::max(config_.mapping.ground_segmentation.plane_max_angle_deg * kDegToRad,
+                                            config_.mapping.ground_segmentation.angle_threshold_deg * 2.0f * kDegToRad);
         return localAngle <= maxLinkAngle;
     }
 
@@ -1200,12 +1196,12 @@ public:
         const auto [groundScanStart, groundScanEnd] = getGroundScanRange();
         for (int i = groundScanStart; i <= groundScanEnd; ++i)
         {
-            for (int j = 0; j < Horizon_SCAN; ++j)
+            for (int j = 0; j < config_.mapping.lidar.horizon_scan; ++j)
             {
                 if (groundMat.at<signed char>(i, j) != 1 || !hasValidGroundCell(i, j))
                     continue;
 
-                groundOutput->push_back(fullCloud->points[j + i * Horizon_SCAN]);
+                groundOutput->push_back(fullCloud->points[j + i * config_.mapping.lidar.horizon_scan]);
             }
         }
     }
@@ -1219,19 +1215,19 @@ public:
         const auto [classificationStart, classificationEnd] =
             getGroundClassificationRange();
 
-        for (int j = 0; j < Horizon_SCAN; ++j)
+        for (int j = 0; j < config_.mapping.lidar.horizon_scan; ++j)
         {
-            int minConfirmedRow = N_SCAN;
+            int minConfirmedRow = config_.mapping.lidar.scan_lines;
             int maxConfirmedRow = -1;
             for (int i = groundScanStart; i <= groundScanEnd; ++i)
             {
                 if (!hasValidGroundCell(i, j))
                     continue;
 
-                const int index = j + i * Horizon_SCAN;
+                const int index = j + i * config_.mapping.lidar.horizon_scan;
                 const PointType &point = fullCloud->points[index];
                 const bool nearPlane =
-                    pointToPlaneDistance(point, *coefficients) <= groundPlaneDistance;
+                    pointToPlaneDistance(point, *coefficients) <= config_.mapping.ground_segmentation.plane_distance;
                 if (groundMat.at<signed char>(i, j) != 1 || !nearPlane)
                     continue;
 
@@ -1249,10 +1245,10 @@ public:
                 if (!hasValidGroundCell(i, j))
                     break;
 
-                const int index = j + i * Horizon_SCAN;
+                const int index = j + i * config_.mapping.lidar.horizon_scan;
                 const PointType &point = fullCloud->points[index];
                 const bool nearPlane =
-                    pointToPlaneDistance(point, *coefficients) <= groundPlaneDistance;
+                    pointToPlaneDistance(point, *coefficients) <= config_.mapping.ground_segmentation.plane_distance;
                 if (!nearPlane || !isGroundConnected(previousGroundRow, j, i, j))
                     break;
 
@@ -1266,10 +1262,10 @@ public:
                 if (!hasValidGroundCell(i, j))
                     break;
 
-                const int index = j + i * Horizon_SCAN;
+                const int index = j + i * config_.mapping.lidar.horizon_scan;
                 const PointType &point = fullCloud->points[index];
                 const bool nearPlane =
-                    pointToPlaneDistance(point, *coefficients) <= groundPlaneDistance;
+                    pointToPlaneDistance(point, *coefficients) <= config_.mapping.ground_segmentation.plane_distance;
                 if (!nearPlane || !isGroundConnected(i, j, previousGroundRow, j))
                     break;
 
@@ -1327,10 +1323,10 @@ public:
     // 在需要平面化导出时，将点云高度压到固定的 Z 值。
     void flattenCloudZ(pcl::PointCloud<PointType> &cloud)
     {
-        if (!groundFlattenZ)
+        if (!config_.mapping.ground_segmentation.flatten_z)
             return;
         for (auto &pt : cloud.points)
-            pt.z = groundFlattenValue;
+            pt.z = config_.mapping.ground_segmentation.flatten_value;
     }
 
     // 对单帧地面点云做下采样，便于发布和后续处理。
@@ -1341,14 +1337,14 @@ public:
         if (source->empty())
             return;
 
-        if (groundLeafSize <= 0.0f)
+        if (config_.mapping.ground_segmentation.leaf_size <= 0.0f)
         {
             *target = *source;
             flattenCloudZ(*target);
             return;
         }
 
-        groundDownSizeFilter.setLeafSize(groundLeafSize, groundLeafSize, groundLeafSize);
+        groundDownSizeFilter.setLeafSize(config_.mapping.ground_segmentation.leaf_size, config_.mapping.ground_segmentation.leaf_size, config_.mapping.ground_segmentation.leaf_size);
         groundDownSizeFilter.setInputCloud(source);
         groundDownSizeFilter.filter(*target);
         flattenCloudZ(*target);
@@ -1360,10 +1356,10 @@ public:
         int count = 0;
         nonGroundCloud->clear();
         // extract segmented cloud for lidar odometry
-        for (int i = 0; i < N_SCAN; ++i)
+        for (int i = 0; i < config_.mapping.lidar.scan_lines; ++i)
         {
             cloudInfo.start_ring_index[i] = count - 1 + 5;
-            for (int j = 0; j < Horizon_SCAN; ++j)
+            for (int j = 0; j < config_.mapping.lidar.horizon_scan; ++j)
             {
                 if (rangeMat.at<float>(i,j) != FLT_MAX)
                 {
@@ -1372,9 +1368,9 @@ public:
                     // save range info
                     cloudInfo.point_range[count] = rangeMat.at<float>(i,j);
                     // save extracted cloud
-                    extractedCloud->push_back(fullCloud->points[j + i * Horizon_SCAN]);
+                    extractedCloud->push_back(fullCloud->points[j + i * config_.mapping.lidar.horizon_scan]);
                     if (groundMat.at<signed char>(i, j) != 1)
-                        nonGroundCloud->push_back(fullCloud->points[j + i * Horizon_SCAN]);
+                        nonGroundCloud->push_back(fullCloud->points[j + i * config_.mapping.lidar.horizon_scan]);
                     // size of extracted cloud
                     ++count;
                 }
@@ -1387,12 +1383,12 @@ public:
     void publishClouds()
     {
         cloudInfo.header = cloudHeader;
-        cloudInfo.cloud_deskewed  = publishCloud(pubExtractedCloud, extractedCloud, cloudHeader.stamp, lidarFrame);
+        cloudInfo.cloud_deskewed  = publishCloud(pubExtractedCloud, extractedCloud, cloudHeader.stamp, config_.frames.lidar);
         // if (pubNonGroundCloud->get_subscription_count() != 0)
-        publishCloud(pubNonGroundCloud, nonGroundCloud, cloudHeader.stamp, lidarFrame);
+        publishCloud(pubNonGroundCloud, nonGroundCloud, cloudHeader.stamp, config_.frames.lidar);
         pcl::toROSMsg(*groundCloudScanOnlyDS, cloudInfo.cloud_ground);
         cloudInfo.cloud_ground.header.stamp = cloudHeader.stamp;
-        cloudInfo.cloud_ground.header.frame_id = lidarFrame;
+        cloudInfo.cloud_ground.header.frame_id = config_.frames.lidar;
 
         if (pubGroundCloudGlobal->get_subscription_count() != 0)
         {
@@ -1408,7 +1404,7 @@ public:
             {
                 *groundMap = *groundCloudDS;
             }
-            publishCloud(pubGroundCloudGlobal, groundMap, cloudHeader.stamp, mapFrame);
+            publishCloud(pubGroundCloudGlobal, groundMap, cloudHeader.stamp, config_.frames.map);
         }
 
         pubLaserCloudInfo->publish(cloudInfo);

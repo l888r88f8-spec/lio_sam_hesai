@@ -24,7 +24,7 @@ TEST(CoordinateContractSurface, MappingKeepsMapOdomBaseTopology)
   const auto launch = ReadProjectFile("launch/mapping.launch.py");
   const auto fusion = ReadProjectFile("src/imuPreintegration.cpp");
   EXPECT_NE(launch.find("\"map\", \"odom\""), std::string::npos);
-  EXPECT_NE(fusion.find("ts.child_frame_id = baselinkFrame"),
+  EXPECT_NE(fusion.find("ts.child_frame_id = config_.frames.base_link"),
             std::string::npos);
   EXPECT_NE(fusion.find("tfBroadcaster->sendTransform(ts)"),
             std::string::npos);
@@ -39,19 +39,53 @@ TEST(CoordinateContractSurface, LocalizationHasNoOdomTfDependency)
   EXPECT_NE(system.find("frames.base_link"), std::string::npos);
 }
 
-TEST(CoordinateContractSurface, MappingTopicLiteralsAreFrozen)
+TEST(CoordinateContractSurface, MappingTopicsComeFromCanonicalGroups)
 {
-  const auto optimization = ReadProjectFile("src/mapOptimization.cpp");
-  const std::array<std::string, 5> topics = {
+  const std::array<std::string, 4> sources = {
+    "src/imageProjection.cpp",
+    "src/featureExtraction.cpp",
+    "src/imuPreintegration.cpp",
+    "src/mapOptimization.cpp",
+  };
+  const std::array<std::string, 19> literals = {
+    "lio_sam/deskew/cloud_info",
+    "lio_sam/deskew/cloud_deskewed",
+    "lio_sam/deskew/ground_cloud_global",
+    "lio_sam/deskew/cloud_nonground",
+    "lio_sam/feature/cloud_info",
+    "lio_sam/feature/cloud_corner",
+    "lio_sam/feature/cloud_surface",
     "lio_sam/mapping/odometry",
+    "lio_sam/mapping/odometry_incremental",
     "lio_sam/mapping/path",
     "lio_sam/mapping/map_global",
     "lio_sam/mapping/map_local",
     "lio_sam/mapping/cloud_registered",
+    "lio_sam/mapping/cloud_registered_raw",
+    "lio_sam/mapping/ground_cloud_global",
+    "lio_sam/mapping/trajectory",
+    "lio_sam/imu/path",
+    "lio_sam/mapping/icp_loop_closure_history_cloud",
+    "/lio_sam/mapping/loop_closure_constraints",
   };
-  for (const auto & topic : topics) {
-    EXPECT_NE(optimization.find(topic), std::string::npos)
-      << topic << " is missing from src/mapOptimization.cpp";
+
+  for (const auto & source : sources) {
+    const auto text = ReadProjectFile(source);
+    for (const auto & literal : literals) {
+      EXPECT_EQ(text.find("\"" + literal + "\""), std::string::npos)
+        << source << " must take " << literal
+        << " from pipeline_topics/outputs instead of a literal";
+    }
+  }
+
+  // The strings still resolve to the same ROS names: the shared configuration
+  // owns them, so moving them out of the nodes changes no runtime graph.
+  const auto config_sources =
+    ReadProjectFile("include/common/slam_config.h") +
+    ReadProjectFile("src/common/slam_config.cpp");
+  for (const auto & literal : literals) {
+    EXPECT_NE(config_sources.find(literal), std::string::npos)
+      << literal << " must come from the shared configuration";
   }
 }
 
