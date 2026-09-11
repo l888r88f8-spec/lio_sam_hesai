@@ -32,7 +32,6 @@ static const std::string kLoopClosureByFeature = "LoopClosureByFeature";
 static const std::string kDataPath = std::string(PROJECT_SOURCE_DIR) + "/data/";
 static const std::string kTileMapFolder = std::string(PROJECT_SOURCE_DIR) + "/data/tile_map/";
 static const std::string kTileMapIndicesFileName = "tile_map_indices.txt";
-static const std::string kGlobalMapFileName = "map.pcd";
 
 static const std::string kRosMapFrameID = "map";
 static const std::string kRosLidarFrameID = "lidar";

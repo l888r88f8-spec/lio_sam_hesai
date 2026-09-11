@@ -18,6 +18,7 @@
 #include <string>
 #include <vector>
 
+#include "common/map_artifact_layout.h"
 #include "localization_map/tile_index.h"
 #include "localization_map/tile_manifest.h"
 #include "localization_map/tile_map_generator.h"
@@ -109,9 +110,10 @@ const std::vector<pcl::PointXYZI>& GroundPoints() {
 }
 
 void PopulateInputs(const fs::path& root, bool include_ground = true) {
-  SaveCloud(root / "GlobalMap.pcd", GlobalPoints());
+  const MapArtifactLayout layout(root);
+  SaveCloud(layout.GlobalMap(), GlobalPoints());
   if (include_ground) {
-    SaveCloud(root / "GroundMap.pcd", GroundPoints());
+    SaveCloud(layout.GroundMap(), GroundPoints());
   }
 }
 
@@ -166,14 +168,15 @@ TEST(TileMapGenerator, PartitionsAndPublishesAValidatedBundle) {
   // tile_count is the union of logical indices represented by global or ground.
   EXPECT_EQ(result.tile_count, 7U);
   EXPECT_EQ(result.output_directory, directory.root() / "tiled");
-  EXPECT_TRUE(fs::is_regular_file(directory.root() / "tiled/manifest.yaml"));
+  EXPECT_TRUE(fs::is_regular_file(
+      MapArtifactLayout(directory.root()).TiledManifest()));
   EXPECT_FALSE(fs::exists(directory.root() / "tiled.incomplete"));
 
   const TileManifest manifest = TileManifest::Load(result.output_directory);
   EXPECT_EQ(manifest.source.global_map_bytes,
-            fs::file_size(directory.root() / "GlobalMap.pcd"));
+            fs::file_size(MapArtifactLayout(directory.root()).GlobalMap()));
   EXPECT_EQ(manifest.source.ground_map_bytes,
-            fs::file_size(directory.root() / "GroundMap.pcd"));
+            fs::file_size(MapArtifactLayout(directory.root()).GroundMap()));
   ASSERT_TRUE(manifest.overview.has_value());
 
   std::uint64_t global_count = 0;
@@ -222,7 +225,8 @@ TEST(TileMapGenerator, RefusesToOverwriteAnExistingFinalOutput) {
   TemporaryDirectory directory;
   PopulateInputs(directory.root());
   fs::create_directories(directory.root() / "tiled");
-  const fs::path sentinel = directory.root() / "tiled/manifest.yaml";
+  const fs::path sentinel =
+      MapArtifactLayout(directory.root()).TiledManifest();
   {
     std::ofstream output(sentinel);
     output << "sentinel manifest\n";
@@ -239,7 +243,7 @@ TEST(TileMapGenerator, MissingOrInvalidGlobalMapLeavesNoArtifacts) {
 
   TemporaryDirectory invalid("tile_map_invalid_global");
   {
-    std::ofstream output(invalid.root() / "GlobalMap.pcd");
+    std::ofstream output(MapArtifactLayout(invalid.root()).GlobalMap());
     output << "not a PCD file\n";
   }
   EXPECT_THROW(GenerateTileMap(OptionsFor(invalid.root())), std::exception);
@@ -249,7 +253,7 @@ TEST(TileMapGenerator, MissingOrInvalidGlobalMapLeavesNoArtifacts) {
 TEST(TileMapGenerator, RejectsAnEmptyGlobalMap) {
   TemporaryDirectory directory;
   {
-    std::ofstream output(directory.root() / "GlobalMap.pcd");
+    std::ofstream output(MapArtifactLayout(directory.root()).GlobalMap());
     output << "# .PCD v0.7\nVERSION 0.7\n"
               "FIELDS x y z intensity\nSIZE 4 4 4 4\nTYPE F F F F\n"
               "COUNT 1 1 1 1\nWIDTH 0\nHEIGHT 1\n"
@@ -269,7 +273,7 @@ TEST(TileMapGenerator, RejectsAnEmptyGlobalMap) {
 
 TEST(TileMapGenerator, RejectsANonFiniteInputPointWithoutArtifacts) {
   TemporaryDirectory directory;
-  SaveCloud(directory.root() / "GlobalMap.pcd",
+  SaveCloud(MapArtifactLayout(directory.root()).GlobalMap(),
             {Point(std::numeric_limits<float>::quiet_NaN(), 1.0F)});
 
   try {
@@ -304,7 +308,7 @@ TEST(TileMapGenerator, RejectsPcdSchemasOtherThanCanonicalPointXYZI) {
 
   for (const SchemaCase& schema : cases) {
     TemporaryDirectory directory("tile_map_wrong_schema");
-    WriteAsciiPcd(directory.root() / "GlobalMap.pcd", schema.fields,
+    WriteAsciiPcd(MapArtifactLayout(directory.root()).GlobalMap(), schema.fields,
                   schema.sizes, schema.types, schema.counts, schema.point);
     try {
       GenerateTileMap(OptionsFor(directory.root()));
@@ -332,9 +336,11 @@ TEST(TileMapGenerator, AllowsAnAbsentGroundMap) {
   EXPECT_EQ(result.ground_output_points, 0U);
   EXPECT_EQ(result.tile_count, 6U);
   const TileManifest manifest = TileManifest::Load(result.output_directory);
-  EXPECT_EQ(manifest.source.global_map_name, "GlobalMap.pcd");
+  EXPECT_EQ(manifest.source.global_map_name,
+            MapArtifactLayout::kGlobalMapName);
   EXPECT_GT(manifest.source.global_map_bytes, 0U);
-  EXPECT_EQ(manifest.source.ground_map_name, "GroundMap.pcd");
+  EXPECT_EQ(manifest.source.ground_map_name,
+            MapArtifactLayout::kGroundMapName);
   EXPECT_EQ(manifest.source.ground_map_bytes, 0U);
   EXPECT_TRUE(manifest.ground_tiles.empty());
 }
@@ -419,7 +425,8 @@ TEST(TileMapGenerator, RemovesAValidatedStaleIncompleteDirectory) {
   }
 
   EXPECT_NO_THROW(GenerateTileMap(OptionsFor(directory.root())));
-  EXPECT_TRUE(fs::is_regular_file(directory.root() / "tiled/manifest.yaml"));
+  EXPECT_TRUE(fs::is_regular_file(
+      MapArtifactLayout(directory.root()).TiledManifest()));
   EXPECT_FALSE(fs::exists(directory.root() / "tiled.incomplete"));
 }
 

@@ -1,3 +1,4 @@
+#include "common/map_artifact_layout.h"
 #include "localization_map/tile_map_generator.h"
 
 #include <pcl/PCLPointCloud2.h>
@@ -328,8 +329,10 @@ TileMapGeneratorResult GenerateTileMap(const TileMapGeneratorOptions& options) {
   ValidateOptions(options);
   const fs::path map_directory =
       ValidateAndResolveMapDirectory(options.map_directory);
-  const fs::path final_directory =
-      map_directory / options.output_subdirectory;
+  // One layout object owns every source and destination name below.
+  const MapArtifactLayout layout(
+      map_directory, options.output_subdirectory.string());
+  const fs::path final_directory = layout.TiledRoot();
   const fs::path incomplete_directory =
       map_directory /
       (options.output_subdirectory.filename().string() + ".incomplete");
@@ -338,13 +341,15 @@ TileMapGeneratorResult GenerateTileMap(const TileMapGeneratorOptions& options) {
   RemoveStaleIncomplete(incomplete_directory);
   IncompleteGuard incomplete_guard(incomplete_directory);
 
-  const fs::path global_path = map_directory / "GlobalMap.pcd";
-  const fs::path ground_path = map_directory / "GroundMap.pcd";
+  const fs::path global_path = layout.GlobalMap();
+  const fs::path ground_path = layout.GroundMap();
+  const std::string global_name = global_path.filename().string();
+  const std::string ground_name = ground_path.filename().string();
   const std::uintmax_t global_bytes =
-      RequiredRegularFileSize(global_path, "GlobalMap.pcd");
+      RequiredRegularFileSize(global_path, global_name.c_str());
   std::uintmax_t ground_bytes = 0;
   const bool has_ground =
-      OptionalRegularFileSize(ground_path, "GroundMap.pcd", &ground_bytes);
+      OptionalRegularFileSize(ground_path, ground_name.c_str(), &ground_bytes);
 
   std::error_code error;
   fs::create_directory(incomplete_directory, error);
@@ -358,17 +363,17 @@ TileMapGeneratorResult GenerateTileMap(const TileMapGeneratorOptions& options) {
   manifest.point_type = "XYZI";
   manifest.tile_size_m = options.tile_size_m;
   manifest.origin = options.origin;
-  manifest.source.global_map_name = "GlobalMap.pcd";
+  manifest.source.global_map_name = global_name;
   manifest.source.global_map_bytes = global_bytes;
-  manifest.source.ground_map_name = "GroundMap.pcd";
+  manifest.source.ground_map_name = ground_name;
   manifest.source.ground_map_bytes = ground_bytes;
 
   TileMapGeneratorResult result;
   std::set<TileIndex> logical_tiles;
   {
     PointCloud::Ptr global_cloud =
-        LoadCloud(global_path, "GlobalMap.pcd", true);
-    result.global_input_points = PointCount(*global_cloud, "GlobalMap.pcd");
+        LoadCloud(global_path, global_name.c_str(), true);
+    result.global_input_points = PointCount(*global_cloud, global_name.c_str());
 
     SaveOverview(incomplete_directory, global_cloud,
                  options.overview_resolution_m);
@@ -391,9 +396,9 @@ TileMapGeneratorResult GenerateTileMap(const TileMapGeneratorOptions& options) {
     TileClouds ground_tiles;
     if (has_ground) {
       PointCloud::Ptr ground_cloud =
-          LoadCloud(ground_path, "GroundMap.pcd", false);
+          LoadCloud(ground_path, ground_name.c_str(), false);
       result.ground_input_points =
-          PointCount(*ground_cloud, "GroundMap.pcd");
+          PointCount(*ground_cloud, ground_name.c_str());
       ground_tiles = Partition(*ground_cloud, options);
       ground_cloud.reset();
     }

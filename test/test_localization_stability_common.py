@@ -15,6 +15,14 @@ from stability_common import (
 )
 
 
+# Mirrors MapArtifactLayout (include/common/map_artifact_layout.h). Python
+# cannot link the C++ value object, so the names live here once instead of
+# being repeated at every call site.
+GLOBAL_MAP_NAME = "GlobalMap.pcd"
+GROUND_MAP_NAME = "GroundMap.pcd"
+SCAN_CONTEXT_DB_NAME = "sc_db.bin"
+
+
 class LocalizationStabilityCommonTest(unittest.TestCase):
     def setUp(self):
         self.temporary_directory = TemporaryDirectory()
@@ -46,7 +54,7 @@ class LocalizationStabilityCommonTest(unittest.TestCase):
         (self.bag_dir / "sample.db3").write_bytes(b"sample bag data")
 
         self.map_dir.mkdir()
-        (self.map_dir / "GlobalMap.pcd").write_bytes(
+        (self.map_dir / GLOBAL_MAP_NAME).write_bytes(
             b"# .PCD v0.7\n"
             b"VERSION .7\n"
             b"FIELDS x y z intensity\n"
@@ -59,8 +67,8 @@ class LocalizationStabilityCommonTest(unittest.TestCase):
             b"DATA binary\n"
             b"\x00\xff\n\x80"
         )
-        (self.map_dir / "GroundMap.pcd").write_bytes(b"ground map")
-        (self.map_dir / "sc_db.bin").write_bytes(b"scan context")
+        (self.map_dir / GROUND_MAP_NAME).write_bytes(b"ground map")
+        (self.map_dir / SCAN_CONTEXT_DB_NAME).write_bytes(b"scan context")
 
     def test_validate_dataset_returns_complete_identity(self):
         identity = validate_dataset(self.bag_dir, self.map_dir)
@@ -70,10 +78,10 @@ class LocalizationStabilityCommonTest(unittest.TestCase):
         self.assertEqual(identity.topic_counts, {"/imu": 42617, "/lidar_points": 4258})
         self.assertEqual(identity.db3_bytes, len(b"sample bag data"))
         self.assertEqual(identity.map_points, 4)
-        self.assertEqual(identity.map_bytes, (self.map_dir / "GlobalMap.pcd").stat().st_size)
+        self.assertEqual(identity.map_bytes, (self.map_dir / GLOBAL_MAP_NAME).stat().st_size)
 
     def test_validate_dataset_accepts_binary_pcd_header_followed_by_payload(self):
-        global_map = self.map_dir / "GlobalMap.pcd"
+        global_map = self.map_dir / GLOBAL_MAP_NAME
         payload = b"\xff\x00\x80" * 1024
         global_map.write_bytes(b"VERSION .7\nPOINTS 7\nDATA binary\n" + payload)
 
@@ -83,7 +91,7 @@ class LocalizationStabilityCommonTest(unittest.TestCase):
         self.assertEqual(identity.map_bytes, global_map.stat().st_size)
 
     def test_validate_dataset_rejects_pcd_data_without_encoding(self):
-        (self.map_dir / "GlobalMap.pcd").write_bytes(b"POINTS 4\nDATA\n")
+        (self.map_dir / GLOBAL_MAP_NAME).write_bytes(b"POINTS 4\nDATA\n")
 
         with self.assertRaisesRegex(DatasetError, "DATA"):
             validate_dataset(self.bag_dir, self.map_dir)
@@ -104,7 +112,7 @@ class LocalizationStabilityCommonTest(unittest.TestCase):
 
         for name, header in invalid_headers.items():
             with self.subTest(name=name):
-                (self.map_dir / "GlobalMap.pcd").write_bytes(header)
+                (self.map_dir / GLOBAL_MAP_NAME).write_bytes(header)
                 with self.assertRaises(DatasetError):
                     validate_dataset(self.bag_dir, self.map_dir)
 
@@ -117,7 +125,7 @@ class LocalizationStabilityCommonTest(unittest.TestCase):
             identity.topic_counts["/imu"] = 0
 
     def test_validate_dataset_rejects_incomplete_map(self):
-        (self.map_dir / "GroundMap.pcd").unlink()
+        (self.map_dir / GROUND_MAP_NAME).unlink()
 
         with self.assertRaisesRegex(DatasetError, "GroundMap\\.pcd"):
             validate_dataset(self.bag_dir, self.map_dir)
@@ -136,12 +144,12 @@ sc_db_path: old-db
         runtime_path = write_runtime_parameters(template, self.map_dir, output_dir)
         runtime_text = runtime_path.read_text(encoding="utf-8")
 
-        self.assertIn(f'map_path: "{(self.map_dir / "GlobalMap.pcd").resolve()}"', runtime_text)
+        self.assertIn(f'map_path: "{(self.map_dir / GLOBAL_MAP_NAME).resolve()}"', runtime_text)
         self.assertIn(
-            f'ground_map_path: "{(self.map_dir / "GroundMap.pcd").resolve()}"',
+            f'ground_map_path: "{(self.map_dir / GROUND_MAP_NAME).resolve()}"',
             runtime_text,
         )
-        self.assertIn(f'sc_db_path: "{(self.map_dir / "sc_db.bin").resolve()}"', runtime_text)
+        self.assertIn(f'sc_db_path: "{(self.map_dir / SCAN_CONTEXT_DB_NAME).resolve()}"', runtime_text)
 
     def test_write_runtime_parameters_quotes_special_map_paths_safely(self):
         special_map_dir = self.root / 'map"and\\backslash'
@@ -161,14 +169,14 @@ sc_db_path: old-db
         parameters = yaml.safe_load(runtime_path.read_text(encoding="utf-8"))
 
         self.assertEqual(
-            parameters["map_path"], str((special_map_dir / "GlobalMap.pcd").resolve())
+            parameters["map_path"], str((special_map_dir / GLOBAL_MAP_NAME).resolve())
         )
         self.assertEqual(
             parameters["ground_map_path"],
-            str((special_map_dir / "GroundMap.pcd").resolve()),
+            str((special_map_dir / GROUND_MAP_NAME).resolve()),
         )
         self.assertEqual(
-            parameters["sc_db_path"], str((special_map_dir / "sc_db.bin").resolve())
+            parameters["sc_db_path"], str((special_map_dir / SCAN_CONTEXT_DB_NAME).resolve())
         )
 
     def test_write_runtime_parameters_preserves_inline_comments(self):
@@ -185,16 +193,16 @@ sc_db_path: old-db
         runtime_text = runtime_path.read_text(encoding="utf-8")
 
         self.assertIn(
-            f'      map_path: "{(self.map_dir / "GlobalMap.pcd").resolve()}"      # 全局地图',
+            f'      map_path: "{(self.map_dir / GLOBAL_MAP_NAME).resolve()}"      # 全局地图',
             runtime_text,
         )
         self.assertIn(
-            f'      sc_db_path: "{(self.map_dir / "sc_db.bin").resolve()}"'
+            f'      sc_db_path: "{(self.map_dir / SCAN_CONTEXT_DB_NAME).resolve()}"'
             "       # 空值表示与 GlobalMap.pcd 同目录",
             runtime_text,
         )
         self.assertIn(
-            f'      ground_map_path: "{(self.map_dir / "GroundMap.pcd").resolve()}"'
+            f'      ground_map_path: "{(self.map_dir / GROUND_MAP_NAME).resolve()}"'
             "  # 空=与map_path同目录 地面高度约束",
             runtime_text,
         )
@@ -214,14 +222,14 @@ sc_db_path: old-db
         parameters = yaml.safe_load(runtime_text)
 
         self.assertEqual(
-            parameters["map_path"], str((self.map_dir / "GlobalMap.pcd").resolve())
+            parameters["map_path"], str((self.map_dir / GLOBAL_MAP_NAME).resolve())
         )
         self.assertEqual(
             parameters["ground_map_path"],
-            str((self.map_dir / "GroundMap.pcd").resolve()),
+            str((self.map_dir / GROUND_MAP_NAME).resolve()),
         )
         self.assertEqual(
-            parameters["sc_db_path"], str((self.map_dir / "sc_db.bin").resolve())
+            parameters["sc_db_path"], str((self.map_dir / SCAN_CONTEXT_DB_NAME).resolve())
         )
         self.assertNotIn("# literal", runtime_text)
         self.assertIn("  # trailing comment", runtime_text)

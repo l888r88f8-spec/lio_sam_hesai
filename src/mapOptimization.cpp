@@ -1,5 +1,6 @@
 #include "utility.hpp"
 #include "ivox_map/ivox_map.h"
+#include "common/map_artifact_layout.h"
 #include "lio_sam/ground_grid_patcher.h"
 #include "lio_sam_hesai/msg/cloud_info.hpp"
 #include "lio_sam_hesai/srv/save_map.hpp"
@@ -334,6 +335,7 @@ public:
             if(req->destination.empty()) saveMapDirectory = std::getenv("HOME") + config_.mapping.map_save.directory;
             else saveMapDirectory = std::getenv("HOME") + req->destination;
             std::cout << "Save destination: " << saveMapDirectory << std::endl;
+            const MapArtifactLayout save_layout(saveMapDirectory);
             // create directory and remove old files;
             int unused = system((std::string("exec rm -r ") + saveMapDirectory).c_str());
             unused = system((std::string("mkdir -p ") + saveMapDirectory).c_str());
@@ -363,8 +365,8 @@ public:
             }
 
             // Save key frame transformations from the same snapshot used below.
-            pcl::io::savePCDFileBinary(saveMapDirectory + "/trajectory.pcd", *keyPoses3DSnapshot);
-            pcl::io::savePCDFileBinary(saveMapDirectory + "/transformations.pcd", *keyPoses6DSnapshot);
+            pcl::io::savePCDFileBinary(save_layout.Trajectory().string(), *keyPoses3DSnapshot);
+            pcl::io::savePCDFileBinary(save_layout.Transformations().string(), *keyPoses6DSnapshot);
             // extract global point cloud map
             pcl::PointCloud<PointType>::Ptr globalCornerCloud(new pcl::PointCloud<PointType>());
             pcl::PointCloud<PointType>::Ptr globalCornerCloudDS(new pcl::PointCloud<PointType>());
@@ -476,12 +478,12 @@ public:
                downSizeFilterCorner.setInputCloud(globalCornerCloud);
                downSizeFilterCorner.setLeafSize(req->resolution, req->resolution, req->resolution);
                downSizeFilterCorner.filter(*globalCornerCloudDS);
-               pcl::io::savePCDFileBinary(saveMapDirectory + "/CornerMap.pcd", *globalCornerCloudDS);
+               pcl::io::savePCDFileBinary(save_layout.CornerMap().string(), *globalCornerCloudDS);
                // down-sample and save surf cloud
                downSizeFilterSurf.setInputCloud(globalSurfCloud);
                downSizeFilterSurf.setLeafSize(req->resolution, req->resolution, req->resolution);
                downSizeFilterSurf.filter(*globalSurfCloudDS);
-               pcl::io::savePCDFileBinary(saveMapDirectory + "/SurfMap.pcd", *globalSurfCloudDS);
+               pcl::io::savePCDFileBinary(save_layout.SurfaceMap().string(), *globalSurfCloudDS);
                //pcl::io::savePCDFileBinary(saveMapDirectory + "/localmap.pcd", *globalSurfCloudDS);
                // build and save GlobalMap with same resolution
                *globalMapCloud += *globalCornerCloudDS;
@@ -490,21 +492,23 @@ public:
             else
             {
                // save corner cloud
-               pcl::io::savePCDFileBinary(saveMapDirectory + "/CornerMap.pcd", *globalCornerCloud);
+               pcl::io::savePCDFileBinary(save_layout.CornerMap().string(), *globalCornerCloud);
                // save surf cloud
-               pcl::io::savePCDFileBinary(saveMapDirectory + "/SurfMap.pcd", *globalSurfCloud);
+               pcl::io::savePCDFileBinary(save_layout.SurfaceMap().string(), *globalSurfCloud);
                // build GlobalMap without downsampling
                *globalMapCloud += *globalCornerCloud;
                *globalMapCloud += *globalSurfCloud;
             }
-            int ret = pcl::io::savePCDFileBinary(saveMapDirectory + "/GlobalMap.pcd", *globalMapCloud);
+            int ret = pcl::io::savePCDFileBinary(save_layout.GlobalMap().string(), *globalMapCloud);
             bool scanContextDbSaved = !generateScanContextDb;
             if (generateScanContextDb)
             {
-                const std::string scanContextPath = saveMapDirectory + "/sc_db.bin";
+                const std::string scanContextPath =
+                    save_layout.ScanContextDb().string();
                 scanContextDbSaved =
                     ret == 0 && scanContextGenerator.Size() > 0 &&
-                    scanContextGenerator.SaveDB(scanContextPath, "GlobalMap.pcd");
+                    scanContextGenerator.SaveDB(
+                        scanContextPath, MapArtifactLayout::kGlobalMapName);
                 if (scanContextDbSaved)
                 {
                     std::cout << "Scan Context DB (" << scanContextGenerator.Size()
@@ -522,7 +526,7 @@ public:
             {
                 std::lock_guard<std::mutex> lock(mtx);
                 groundSaved = saveGlobalGroundMap(
-                    saveMapDirectory + "/GroundMap.pcd", groundRes, true);
+                    save_layout.GroundMap().string(), groundRes, true);
             }
             if (groundRes != req->resolution)
                 std::cout << "Ground save resolution: " << groundRes << std::endl;
@@ -960,11 +964,12 @@ public:
         // the shared configuration itself stays immutable.
         const std::string save_directory =
             std::getenv("HOME") + config_.mapping.map_save.directory;
+        const MapArtifactLayout shutdown_layout(save_directory);
         int unused = system((std::string("exec rm -r ") + save_directory).c_str());
         unused = system((std::string("mkdir ") + save_directory).c_str());
 
-        pcl::io::savePCDFileASCII(save_directory + "trajectory.pcd", *cloudKeyPoses3D);
-        pcl::io::savePCDFileASCII(save_directory + "transformations.pcd", *cloudKeyPoses6D);
+        pcl::io::savePCDFileASCII(shutdown_layout.Trajectory().string(), *cloudKeyPoses3D);
+        pcl::io::savePCDFileASCII(shutdown_layout.Transformations().string(), *cloudKeyPoses6D);
 
         pcl::PointCloud<PointType>::Ptr globalCornerCloud(new pcl::PointCloud<PointType>());
         pcl::PointCloud<PointType>::Ptr globalCornerCloudDS(new pcl::PointCloud<PointType>());
@@ -1008,10 +1013,10 @@ public:
             *globalMapCloud += *globalSurfCloud;
         }
 
-        pcl::io::savePCDFileASCII(save_directory + "cloudCorner.pcd", *globalCornerCloudDS);
-        pcl::io::savePCDFileASCII(save_directory + "cloudSurf.pcd", *globalSurfCloudDS);
-        pcl::io::savePCDFileASCII(save_directory + "cloudGlobal.pcd", *globalMapCloud);
-        saveGlobalGroundMap(save_directory + "cloudGround.pcd", config_.mapping.map_save.ground_resolution, false);
+        pcl::io::savePCDFileASCII(shutdown_layout.SavedCornerCloud().string(), *globalCornerCloudDS);
+        pcl::io::savePCDFileASCII(shutdown_layout.SavedSurfaceCloud().string(), *globalSurfCloudDS);
+        pcl::io::savePCDFileASCII(shutdown_layout.SavedGlobalCloud().string(), *globalMapCloud);
+        saveGlobalGroundMap(shutdown_layout.SavedGroundCloud().string(), config_.mapping.map_save.ground_resolution, false);
         downSizeFilterCorner.setLeafSize(config_.mapping.voxel_filter.mapping_corner_leaf_size, config_.mapping.voxel_filter.mapping_corner_leaf_size, config_.mapping.voxel_filter.mapping_corner_leaf_size);
         downSizeFilterSurf.setLeafSize(config_.mapping.voxel_filter.mapping_surface_leaf_size, config_.mapping.voxel_filter.mapping_surface_leaf_size, config_.mapping.voxel_filter.mapping_surface_leaf_size);
         std::cout << "****************************************************" << std::endl;

@@ -295,7 +295,7 @@ TEST(AutoRelocalizationParameterSurface, ExposesMappingDatabaseExport) {
     "config_.mapping.map_save.generate_scan_context_db",
     "relocalization/scan_context.h",
     "ScanContext",
-    "sc_db.bin",
+    "ScanContextDb()",
     "SaveDB",
     "config_.mapping.map_save.align_ground_to_zero",
     "config_.mapping.map_save.ground_z_offset",
@@ -306,6 +306,10 @@ TEST(AutoRelocalizationParameterSurface, ExposesMappingDatabaseExport) {
   for (const auto & token : tokens) {
     ExpectToken("src/mapOptimization.cpp", token);
   }
+
+  // The artifact names themselves are owned by the shared layout.
+  ExpectToken("include/common/map_artifact_layout.h", "sc_db.bin");
+  ExpectToken("include/common/map_artifact_layout.h", "GlobalMap.pcd");
 }
 
 TEST(AutoRelocalizationParameterSurface, ExposesLocalizationHealthParameters) {

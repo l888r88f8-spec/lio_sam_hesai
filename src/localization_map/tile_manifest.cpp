@@ -1,3 +1,4 @@
+#include "common/map_artifact_layout.h"
 #include "localization_map/tile_manifest.h"
 
 #include <algorithm>
@@ -153,7 +154,7 @@ int OpenRootDirectory(const fs::path& root) {
 std::string ReadManifestFile(const fs::path& root) {
   UniqueFileDescriptor root_descriptor(OpenRootDirectory(root));
   const int manifest_fd =
-      ::openat(root_descriptor.get(), "manifest.yaml",
+      ::openat(root_descriptor.get(), MapArtifactLayout::kManifestName,
                O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
   if (manifest_fd < 0) {
     if (errno == ELOOP) {
@@ -337,7 +338,8 @@ void WriteManifestFile(const fs::path& root, const std::string& contents) {
   std::string temporary_name;
   int temporary_fd = -1;
   for (int attempt = 0; attempt < 128; ++attempt) {
-    temporary_name = ".manifest.yaml.tmp." + std::to_string(::getpid()) + "." +
+    temporary_name = std::string(".") + MapArtifactLayout::kManifestName + ".tmp." +
+                     std::to_string(::getpid()) + "." +
                      std::to_string(next_temporary_id.fetch_add(1));
     temporary_fd =
         ::openat(root_descriptor.get(), temporary_name.c_str(),
@@ -364,7 +366,7 @@ void WriteManifestFile(const fs::path& root, const std::string& contents) {
     temporary_descriptor.CloseChecked("manifest temporary file");
 
     if (::renameat(root_descriptor.get(), temporary_name.c_str(), root_descriptor.get(),
-                   "manifest.yaml") != 0) {
+                   MapArtifactLayout::kManifestName) != 0) {
       Fail("unable to replace manifest.yaml: " + std::string(std::strerror(errno)));
     }
     renamed = true;

@@ -12,6 +12,7 @@
 
 #include <g2o/core/sparse_optimizer.h>
 
+#include "common/map_artifact_layout.h"
 #include "localization_map/global_map_provider.h"
 #include "localization_map/tiled_map_provider.h"
 #include "optimization/g2o/accel_bias_rw_edge.h"
@@ -35,6 +36,20 @@ std::uint64_t SteadyNowMicroseconds() {
       std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count());
 }
 
+// Manifest path for a configured tiled root, or nullopt when the root does
+// not name a directory and therefore cannot form a tiled layout.
+std::optional<std::filesystem::path> TiledManifestFor(
+    const std::filesystem::path& tiled_root) {
+  if (tiled_root.filename().empty() && tiled_root.parent_path().empty()) {
+    return std::nullopt;
+  }
+  try {
+    return MapArtifactLayout::FromTiledRoot(tiled_root).TiledManifest();
+  } catch (const std::invalid_argument&) {
+    return std::nullopt;
+  }
+}
+
 std::optional<localization_map::MapMode> ResolveMapMode(
     const std::string& configured_mode, const std::filesystem::path& map_path,
     std::string* error) {
@@ -56,8 +71,10 @@ std::optional<localization_map::MapMode> ResolveMapMode(
   }
   if (configured_mode == "tiled") {
     status_error.clear();
-    if (!is_directory ||
-        !fs::is_regular_file(map_path / "manifest.yaml", status_error)) {
+    const std::optional<std::filesystem::path> manifest =
+        TiledManifestFor(map_path);
+    if (!is_directory || !manifest.has_value() ||
+        !fs::is_regular_file(*manifest, status_error)) {
       return fail("tiled map path must contain manifest.yaml");
     }
     return localization_map::MapMode::kTiled;
@@ -510,8 +527,7 @@ bool Localization::PrepareMap() {
   map_ready_.store(false);
   const LocalizationMapConfig& map_config = config_->localization.localization;
   resolved_map_path_ = map_config.map_path.empty()
-                           ? std::filesystem::path(kDataPath) /
-                                 kGlobalMapFileName
+                           ? MapArtifactLayout(kDataPath).GlobalMap()
                            : std::filesystem::path(map_config.map_path);
   std::string mode_error;
   const auto mode = ResolveMapMode(map_config.map_mode,
@@ -534,7 +550,9 @@ bool Localization::PrepareMap() {
   if (selected_map_mode_ == localization_map::MapMode::kGlobal) {
     std::filesystem::path ground_path;
     if (map_config.ground_map_path.empty()) {
-      ground_path = resolved_map_path_.parent_path() / "GroundMap.pcd";
+      // The resolved path is a GlobalMap.pcd, so its directory is the root.
+      ground_path =
+          MapArtifactLayout(resolved_map_path_.parent_path()).GroundMap();
     } else {
       ground_path = map_config.ground_map_path;
     }
@@ -852,9 +870,10 @@ void Localization::Run() {
 void Localization::LoadScanContextDb() {
   std::string db_path = config_->localization.localization.sc_db_path;
   if (db_path.empty()) {
-    const std::filesystem::path database_directory =
-        resolved_map_path_.parent_path();
-    db_path = (database_directory / "sc_db.bin").string();
+    // Whichever mode resolved, the map root is the resolved path's directory.
+    db_path = MapArtifactLayout(resolved_map_path_.parent_path())
+                  .ScanContextDb()
+                  .string();
   }
 
   std::string map_tag;

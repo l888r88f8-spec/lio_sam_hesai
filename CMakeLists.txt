@@ -101,6 +101,7 @@ rosidl_generate_interfaces(${PROJECT_NAME} "msg/CloudInfo.msg" "srv/SaveMap.srv"
 # immutable configuration, and map artifact layout. Consumers link this instead
 # of re-deriving frames, aliases, or artifact paths themselves.
 add_library(${PROJECT_NAME}_contracts STATIC
+  src/common/map_artifact_layout.cpp
   src/common/ros_pose_adapter.cpp
   src/common/slam_config.cpp
 )
@@ -336,6 +337,9 @@ if(BUILD_TESTING)
     test/test_unified_parameter_schema.cpp)
   ament_add_gtest(test_coordinate_contract_surface
     test/test_coordinate_contract_surface.cpp)
+  ament_add_gtest(test_map_artifact_layout test/test_map_artifact_layout.cpp)
+  target_include_directories(test_map_artifact_layout PRIVATE include)
+  target_link_libraries(test_map_artifact_layout ${PROJECT_NAME}_contracts)
   ament_add_gtest(test_rigid_transform test/test_rigid_transform.cpp)
   target_include_directories(test_rigid_transform PRIVATE include)
   target_link_libraries(test_rigid_transform ${LIO_SAM_EIGEN_TARGET})
@@ -380,7 +384,8 @@ if(BUILD_TESTING)
     src/localization_map/tile_manifest.cpp
     src/localization_map/tile_map_generator.cpp)
   target_include_directories(test_tile_map_generator PRIVATE include ${PCL_INCLUDE_DIRS})
-  target_link_libraries(test_tile_map_generator yaml-cpp ${PCL_LIBRARIES})
+  target_link_libraries(test_tile_map_generator yaml-cpp ${PCL_LIBRARIES}
+    ${PROJECT_NAME}_contracts)
   ament_add_gtest(test_relocalization_efficiency_surface
     test/test_relocalization_efficiency_surface.cpp)
   ament_add_gtest(test_tiled_map_localization_surface
