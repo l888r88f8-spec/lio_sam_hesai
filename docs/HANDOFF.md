@@ -1,11 +1,13 @@
 # 交接文档 — lio_sam_hesai 定位稳定化
 
-更新日期：2026-09-09
-当前分支：`feature/p2-tiled-map`（分块地图特性；其余稳定化工作已合入 `main`）
-基线提交：`caf8e29 docs(localization): refresh TF continuity verification`
+更新日期：2026-09-12
+当前分支：`p2.2-coordinate-naming-unification`（P2.2 坐标与命名收敛，未合入 `main`）
+基线提交：`7e0d1da docs(p2): record Task 8 progress and handoff notes`
 工作区：交接时无未提交改动。
 
 ## 一、当前结论
+
+**P2.2（建图/重定位坐标与命名收敛）已按计划实现到 Task 8，但尚未签收。** 代码、配置、launch、文档与全部单元/契约测试均已完成并通过；阻塞点是两条分块回放检查（`tiled-quick`、`tiled-faults`）失败。已用 `main` 做 A/B 对照，两者在未改动的 `main` 上以完全相同的数值/信息失败，因此**不是 P2.2 引入的回归**，而是既有的分块基线缺口。按计划 Task 9 Step 5 的要求，检查未全部通过时 P2.2 保持未完成并记录阻塞项。详见第 8 节。
 
 原定的稳定化子项目均已合入 `main`：健康可观测性、低风险缺陷清理、外参统一、回放与 RSS 验证框架、LOST 自恢复、启动就绪握手、实时资源治理，以及定位 TF 连续性收尾。当前没有已批准但尚未开始的 P0/P1 子项目。
 
@@ -23,6 +25,7 @@
 | E：故障自恢复闭环 | 已完成 | 每次进入 `LOST` 立即自动重定位一次；仅在数据流从异常恢复为健康时再尝试一次；手动 `/initialpose` 可打破自动等待。|
 | D1：启动就绪握手 | 已完成 | 在订阅和工作线程启动前同步加载地图、地面图、kd-tree 与可选 Scan Context；失败直接拒绝启动；诊断暴露准备耗时。|
 | D2：实时化与资源治理 | 已完成 | 预处理/定位线程默认请求 FIFO 与 CPU 亲和，权限或 cpuset 不满足时降级运行并上报；500 ms 单帧处理看门狗在安全检查点丢弃超期帧并恢复状态。|
+| P2-2：坐标与命名收敛 | 已实现，未签收 | 新增公共契约层：有方向约束的 `RigidTransform3d`（`parent_T_child` 编译期语义）、`RosPoseAdapter`、不可变 `SlamConfig` + legacy 键兼容解析、`MapArtifactLayout`。重定位迁移到注入式配置并删除 `ConfigParameters` 单例；建图 `ParamServer` 收敛为纯配置持有者，全部话题改为 `pipeline_topic`/`command_topic`/`output_topic` 分组。TF 拓扑、话题字符串、磁盘文件名与算法行为均保持不变。阻塞：分块回放基线（见第 8 节）。|
 | P2-1：大场景分块地图按需加载 | 已完成 | 新增 `localization_map` 模块：共享 tile 索引、带路径校验的 v1 manifest、原子分片生成器 + CLI、有界 LRU 缓存、`GlobalMapProvider`/`TiledMapProvider` 统一接口、单 worker 异步加载。支持冷启动 Scan Context 重定位与跟踪，内存受活动范围与缓存预算约束；旧全图路径不变。|
 
 主要设计与实施记录：
@@ -93,9 +96,9 @@ LIO_SAM_KEEP_RESULTS=1 scripts/run_localization_stability.sh memory
 
 ## 五、后续工作
 
-没有活动中的 P0/P1 子项目。P2-1 大场景分块地图已完成（见第 7 节）。剩余 P2 顺序，下一项需在开始前重新确认范围并建立新的 spec：
+**P2.2 尚未签收**，签收前需要先解决第 8 节记录的阻塞项。P2-1 大场景分块地图已完成（见第 7 节）。剩余 P2 顺序，下一项需在开始前重新确认范围并建立新的 spec：
 
-1. **建图/重定位统一坐标与命名体系**：逐步收敛两条历史代码路径，降低维护和配置歧义。
+1. **修分块回放基线**：`tiled-quick` / `tiled-faults` 目前即使在没有 P2.2 的 `main` 上也失败（见第 8 节）。需要决定是重新标定分块模式的 `max_non_ok_gap_seconds` 基线，还是修 `missing-neighbor` 诊断的缺失索引。
 2. **地图产物版本化与兼容校验**：为 PCD、`sc_db.bin` 和参数快照建立版本戳、元数据与加载期校验（本项目只定义分块加载所需的最小 manifest 版本与一致性检查）。
 
 `docs/ARCHITECTURE.md` 是 7 月的静态风险评估，仍含“未完成”及旧文件存在等历史描述；开始新工作前应以当前源码、提交历史和本交接文档为准，再单独更新该架构文档。
@@ -175,3 +178,69 @@ lio_sam_hesai_generate_tiled_map /home/robot/map/hesai_sim2 \
 - tile 请求按 manifest 实际范围裁剪，超出地图边界的邻域不报“缺失 tile”，避免地图边缘误判。
 - 分块注册体素尺寸固定为 0.3 m 以匹配旧全图密度；如后续调整全图密度需同步此处。
 - manifest 字段扩展遵循向后兼容：未知可选字段忽略，未知 `schema_version` 拒绝加载；密码学摘要、参数快照与跨版本迁移留给 P2-3。
+
+## 八、P2.2 坐标与命名收敛（2026-09-12）
+
+设计：[spec](superpowers/specs/2026-09-10-mapping-localization-coordinate-naming-unification-design.md) / 计划：[plan](superpowers/plans/2026-09-10-mapping-localization-coordinate-naming-unification.md)
+
+分支 `p2.2-coordinate-naming-unification`，从 `main` 的 `30d6e88` 分出，共 14 个提交（`a0fd37f` … `7e0d1da`）。**未合入 `main`**，用户要求显式批准后才合并。
+
+### 状态：已实现到 Task 8，未签收
+
+Task 1-8 全部完成。Task 9 的静态检查、构建、CTest、全图回放、TF 连续性回放、建图 smoke 回放均通过；两条分块回放检查失败，且已在未改动的 `main` 上复现同样的失败，因此作为既有缺口记录，P2.2 按计划保持未完成。
+
+### 验证证据
+
+静态检查：
+
+- `git diff --check HEAD~8` 与 `git diff --check main..HEAD`：均无输出（退出码 0）。
+- `rg 'ConfigParameters::Instance|T_[A-Za-z0-9_]+_to_[A-Za-z0-9_]+|last_odom_state_' include src`：无匹配。
+
+构建与测试：
+
+- `colcon build --symlink-install --packages-select lio_sam_hesai --cmake-args -DBUILD_TESTING=ON --executor sequential --parallel-workers 1`：成功（在既有 build 目录上增量 13.8 s）。
+- `cmake --build /home/robot/slam_ws/build/lio_sam_hesai -- -j1`（全部目标）：成功，0 error。
+- `ctest -E '(copyright|cpplint)'`：**42/46 通过**。失败 4 项为 `uncrustify`、`lint_cmake`、`flake8`、`xmllint`，与 `main` 一致（既有 lint 基线，见第 3 节说明）。P2.2 新增/修改的源码没有引入任何新的 lint 违规：三个 launch 文件的 flake8 E501 数量与 `main` 完全相同（4 条，全部为改动前既有行），另修掉了 `main` 上的一条 E302。
+
+定位回放（`scripts/run_localization_stability.sh`，`hesai_sim` bag，基线 `test/integration/baselines/hesai_sim.yaml`）：
+
+- `quick`（全图）：**退出码 0**。`map_mode: global`、`error_samples: 0`、`timestamp_monotonic: true`、`valid_odom_ratio: 1.0`、`first_ok_seconds: 2.95`、`max_non_ok_gap_seconds: 2.95`、`max_odom_gap_seconds: 0.490`、`max_reg_fitness: 1.0`。全部满足基线阈值。
+- `tf-continuity`：**退出码 0**，`violations: []`；`map -> base_link` 连续，无定位 odom TF。
+- `tiled-quick`：**失败** — `metric violation: max_non_ok_gap_seconds must be <= 5.533784914016724, observed 49.73233079910278`。
+- `tiled-faults`：**失败** — `fault violation: missing-neighbor diagnostic must contain [-4,-5]`。
+
+两条分块失败的 A/B 对照（在 `/tmp/lio_main_ws` 用 `main`（`30d6e88`）重新构建后运行同样的命令）：
+
+- `main` 的 `tiled-quick`：`observed 49.72324180603027`（与本分支的 49.7239 s / 49.7239 s 相差 < 0.01 s）。
+- `main` 的 `tiled-faults`：`fault violation: missing-neighbor diagnostic must contain [-4,-5]`（与本分支信息完全相同）。
+
+结论：两条失败都是既有的分块基线缺口，不是 P2.2 回归。结构性佐证：P2.2 对 `src/localization_map/` 的改动只有 `tile_manifest.cpp` 的 3 处字面量改为同一常量 `MapArtifactLayout::kManifestName`（字符串逐字节相同）和 `tile_map_generator.cpp`（仅在生成路径运行）；`tiled_map_provider.cpp`、`tile_cache.cpp`、`tile_index.cpp` 与整个 `src/localization_health/` 未被改动。基线中 `max_non_ok_gap_seconds: 5.53` 是 2026-07-29 从**全图**模式标定的（`7e6f9f2`），而 `tiled-quick` 是 2026-09-09 才加入的（`bb648bd`），未重新标定或扩展基线。
+
+建图 smoke 回放（`hesai_sim` bag，1.5 GB，`--clock --rate 1.0`，采样 60 s）：
+
+- 命令：`ros2 launch lio_sam_hesai mapping.launch.py use_sim_time:=true` + `ros2 bag play <bag> --clock --rate 1.0`。
+- TF：`map -> odom` = 平移 `[0.000, 0.000, 0.000]`、四元数 `[0,0,0,1]`（静态单位变换）；`odom -> base_link` 动态，两次采样分别为 `[19.132, -0.018, -0.218]`、`[26.702, -0.021, -0.182]`；`base_link -> hesai_lidar` = `[0.020, 0.000, 0.320]`；`base_link -> imu_link` = `[0.020, 0.000, 0.220]`。
+- 话题：P2.2 前建图全部话题字符串均存在（`lio_sam/deskew/cloud_info`、`cloud_deskewed`、`ground_cloud_global`、`lio_sam/feature/cloud_info`、`cloud_corner`、`cloud_surface`、`lio_sam/mapping/odometry`、`odometry_incremental`、`path`、`map_global`、`map_local`、`cloud_registered`、`cloud_registered_raw`、`ground_cloud_global`、`trajectory`、`lio_sam/imu/path`、`icp_loop_closure_history_cloud`、`loop_closure_constraints`、`lio_sam/cloud_nonground`、`odometry/imu`、`odometry/imu_incremental`、`lio_loop/loop_closure_detection`）。话题表中出现的 `/lio_sam/localization/*` 与 `/initialpose` 来自 RViz 配置的订阅与 SetInitialPose 工具（`ros2 topic info` 显示 0 个发布者、1 个订阅），不是建图节点新增的发布。
+- 进程退出：`bag_play_exit=0`，建图各节点无异常退出。
+
+### 本轮发现并修复的回归（Task 6 引入）
+
+建图 smoke 回放第一次运行时 `lio_sam_hesai_mapOptimization` 在启动约 13 s 后 `terminate called after throwing an instance of 'std::invalid_argument'`（exit code -6）。原因是 Task 6 把 `publishOdometry()` 的全局里程计改为
+
+```cpp
+OdomTLidar::FromMatrix(trans2Affine3f(transformTobeMapped).matrix().cast<double>())
+```
+
+而 `transformTobeMapped` 是 `float[6]`，`trans2Affine3f` 产生的是 float 旋转矩阵，widening 到 double 后正交性误差约 **2.08e-07**，远超 `RigidTransform3d::Validate` 的 `isApprox` 容差 **1e-12**，于是每次建图运行都会在建图开始时抛异常中止。
+
+修复：在 `publishOdometry()` 里用同样的 RPY 角度在 **double** 下重建旋转（与改动前的 `tf2::setRPY` 路径一致），而不是回绕 float 矩阵。这同时消除了 Task 6 交接说明里标记的 ~1e-7 四元数偏差。新增回归测试 `RigidTransform.RejectsFloatPrecisionRotation` 固定这一行为。
+
+该缺陷只被端到端 smoke 回放捕获——单元测试没有覆盖非单位位姿经过发布边界的情况。
+
+### 遗留与注意事项
+
+- 分块回放的阻塞项见第五节第 1 条。
+- 退出自动保存仍写 `cloudCorner.pcd` / `cloudSurf.pcd` / `cloudGlobal.pcd` / `cloudGround.pcd`，而服务保存写 `CornerMap.pcd` / `SurfMap.pcd` / `GlobalMap.pcd` / `GroundMap.pcd`。P2.2 不重命名磁盘文件，因此四个历史名字已收敛到 `MapArtifactLayout` 的 `Saved*Cloud()` 访问器。**这看起来是真实缺陷**：没有任何代码回读 `cloud*.pcd`，只靠 Ctrl+C 保存的地图无法被定位或分块生成器加载（它们找 `GlobalMap.pcd`）。
+- 空的 `localization.map_path` 默认值从 `<package>/data/map.pcd` 改为 `<package>/data/GlobalMap.pcd`（计划要求删除 `kGlobalMapFileName`）。`data/` 下从未存在 `map.pcd`，因此旧默认值是死代码；任何显式配置的路径不受影响。
+- `docs/P2_2_MIGRATION.md` 已在 `.gitignore` 的 `docs/` 下但被跟踪，新克隆后需要 `git add -f`。
+- 迁移文档中的 legacy→canonical 键表由 `test_unified_parameter_schema.cpp` 的 `kParameterContracts` 生成，改动该表后应重新生成。

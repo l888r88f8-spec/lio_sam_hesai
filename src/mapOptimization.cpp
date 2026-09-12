@@ -2625,9 +2625,23 @@ public:
         // Publish odometry for ROS (global)
         // The optimizer keeps its own float[6] RPY representation; this
         // publication point is the boundary where it becomes a direction-safe
-        // odom_T_lidar. The child frame string is unchanged.
-        const OdomTLidar odom_T_lidar = OdomTLidar::FromMatrix(
-            trans2Affine3f(transformTobeMapped).matrix().cast<double>());
+        // odom_T_lidar. The rotation is rebuilt from the same RPY angles in
+        // double precision -- matching the previous tf2::setRPY path -- rather
+        // than round-tripped through the float Affine3f, whose rounding error
+        // (~1e-7) is far above the transform's orthonormality tolerance.
+        Eigen::Isometry3d odom_T_lidar_value = Eigen::Isometry3d::Identity();
+        odom_T_lidar_value.linear() =
+            (Eigen::AngleAxisd(transformTobeMapped[2],
+                               Eigen::Vector3d::UnitZ()) *
+             Eigen::AngleAxisd(transformTobeMapped[1],
+                               Eigen::Vector3d::UnitY()) *
+             Eigen::AngleAxisd(transformTobeMapped[0],
+                               Eigen::Vector3d::UnitX()))
+                .toRotationMatrix();
+        odom_T_lidar_value.translation() =
+            Eigen::Vector3d(transformTobeMapped[3], transformTobeMapped[4],
+                            transformTobeMapped[5]);
+        const OdomTLidar odom_T_lidar(odom_T_lidar_value);
         const nav_msgs::msg::Odometry laserOdometryROS =
             RosPoseAdapter::ToOdometry(odom_T_lidar, config_.frames.odometry,
                                        "odom_mapping", timeLaserInfoStamp);

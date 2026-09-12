@@ -4,7 +4,7 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
 from launch.conditions import IfCondition
-from launch.substitutions import LaunchConfiguration, PythonExpression, PythonExpression
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 
 
@@ -69,7 +69,7 @@ def generate_launch_description():
     legacy_use_sim_declare = DeclareLaunchArgument(
         "use_sim",
         default_value=LEGACY_USE_SIM_UNSET,
-        description="Deprecated alias for use_sim_time; supported for one cycle.",
+        description="Deprecated alias for use_sim_time; kept one cycle.",
     )
     publish_static_tf_declare = DeclareLaunchArgument(
         "publish_static_tf",

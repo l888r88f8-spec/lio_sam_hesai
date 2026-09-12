@@ -102,3 +102,31 @@ TEST(RigidTransform, AcceptsValidIsometryConstruction) {
   EXPECT_TRUE(lidar_T_base.Translation().isApprox(
       Eigen::Vector3d(1.0, 2.0, 3.0)));
 }
+
+TEST(RigidTransform, RejectsFloatPrecisionRotation)
+{
+  // The optimizer carries float RPY angles. Composing them into a float
+  // rotation and widening it to double leaves ~1e-7 of rounding error, which
+  // is far above the validator's tolerance -- so a publication boundary must
+  // rebuild the rotation in double (as mapping's publishOdometry does) rather
+  // than round-tripping the float Affine3f. This test pins that behaviour.
+  const float roll = 0.031F, pitch = -0.017F, yaw = 1.234F;
+  const Eigen::Matrix3f float_rotation =
+      (Eigen::AngleAxisf(yaw, Eigen::Vector3f::UnitZ()) *
+       Eigen::AngleAxisf(pitch, Eigen::Vector3f::UnitY()) *
+       Eigen::AngleAxisf(roll, Eigen::Vector3f::UnitX()))
+          .toRotationMatrix();
+
+  Eigen::Isometry3d from_float = Eigen::Isometry3d::Identity();
+  from_float.linear() = float_rotation.cast<double>();
+  EXPECT_THROW(OdomTLidar{from_float}, std::invalid_argument);
+
+  // The same angles composed in double are accepted.
+  Eigen::Isometry3d from_double = Eigen::Isometry3d::Identity();
+  from_double.linear() =
+      (Eigen::AngleAxisd(yaw, Eigen::Vector3d::UnitZ()) *
+       Eigen::AngleAxisd(pitch, Eigen::Vector3d::UnitY()) *
+       Eigen::AngleAxisd(roll, Eigen::Vector3d::UnitX()))
+          .toRotationMatrix();
+  EXPECT_NO_THROW(OdomTLidar{from_double});
+}

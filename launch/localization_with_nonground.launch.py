@@ -22,6 +22,7 @@ def _effective_use_sim_time():
         "' else '", canonical, "'",
     ])
 
+
 def generate_launch_description():
     share_dir = get_package_share_directory("lio_sam_hesai")
     parameter_file = LaunchConfiguration("params_file")
@@ -43,7 +44,7 @@ def generate_launch_description():
     legacy_use_sim_declare = DeclareLaunchArgument(
         "use_sim",
         default_value=LEGACY_USE_SIM_UNSET,
-        description="Deprecated alias for use_sim_time; supported for one cycle.",
+        description="Deprecated alias for use_sim_time; kept one cycle.",
     )
     use_rviz_declare = DeclareLaunchArgument(
         "use_rviz",
