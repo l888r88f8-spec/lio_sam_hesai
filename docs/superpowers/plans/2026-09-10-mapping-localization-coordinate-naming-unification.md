@@ -951,3 +951,63 @@ Verification at this checkpoint:
    global map file name still works exactly as before.
 
 The branch is still NOT merged to `main`.
+
+---
+
+## Progress: Task 8 complete (2026-09-12)
+
+Commit `1bd98bc` `docs(config): publish P2.2 naming migration`. All 6 steps ran
+except Step 3, which needed no change (see below).
+
+Verification at this checkpoint:
+
+- `python3 -m py_compile` on all three launch files: OK.
+- Full serial build (`make -j1`, every target): exit 0, no errors.
+- Full non-license CTest run: 42/46 pass. `uncrustify`, `lint_cmake`, `flake8`,
+  `xmllint` still FAIL as on `main`; no functional test regressed.
+- Step 5's named set (`test_unified_parameter_schema`,
+  `test_lidar_imu_calibration`, `test_coordinate_contract_surface`) all pass.
+
+### Step 3 required no change
+
+Every topic-valued entry in `config/rviz2.rviz` already resolves to a canonical
+configuration value. The 11 entries were checked mechanically
+(`RvizTopicsResolveToCanonicalConfigValues` now enforces it), so no RViz edit
+was needed rather than an edit being skipped. The leading-slash difference
+(`/lio_sam/mapping/path` vs `lio_sam/mapping/path`) is the same ROS topic, so
+the test compares with the slash normalized instead of rewriting a hand-tuned
+RViz config.
+
+### Gap found and closed
+
+- `src/mapOptimization.cpp` still hardcoded `"lio_loop/loop_closure_detection"`
+  for `subLoop`. Task 6 Step 3 said to replace every publisher/subscriber
+  literal; this one was missed because the constructor call and the string sit
+  on different lines, so the literal-rejection grep in
+  `test_coordinate_contract_surface` did not see it. It now reads
+  `config_.pipeline_topics.loop_closure_hint`; the string is unchanged.
+
+### Notes for Task 9
+
+1. **`test_unified_parameter_schema` gained a second contract table.**
+   `kCanonicalTopicContracts` holds canonical keys with no legacy counterpart
+   (the topics that used to be hardcoded in the node constructors).
+   `CanonicalNamesForSurface` reads both tables; `LegacyNames` reads only the
+   first, so these keys are never rejected by the legacy-name check.
+2. **The loader's `ReadDerivedLegacy` now counts as a parameter reader** in
+   `ReadCppParameterNames`, otherwise `pipeline_topic.imu_odometry_incremental`
+   would look undeclared.
+3. **Launch argument resolution was verified against real ROS 2 launch
+   classes**, not just `py_compile`: with only `use_sim_time` set the canonical
+   value is used; with `use_sim` explicitly set the legacy value wins. All
+   defaults are unchanged (mapping `use_sim_time=false`, localization and
+   nonground `use_sim_time=true`) and `publish_static_tf` keeps its per-file
+   values (`true` in `localization.launch.py`, `false` in
+   `localization_with_nonground.launch.py`).
+4. **`docs/P2_2_MIGRATION.md` is tracked but `docs/` is in `.gitignore`**, so it
+   needs `git add -f` on a fresh clone.
+5. The legacy→canonical table in that document was generated from
+   `kParameterContracts` rather than hand-written; regenerate it the same way if
+   the contract table changes.
+
+The branch is still NOT merged to `main`.
