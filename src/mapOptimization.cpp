@@ -322,7 +322,7 @@ public:
             config_.sensors.gps, 200,
             std::bind(&mapOptimization::gpsHandler, this, std::placeholders::_1));
         subLoop = create_subscription<std_msgs::msg::Float64MultiArray>(
-            "lio_loop/loop_closure_detection", qos,
+            config_.pipeline_topics.loop_closure_hint, qos,
             std::bind(&mapOptimization::loopInfoHandler, this, std::placeholders::_1));
 
         if (config_.mapping.system.mapping_mode)

@@ -13,8 +13,16 @@
       imu: "imu_link"                                          # IMU坐标
       lidar: "hesai_lidar"                                     # 雷达坐标
 
+    command_topic:
+      initial_pose: "/initialpose"                             # RViz 2D Pose Estimate / 自动重定位
+
     output_topic:
       odometry: "lio_sam/localization/odometry"                # 全局定位里程计
+      path: "lio_sam/localization/path"
+      global_map: "lio_sam/localization/global_map"
+      local_map: "lio_sam/localization/local_map"
+      current_lidar: "lio_sam/localization/current_lidar"
+      diagnostics: "/diagnostics"
       non_ground_cloud_topic: "lio_sam/cloud_nonground"        # 非地面点云话题
 
     localization:

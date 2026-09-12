@@ -382,11 +382,12 @@ std::set<std::string> ReadCppParameterNamesFromText(
   const std::string & source_text)
 {
   const std::string text = StripCppComments(source_text);
-  const std::array<std::string, 4> parameter_functions = {
+  const std::array<std::string, 5> parameter_functions = {
     "declare_parameter",
     "get_parameter",
     "util::param",
     "ReadParam",
+    "ReadDerivedLegacy",
   };
   std::set<std::string> parameter_names;
 
@@ -422,10 +423,57 @@ std::set<std::string> ReadCppParameterNames(
   return ReadCppParameterNamesFromText(ReadProjectFile(relative_path));
 }
 
+// Canonical keys P2.2 introduced that have no legacy counterpart: they used to
+// be hardcoded in the node constructors rather than exposed as parameters.
+struct CanonicalTopicContract
+{
+  std::string canonical;
+  unsigned surfaces;
+};
+
+const std::vector<CanonicalTopicContract> kCanonicalTopicContracts = {
+  // mapping pipeline topics
+  {"pipeline_topic.cloud_info", kMappingSurfaces},
+  {"pipeline_topic.feature_cloud_info", kMappingSurfaces},
+  {"pipeline_topic.deskewed_cloud", kMappingSurfaces},
+  {"pipeline_topic.ground_cloud", kMappingSurfaces},
+  {"pipeline_topic.corner_cloud", kMappingSurfaces},
+  {"pipeline_topic.surface_cloud", kMappingSurfaces},
+  {"pipeline_topic.loop_closure_hint", kMappingSurfaces},
+  {"pipeline_topic.mapping_odometry", kMappingSurfaces},
+  {"pipeline_topic.mapping_odometry_incremental", kMappingSurfaces},
+  {"pipeline_topic.imu_odometry_incremental", kMappingSurfaces},
+  // mapping outputs
+  {"output_topic.path", kMappingSurfaces},
+  {"output_topic.global_map", kMappingSurfaces},
+  {"output_topic.local_map", kMappingSurfaces},
+  {"output_topic.registered_cloud", kMappingSurfaces},
+  {"output_topic.registered_cloud_raw", kMappingSurfaces},
+  {"output_topic.ground_map", kMappingSurfaces},
+  {"output_topic.trajectory", kMappingSurfaces},
+  {"output_topic.imu_path", kMappingSurfaces},
+  {"output_topic.loop_history", kMappingSurfaces},
+  {"output_topic.loop_constraints", kMappingSurfaces},
+  // localization outputs and its one external command input
+  {"output_topic.path", kRelocalizationSurfaces},
+  {"output_topic.global_map", kRelocalizationSurfaces},
+  {"output_topic.local_map", kRelocalizationSurfaces},
+  {"output_topic.current_lidar", kRelocalizationSurfaces},
+  {"command_topic.initial_pose", kRelocalizationSurfaces},
+  // shared downstream-facing output
+  {"output_topic.diagnostics",
+    kMappingSurfaces | kRelocalizationSurfaces},
+};
+
 std::set<std::string> CanonicalNamesForSurface(unsigned surface)
 {
   std::set<std::string> names;
   for (const auto & contract : kParameterContracts) {
+    if ((contract.surfaces & surface) != 0U) {
+      names.insert(contract.canonical);
+    }
+  }
+  for (const auto & contract : kCanonicalTopicContracts) {
     if ((contract.surfaces & surface) != 0U) {
       names.insert(contract.canonical);
     }

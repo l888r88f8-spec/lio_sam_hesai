@@ -7,9 +7,33 @@
       imu_topic: "/imu"                                  # IMU data in
       gps_topic: "odometry/gps"                          # GPS odometry topic from navsat out
 
+    # 包内节点间协议话题（下游通常不需要消费）
+    pipeline_topic:
+      cloud_info: "lio_sam/deskew/cloud_info"
+      feature_cloud_info: "lio_sam/feature/cloud_info"
+      deskewed_cloud: "lio_sam/deskew/cloud_deskewed"
+      ground_cloud: "lio_sam/deskew/ground_cloud_global"
+      corner_cloud: "lio_sam/feature/cloud_corner"
+      surface_cloud: "lio_sam/feature/cloud_surface"
+      loop_closure_hint: "lio_loop/loop_closure_detection"   # 回环检测外部输入
+      mapping_odometry: "lio_sam/mapping/odometry"           # 地图优化输出的雷达里程计
+      mapping_odometry_incremental: "lio_sam/mapping/odometry_incremental"
+      imu_odometry_incremental: "odometry/imu_incremental"   # IMU 预积分增量里程计
+
     # Output Topics
     output_topic:
-      odometry: "odometry/imu"                           # IMU pre-preintegration odometry out
+      odometry: "odometry/imu"                           # 融合后的对外里程计
+      path: "lio_sam/mapping/path"
+      global_map: "lio_sam/mapping/map_global"
+      local_map: "lio_sam/mapping/map_local"
+      registered_cloud: "lio_sam/mapping/cloud_registered"
+      registered_cloud_raw: "lio_sam/mapping/cloud_registered_raw"
+      ground_map: "lio_sam/mapping/ground_cloud_global"
+      trajectory: "lio_sam/mapping/trajectory"
+      imu_path: "lio_sam/imu/path"
+      loop_history: "lio_sam/mapping/icp_loop_closure_history_cloud"
+      loop_constraints: "/lio_sam/mapping/loop_closure_constraints"
+      diagnostics: "/diagnostics"
       non_ground_cloud_topic: "lio_sam/cloud_nonground"
 
     # Frames
