@@ -303,6 +303,9 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/test/test_localization_regression.py)
   set_tests_properties(test_localization_regression PROPERTIES
     ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/test/integration")
+  add_test(NAME test_launch_sim_clock
+    COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/test/test_launch_sim_clock.py)
   add_test(NAME test_tiled_map_integration
     COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/test/test_tiled_map_integration.py)
@@ -438,6 +441,13 @@ if(BUILD_TESTING)
     test/test_lidar_imu_calibration.cpp)
   target_include_directories(test_lidar_imu_calibration PRIVATE include)
   target_link_libraries(test_lidar_imu_calibration ${LIO_SAM_EIGEN_TARGET})
+  ament_add_gtest(test_localization_extrinsic_direction
+    test/test_localization_extrinsic_direction.cpp
+    src/lidar/lidar_distortion_corrector.cpp)
+  target_include_directories(test_localization_extrinsic_direction PRIVATE
+    include ${PCL_INCLUDE_DIRS})
+  target_link_libraries(test_localization_extrinsic_direction
+    ${LIO_SAM_EIGEN_TARGET} ${GLOG_LIBRARIES} ${PCL_LIBRARIES})
   ament_add_gtest(test_relocalization_acceptance_policy
     test/test_relocalization_acceptance_policy.cpp)
   target_include_directories(test_relocalization_acceptance_policy PRIVATE include)

@@ -27,6 +27,7 @@
 #include "registration/loam_point_to_plane_ivox.h"
 #include "registration/loam_point_to_plane_kdtree.h"
 #include "relocalization/acceptance_policy.h"
+#include "slam/localization_frame_conversion.h"
 
 namespace {
 
@@ -119,13 +120,15 @@ void Localization::RequestAutomaticRelocalization() {
 // map_T_imu = map_T_lidar * lidar_T_imu
 Mat4d Localization::MapLidarPoseToMapImuPose(
     const MapTLidar& map_T_lidar) const {
-  return map_T_lidar.Matrix() * config_->calibration.lidar_T_imu.Matrix();
+  return localization_frames::MapLidarPoseToMapImuPose(
+      map_T_lidar, config_->calibration.lidar_T_imu);
 }
 
-// map_T_lidar = map_T_imu * lidar_T_imu
+// map_T_lidar = map_T_imu * imu_T_lidar
 Mat4d Localization::MapImuPoseToMapLidarPose(
     const Mat4d& map_imu_pose) const {
-  return map_imu_pose * config_->calibration.lidar_T_imu.Matrix();
+  return localization_frames::MapImuPoseToMapLidarPose(
+      map_imu_pose, config_->calibration.imu_T_lidar);
 }
 
 std::optional<Localization::MapLidarPrediction>
@@ -551,8 +554,9 @@ bool Localization::PrepareMap() {
     std::filesystem::path ground_path;
     if (map_config.ground_map_path.empty()) {
       // The resolved path is a GlobalMap.pcd, so its directory is the root.
-      ground_path =
-          MapArtifactLayout(resolved_map_path_.parent_path()).GroundMap();
+      ground_path = MapArtifactLayout(MapArtifactLayout::RootDirectoryOf(
+                                        resolved_map_path_))
+                        .GroundMap();
     } else {
       ground_path = map_config.ground_map_path;
     }
@@ -871,7 +875,8 @@ void Localization::LoadScanContextDb() {
   std::string db_path = config_->localization.localization.sc_db_path;
   if (db_path.empty()) {
     // Whichever mode resolved, the map root is the resolved path's directory.
-    db_path = MapArtifactLayout(resolved_map_path_.parent_path())
+    db_path = MapArtifactLayout(
+                  MapArtifactLayout::RootDirectoryOf(resolved_map_path_))
                   .ScanContextDb()
                   .string();
   }
@@ -916,13 +921,12 @@ std::optional<Mat4d> Localization::TryAutoRelocalize(
                     "lidar-IMU calibration.";
     return std::nullopt;
   }
-  const ImuTLidar imu_T_lidar = lidar_T_imu.Inverse();
-
   // Mapping keyframe features are in the lidar frame, whereas localization
   // ordered_cloud_ is deskewed in the IMU frame. Convert only the descriptor
   // input so Scan Context compares like-for-like local geometry.
-  const PCLPointCloudXYZI query_cloud = TransformPointCloud(
-      curr_cloud_cluster_ptr_->ordered_cloud_, imu_T_lidar.Matrix());
+  const PCLPointCloudXYZI query_cloud =
+      localization_frames::ScanContextLidarCloud(
+          curr_cloud_cluster_ptr_->ordered_cloud_, lidar_T_imu);
   const auto query_descriptor = scan_context_.MakeDescriptor(query_cloud);
   const int top_n = std::max(
       1, config_->localization.localization.sc_top_n);
@@ -947,8 +951,6 @@ std::optional<Mat4d> Localization::TryAutoRelocalize(
       std::hypot(imu_rotation(2, 1), imu_rotation(2, 2)));
   const float fitness_threshold = static_cast<float>(std::max(
       0.0, config_->localization.localization.sc_fitness_thres));
-  const Mat3d lidar_T_imu_rotation = lidar_T_imu.Rotation();
-  const Mat3d imu_T_lidar_rotation = imu_T_lidar.Rotation();
 
   std::optional<LidarTBase> lidar_T_base;
   if (config_->localization.localization.enable_ground_height_constraint) {
@@ -987,24 +989,10 @@ std::optional<Mat4d> Localization::TryAutoRelocalize(
     const char* stage = "preparation";
     try {
       Timer preparation_timer;
-      const double lidar_yaw =
-          std::atan2(candidate.pose(1, 0), candidate.pose(0, 0)) +
-          candidate.yaw_shift;
-      const Mat3d nominal_map_lidar_rotation =
-          Eigen::AngleAxisd(lidar_yaw, Vec3d::UnitZ()).toRotationMatrix();
-      const Mat3d nominal_map_imu_rotation =
-          nominal_map_lidar_rotation * imu_T_lidar_rotation;
-      const double imu_yaw = std::atan2(
-          nominal_map_imu_rotation(1, 0), nominal_map_imu_rotation(0, 0));
-      const Mat3d map_imu_rotation =
-          (Eigen::AngleAxisd(imu_yaw, Vec3d::UnitZ()) *
-           Eigen::AngleAxisd(pitch, Vec3d::UnitY()) *
-           Eigen::AngleAxisd(roll, Vec3d::UnitX()))
-              .toRotationMatrix();
-
-      Mat4d candidate_lidar_pose = candidate.pose;
-      candidate_lidar_pose.block<3, 3>(0, 0) =
-          map_imu_rotation * lidar_T_imu_rotation;
+      Mat4d candidate_lidar_pose =
+          localization_frames::ScanContextCandidateLidarPose(
+              candidate.pose, candidate.yaw_shift, roll, pitch,
+              config_->calibration.imu_T_lidar);
 
       const auto candidate_map = map_provider_->LoadCandidate(
           candidate_lidar_pose,
@@ -1050,7 +1038,8 @@ std::optional<Mat4d> Localization::TryAutoRelocalize(
 
       stage = "fine registration";
       float fitness = std::numeric_limits<float>::infinity();
-      Mat4d match_pose = candidate_lidar_pose * imu_T_lidar.Matrix();
+      Mat4d match_pose = MapLidarPoseToMapImuPose(
+          MapTLidar::FromMatrix(candidate_lidar_pose));
       Timer registration_timer;
       ++evaluated_count;
       auto matcher = CreateMatcher();

@@ -45,6 +45,13 @@ class MapArtifactLayout {
       std::filesystem::path root,
       std::string tile_subdirectory = kDefaultTileSubdirectory);
 
+  // The directory that holds a map artifact. A path with no parent -- a bare
+  // relative name such as "GlobalMap.pcd" -- resolves to the current directory
+  // instead of an empty, unusable root. Every artifact derivation goes through
+  // this so the rule cannot be applied in one place and missed in another.
+  static std::filesystem::path RootDirectoryOf(
+      const std::filesystem::path& map_path);
+
   // Derives the layout from a global map file. Rejects an empty path or a file
   // not named GlobalMap.pcd rather than silently retargeting the artifacts.
   static MapArtifactLayout FromGlobalMap(

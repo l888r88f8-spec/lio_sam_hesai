@@ -15,6 +15,30 @@ MapArtifactLayout::MapArtifactLayout(std::filesystem::path root,
   }
 }
 
+namespace {
+
+// A trailing separator leaves an empty final element, which makes
+// parent_path() return the path itself: "tiled/" would resolve its artifacts
+// to "tiled/sc_db.bin" instead of "./sc_db.bin". Strip it first so every entry
+// point agrees on where the map root is.
+std::filesystem::path StripTrailingSeparators(std::filesystem::path path) {
+  path = path.lexically_normal();
+  while (path.filename().empty() && path.has_parent_path() &&
+         path != path.parent_path()) {
+    path = path.parent_path();
+  }
+  return path;
+}
+
+}  // namespace
+
+std::filesystem::path MapArtifactLayout::RootDirectoryOf(
+    const std::filesystem::path& map_path) {
+  const std::filesystem::path stripped = StripTrailingSeparators(map_path);
+  const std::filesystem::path parent = stripped.parent_path();
+  return parent.empty() ? std::filesystem::path(".") : parent;
+}
+
 MapArtifactLayout MapArtifactLayout::FromGlobalMap(
     const std::filesystem::path& global_map) {
   if (global_map.empty()) {
@@ -27,7 +51,7 @@ MapArtifactLayout MapArtifactLayout::FromGlobalMap(
                                 std::string(kGlobalMapName) + ": " +
                                 global_map.string());
   }
-  return MapArtifactLayout(global_map.parent_path());
+  return MapArtifactLayout(RootDirectoryOf(global_map));
 }
 
 MapArtifactLayout MapArtifactLayout::FromTiledRoot(
@@ -38,11 +62,7 @@ MapArtifactLayout MapArtifactLayout::FromTiledRoot(
   }
   // Tolerate a trailing separator so "/maps/site/tiled/" behaves like
   // "/maps/site/tiled".
-  std::filesystem::path normalized = tiled_root.lexically_normal();
-  while (normalized.filename().empty() && normalized.has_parent_path() &&
-         normalized != normalized.parent_path()) {
-    normalized = normalized.parent_path();
-  }
+  const std::filesystem::path normalized = StripTrailingSeparators(tiled_root);
   const std::string basename = normalized.filename().string();
   if (basename.empty()) {
     throw std::invalid_argument("tiled map root must name a directory: " +
@@ -53,7 +73,7 @@ MapArtifactLayout MapArtifactLayout::FromTiledRoot(
                                 "' but the configuration expects '" +
                                 expected_subdirectory + "'");
   }
-  return MapArtifactLayout(normalized.parent_path(), basename);
+  return MapArtifactLayout(RootDirectoryOf(normalized), basename);
 }
 
 std::filesystem::path MapArtifactLayout::GlobalMap() const {
