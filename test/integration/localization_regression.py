@@ -164,10 +164,13 @@ class MetricCollector:
 
     def captured_pose(self):
         """
-        (bag_seconds, map_T_base) of the first valid sample, or None.
+        (bag_seconds, map_T_base) of the first valid tracking sample, or None.
 
-        The timestamp is the replay clock, which is the bag's own time base --
-        an absolute value near 1.8e9, not an offset into the bag.
+        Tracking is confirmed by the most recent decodable target diagnostic,
+        so an initialization sample published with is_tracking=false is never
+        mistaken for a stable pose. The timestamp is the replay clock, which is
+        the bag's own time base -- an absolute value near 1.8e9, not an offset
+        into the bag.
         """
         return self._captured_pose
 
@@ -188,16 +191,19 @@ class MetricCollector:
             self._max_target_diagnostic_level, numeric_level
         )
 
-        if numeric_level == 0:
-            if self._first_ok_seconds is None:
-                self._first_ok_seconds = timestamp
-            # Healthy tracking, not just "a diagnostic arrived".
-            if isinstance(values, Mapping) and \
-                    str(values.get("is_tracking", "")).lower() == "true":
-                self._tracking_confirmed = True
-        else:
-            if numeric_level == 2:
-                self._error_samples += 1
+        if numeric_level == 0 and self._first_ok_seconds is None:
+            self._first_ok_seconds = timestamp
+        if numeric_level == 2:
+            self._error_samples += 1
+        # The gate describes the *current* tracking state, not "tracking was
+        # seen once": a later WARN/ERROR or an is_tracking != true sample must
+        # close it again, or a pose captured after tracking was lost would be
+        # recorded as the stable reference pose.
+        self._tracking_confirmed = (
+            numeric_level == 0 and
+            isinstance(values, Mapping) and
+            str(values.get("is_tracking", "")).lower() == "true"
+        )
 
         if not isinstance(values, Mapping):
             values = {}

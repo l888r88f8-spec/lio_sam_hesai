@@ -278,6 +278,22 @@ TEST(SlamConfig, MappingRejectsInvalidConsumedRuntimeParameters) {
       {"local_map.keyframe_angle_threshold", 0.0}}));
 }
 
+TEST(SlamConfig, MappingRejectsNonPositiveOrNonFiniteTileSize) {
+  // tile_map_generator.cpp rejects a non-positive tile size when generation
+  // runs; the configuration has to reject it up front instead of accepting a
+  // config that can only fail later.
+  for (const double tile_size :
+       {0.0, -1.0, std::numeric_limits<double>::quiet_NaN()}) {
+    SCOPED_TRACE(tile_size);
+    EXPECT_THROW(LoadMapping({rclcpp::Parameter(
+                     "map_save.tiled_map.tile_size_m", tile_size)}),
+                 std::invalid_argument);
+  }
+  const SlamConfig accepted = LoadMapping(
+      {rclcpp::Parameter("map_save.tiled_map.tile_size_m", 25.0)});
+  EXPECT_DOUBLE_EQ(accepted.mapping.map_save.tiled_map.tile_size_m, 25.0);
+}
+
 TEST(SlamConfig, LocalizationMultiAliasesEachWarnOnceWithCanonicalYaml) {
   const std::vector<rclcpp::Parameter> aliases = {
       {"sensor", "Hesai"}, {"lidar.lidar_sensor_type", "Hesai"},

@@ -762,15 +762,11 @@ void LoadMappingConfig(rclcpp::Node& node, SlamConfig& config,
   RequireVoxelLeaf(local_map.keyframe_density, "local_map.keyframe_density");
   RequirePositive(local_map.search_radius, "local_map.search_radius");
   RequirePositive(system.number_of_cores, "system.number_of_cores");
-  
   RequirePositive(map_save.tiled_map.tile_size_m,
-
                   "map_save.tiled_map.tile_size_m");
-RequirePositive(system.mapping_process_interval,
+  RequirePositive(system.mapping_process_interval,
                   "system.mapping_process_interval");
   RequirePositive(imu.gravity, "imu.gravity");
-  RequireNonNegative(map_save.tiled_map.tile_size_m,
-                     "map_save.tiled_map.tile_size_m");
   RequirePositive(map_save.tiled_map.overview_resolution_m,
                   "map_save.tiled_map.overview_resolution_m");
   RequireNonEmpty(map_save.tiled_map.output_subdirectory,

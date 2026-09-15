@@ -194,6 +194,16 @@ class TiledMapIntegrationTest(unittest.TestCase):
                 self.tiled, self.root / "fault-bool", "missing-neighbor",
                 center_index=((True, 0)))
 
+    def test_corrupt_manifest_requires_a_center(self):
+        # A None center used to reach the tuple() below and raise TypeError
+        # instead of the documented DatasetError.
+        self._write_small_tiled_map()
+        with self.assertRaises(DatasetError):
+            prepare_tiled_fault_case(
+                self.tiled, self.root / "fault-none", "corrupt-manifest",
+                center_index=None)
+        self.assertFalse((self.root / "fault-none").exists())
+
     def test_fault_fixture_refuses_unsafe_tile_paths(self):
         self._write_small_tiled_map()
         manifest = yaml.safe_load(

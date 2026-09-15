@@ -128,6 +128,44 @@ class MetricCollectorTest(unittest.TestCase):
         self.assertIsNone(metrics["first_odom_seconds"])
         self.assertIsNone(metrics["max_odom_gap_seconds"])
 
+    def test_capture_pose_gate_closes_again_on_a_warning(self):
+        collector = MetricCollector(capture_pose=True)
+
+        collector.clock(100.0)
+        collector.diagnostic(
+            101.0, 0, "lio_sam_hesai: localization", {"is_tracking": "true"})
+        collector.diagnostic(
+            102.0, 1, "lio_sam_hesai: localization", {"is_tracking": "true"})
+        collector.odom(103.0, 0, 0, 0, 0, 0, 0, 1)
+
+        self.assertIsNone(collector.captured_pose())
+
+    def test_capture_pose_gate_closes_when_is_tracking_is_not_true(self):
+        collector = MetricCollector(capture_pose=True)
+
+        collector.clock(100.0)
+        collector.diagnostic(
+            101.0, 0, "lio_sam_hesai: localization", {"is_tracking": "true"})
+        collector.diagnostic(
+            102.0, 0, "lio_sam_hesai: localization", {"is_tracking": "false"})
+        collector.odom(103.0, 0, 0, 0, 0, 0, 0, 1)
+
+        self.assertIsNone(collector.captured_pose())
+
+    def test_capture_pose_records_only_while_tracking_is_confirmed(self):
+        collector = MetricCollector(capture_pose=True)
+
+        collector.clock(100.0)
+        collector.diagnostic(101.0, 2, "lio_sam_hesai: localization", {})
+        collector.odom(101.5, 0, 0, 0, 0, 0, 0, 1)
+        self.assertIsNone(collector.captured_pose())
+
+        collector.diagnostic(
+            102.0, 0, "lio_sam_hesai: localization", {"is_tracking": "true"})
+        collector.odom(102.5, 1, 2, 3, 0, 0, 0, 1)
+        self.assertIsNotNone(collector.captured_pose())
+        self.assertEqual(collector.captured_pose()[0], 102.5)
+
     def test_nan_diagnostic_scalar_is_collected_as_invalid_without_raising(self):
         collector = MetricCollector()
 

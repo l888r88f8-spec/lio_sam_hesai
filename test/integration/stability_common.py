@@ -399,15 +399,17 @@ def prepare_tiled_fault_case(source, destination, fault_case, center_index,
     """
     Copy a tiled map into a self-contained fixture for a replay fault check.
 
-    `center_index` is required: the map's first tile says nothing about where
-    the replay actually drives, and using it produced fixtures the trajectory
-    never reached.
+    `center_index` is required for every fault case, `corrupt-manifest`
+    included: the map's first tile says nothing about where the replay actually
+    drives, and using it produced fixtures the trajectory never reached. The
+    center is validated against the manifest before anything is written.
     """
     if fault_case not in ("corrupt-manifest", "missing-center", "missing-neighbor"):
         raise DatasetError(f"Unknown tiled fault case: {fault_case}")
-    if center_index is None and fault_case != "corrupt-manifest":
+    if center_index is None:
         raise DatasetError(
-            "Tiled fault center index is required; pass the replay reference tile"
+            "Tiled fault center index is required; pass the replay "
+            "reference tile"
         )
     if active_radius < 0 or prefetch_radius < active_radius:
         raise DatasetError("Tiled fault radii must satisfy 0 <= active <= prefetch")
