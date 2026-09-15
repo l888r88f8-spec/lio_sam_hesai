@@ -290,6 +290,36 @@ class TiledMapIntegrationTest(unittest.TestCase):
         self.assertTrue(
             tiled_fault_violations(with_output, "missing-center", "[0,0]"))
 
+    def test_missing_center_index_match_ignores_whitespace_only(self):
+        # The stability entrypoint spells the expected index the way
+        # print(list) does -- "[-1, -1]" -- while the C++ diagnostic writes
+        # "[-1,-1]". Only whitespace inside the compared strings may differ.
+        failure = {
+            "map_tile_events": [
+                ["ready", "0", ""],
+                ["ready", "1", "global file validation failed for tile "
+                                "[-1,-1] path=global_-1_-1.pcd"],
+            ],
+            "first_ok_seconds": None,
+            "valid_odom_ratio": 0.0,
+        }
+        for expected in ("[-1, -1]", "[\t-1,  -1]", "[ -1,\n-1 ]"):
+            with self.subTest(expected=expected):
+                self.assertEqual(
+                    tiled_fault_violations(failure, "missing-center", expected), [])
+        # Whitespace on the diagnostic side is normalized the same way.
+        spaced = dict(failure, map_tile_events=[
+            ["ready", "0", ""],
+            ["ready", "1", "global file validation failed for tile "
+                            "[ -1,\t-1 ] path=global_-1_-1.pcd"],
+        ])
+        self.assertEqual(
+            tiled_fault_violations(spaced, "missing-center", "[-1,-1]"), [])
+        # A different index must still be reported: only whitespace is ignored.
+        self.assertEqual(
+            tiled_fault_violations(failure, "missing-center", "[-1, 0]"),
+            ["missing-center never named [-1, 0] while the map was being requested"])
+
     def test_missing_neighbor_requires_output_and_a_named_failure(self):
         passing = {
             "map_tile_events": [

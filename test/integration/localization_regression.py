@@ -311,6 +311,18 @@ def tiled_metric_violations(metrics, ok_deadline_seconds):
     return violations
 
 
+def _index_is_named(message, expected_index):
+    """
+    Compare a tile index against a diagnostic despite spacing differences.
+
+    The stability entrypoint spells the index the way ``print(list)`` does
+    ("[-1, -1]"), while the C++ diagnostic writes "[-1,-1]". Only whitespace
+    is normalized; signs and digits must still match exactly.
+    """
+    return (re.sub(r"\s+", "", str(expected_index)) in
+            re.sub(r"\s+", "", str(message)))
+
+
 def tiled_fault_violations(metrics, fault_case, expected_missing_index=None):
     """
     Judge a tiled fault replay from its event sequence, not one final string.
@@ -347,7 +359,7 @@ def tiled_fault_violations(metrics, fault_case, expected_missing_index=None):
             f"{fault_case} never recorded a tile load failure, so the injected "
             "payload was never missed")
     if expected_missing_index and not any(
-            expected_missing_index in str(entry[2]) for entry in events):
+            _index_is_named(entry[2], expected_missing_index) for entry in events):
         violations.append(
             f"{fault_case} never named {expected_missing_index} while the map "
             "was being requested")
@@ -373,7 +385,7 @@ def tiled_fault_violations(metrics, fault_case, expected_missing_index=None):
         # load failure only says the payload was missed.
         degraded_snapshot = any(
             str(entry[0]) == "ready" and "missing tiles:" in str(entry[2]) and
-            expected_missing_index and expected_missing_index in str(entry[2])
+            expected_missing_index and _index_is_named(entry[2], expected_missing_index)
             for entry in events)
         if not degraded_snapshot:
             violations.append(
