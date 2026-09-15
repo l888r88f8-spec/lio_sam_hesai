@@ -26,7 +26,6 @@ from stability_baseline import (
 from stability_common import (
     DatasetError,
     load_tiled_fault_fixture,
-    map_fingerprint,
     load_tiled_fault_reference,
     make_tiled_fault_reference,
     save_tiled_fault_reference,
@@ -545,8 +544,7 @@ def main(argv=None):
                 fault = TiledFaultRun(
                     load_tiled_fault_fixture(arguments.tiled_dir),
                     load_tiled_fault_reference(
-                        arguments.tiled_fault_reference, identity,
-                        map_fingerprint(arguments.map, arguments.tiled_dir)),
+                        arguments.tiled_fault_reference, identity),
                 )
             metrics = _run_replay(
                 arguments,
@@ -860,9 +858,7 @@ def _run_replay(arguments, runtime_parameters, quick, launch_log, player_log,
                 arguments.record_reference,
                 make_tiled_fault_reference(
                     identity, bag_seconds=bag_seconds,
-                    map_T_base=captured[1],
-                    map_fingerprint_value=map_fingerprint(
-                        arguments.map, arguments.tiled_dir)))
+                    map_T_base=captured[1]))
         if fault is not None:
             if not fault.injected:
                 raise ReplayError(
@@ -1207,7 +1203,7 @@ def _identity_summary(identity):
         "topic_counts",
         "db3_bytes",
         "map_points",
-        "map_bytes",
+        "map_artifacts",
     )
     summary = {}
     for field in fields:

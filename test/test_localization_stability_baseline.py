@@ -352,7 +352,9 @@ class LocalizationStabilityBaselineTest(unittest.TestCase):
             topic_counts=MappingProxyType({"/imu": 42617, "/lidar_points": 4258}),
             db3_bytes=1580380160,
             map_points=178455,
-            map_bytes=1,
+            map_artifacts=MappingProxyType(
+                {"GlobalMap.pcd": "a" * 64, "GroundMap.pcd": "b" * 64,
+                 "sc_db.bin": "c" * 64}),
         )
         observed = {
             "first_odom_seconds": 8.0,

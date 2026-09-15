@@ -4,6 +4,7 @@ import json
 import math
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
+from dataclasses import replace
 from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -21,6 +22,14 @@ from stability_common import (
     save_tiled_fault_reference,
     tile_index_for_pose,
 )
+
+
+_TILED_FAULT_IDENTITY_POSE = [
+    [1.0, 0.0, 0.0, 0.0],
+    [0.0, 1.0, 0.0, 0.0],
+    [0.0, 0.0, 1.0, 0.0],
+    [0.0, 0.0, 0.0, 1.0],
+]
 
 
 class MetricCollectorTest(unittest.TestCase):
@@ -784,10 +793,34 @@ class TiledFaultReferenceTest(unittest.TestCase):
     def _identity(self, **overrides):
         base = {
             "duration_ns": 100, "message_count": 10, "topic_counts": {},
-            "db3_bytes": 1000, "map_points": 50, "map_bytes": 500,
+            "db3_bytes": 1000, "map_points": 50,
+            "map_artifacts": {"GlobalMap.pcd": "a" * 64,
+                              "GroundMap.pcd": "b" * 64,
+                              "sc_db.bin": "c" * 64},
         }
         base.update(overrides)
         return SimpleNamespace(**base)
+
+    def _valid_reference(self, path, **overrides):
+        reference = make_tiled_fault_reference(
+            self._identity(),
+            bag_seconds=overrides.pop("bag_seconds", 1.0),
+            map_T_base=overrides.pop("map_T_base", _TILED_FAULT_IDENTITY_POSE),
+            **overrides)
+        save_tiled_fault_reference(path, reference)
+        return path
+
+    def _rewrite_reference(self, path, **overrides):
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload.update(overrides)
+        path.write_text(json.dumps(payload), encoding="utf-8")
+
+    def _reference(self, **overrides):
+        """Build a reference outside make()'s validation, as a caller could."""
+        reference = make_tiled_fault_reference(
+            self._identity(), bag_seconds=1.0,
+            map_T_base=_TILED_FAULT_IDENTITY_POSE)
+        return replace(reference, **overrides)
 
     def test_rotated_lever_arm_moves_the_lidar_into_another_tile(self):
         # Base at (-5, -5) yawed 90 degrees, lidar 9.9 m ahead in base axes.
@@ -868,12 +901,39 @@ class TiledFaultReferenceTest(unittest.TestCase):
                     self._identity(), bag_seconds=1.0,
                     map_T_base=[[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0],
                                 [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]))
-            for overrides in ({"map_bytes": 999}, {"message_count": 11},
-                              {"db3_bytes": 1}):
+            for overrides in (
+                    {"map_artifacts": {"GlobalMap.pcd": "d" * 64,
+                                       "GroundMap.pcd": "b" * 64,
+                                       "sc_db.bin": "c" * 64}},
+                    {"message_count": 11},
+                    {"db3_bytes": 1}):
                 with self.subTest(**overrides):
                     with self.assertRaises(DatasetError):
                         load_tiled_fault_reference(
                             path, self._identity(**overrides))
+
+    def test_reference_rejects_a_legacy_size_only_identity(self):
+        # schema_version stays 1, so there is no migration branch: an old
+        # reference has no "artifacts" key and must fail closed instead of
+        # matching a map that happens to have the same byte counts.
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "reference.json"
+            save_tiled_fault_reference(
+                path,
+                make_tiled_fault_reference(
+                    self._identity(), bag_seconds=1.0,
+                    map_T_base=_TILED_FAULT_IDENTITY_POSE))
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            dataset = payload["dataset"]
+            self.assertIn("artifacts", dataset)
+            del dataset["artifacts"]
+            dataset["map_bytes"] = 500
+            dataset["ground_map_bytes"] = 10
+            dataset["sc_db_bytes"] = 12
+            path.write_text(json.dumps(payload), encoding="utf-8")
+
+            with self.assertRaisesRegex(DatasetError, "recapture"):
+                load_tiled_fault_reference(path, self._identity())
 
     def test_reference_rejects_an_unknown_schema(self):
         with TemporaryDirectory() as directory:
@@ -881,6 +941,263 @@ class TiledFaultReferenceTest(unittest.TestCase):
             path.write_text(json.dumps({"schema_version": 99}), encoding="utf-8")
             with self.assertRaises(DatasetError):
                 load_tiled_fault_reference(path, self._identity())
+
+    def test_make_reference_rejects_a_non_rigid_pose(self):
+        invalid = {
+            "bottom row": [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0],
+                           [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 2.0]],
+            "reflected": [[-1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0],
+                          [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]],
+            "NaN": [[math.nan, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0],
+                    [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]],
+            "shape": [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0],
+                      [0.0, 0.0, 1.0, 0.0]],
+            "string entry": [["1.0", 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0],
+                             [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]],
+            "not a matrix": "not a matrix",
+        }
+        for name, pose in invalid.items():
+            with self.subTest(name=name):
+                with self.assertRaises(DatasetError):
+                    make_tiled_fault_reference(
+                        self._identity(), bag_seconds=1.0, map_T_base=pose)
+
+    def test_make_reference_rejects_invalid_time_fields(self):
+        invalid = {
+            "bag_seconds NaN": {"bag_seconds": math.nan},
+            "bag_seconds inf": {"bag_seconds": math.inf},
+            "bag_seconds negative": {"bag_seconds": -1.0},
+            "bag_seconds string": {"bag_seconds": "1.0"},
+            "warmup NaN": {"warmup_seconds": math.nan},
+            "warmup inf": {"warmup_seconds": math.inf},
+            "warmup zero": {"warmup_seconds": 0.0},
+            "warmup negative": {"warmup_seconds": -1.0},
+        }
+        for name, overrides in invalid.items():
+            with self.subTest(name=name):
+                arguments = {"bag_seconds": 1.0}
+                arguments.update(overrides)
+                with self.assertRaises(DatasetError):
+                    make_tiled_fault_reference(
+                        self._identity(),
+                        map_T_base=_TILED_FAULT_IDENTITY_POSE, **arguments)
+
+    def test_reference_rejects_a_non_finite_pose(self):
+        with TemporaryDirectory() as directory:
+            path = self._valid_reference(Path(directory) / "reference.json")
+            for name, row, column, value in (
+                    ("translation NaN", 0, 3, math.nan),
+                    ("translation inf", 2, 3, math.inf),
+                    ("rotation NaN", 2, 1, math.nan),
+                    ("rotation -inf", 1, 1, -math.inf)):
+                with self.subTest(name=name):
+                    pose = [list(values)
+                            for values in _TILED_FAULT_IDENTITY_POSE]
+                    pose[row][column] = value
+                    self._rewrite_reference(path, map_T_base=pose)
+                    with self.assertRaises(DatasetError):
+                        load_tiled_fault_reference(path, self._identity())
+
+    def test_reference_rejects_a_non_rigid_pose(self):
+        with TemporaryDirectory() as directory:
+            path = self._valid_reference(Path(directory) / "reference.json")
+            invalid = {
+                "scaled": [[2.0, 0.0, 0.0, 0.0], [0.0, 2.0, 0.0, 0.0],
+                           [0.0, 0.0, 2.0, 0.0], [0.0, 0.0, 0.0, 1.0]],
+                "reflected": [[-1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0],
+                              [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]],
+                "sheared": [[1.0, 0.5, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0],
+                            [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]],
+                "bottom row": [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0],
+                               [0.0, 0.0, 1.0, 0.0], [0.5, 0.0, 0.0, 1.0]],
+                "bottom row not one": [[1.0, 0.0, 0.0, 0.0],
+                                       [0.0, 1.0, 0.0, 0.0],
+                                       [0.0, 0.0, 1.0, 0.0],
+                                       [0.0, 0.0, 0.0, 0.999]],
+            }
+            for name, pose in invalid.items():
+                with self.subTest(name=name):
+                    self._rewrite_reference(path, map_T_base=pose)
+                    with self.assertRaises(DatasetError):
+                        load_tiled_fault_reference(path, self._identity())
+
+    def test_reference_rejects_a_malformed_pose_shape(self):
+        with TemporaryDirectory() as directory:
+            path = self._valid_reference(Path(directory) / "reference.json")
+            for name, pose in (
+                    ("missing", [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0],
+                                 [0.0, 0.0, 1.0, 0.0]]),
+                    ("short row", [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0],
+                                   [0.0, 0.0, 1.0], [0.0, 0.0, 0.0]]),
+                    ("string entry", [["1.0", 0.0, 0.0, 0.0],
+                                      [0.0, 1.0, 0.0, 0.0],
+                                      [0.0, 0.0, 1.0, 0.0],
+                                      [0.0, 0.0, 0.0, 1.0]]),
+                    ("boolean entry", [[True, 0.0, 0.0, 0.0],
+                                       [0.0, 1.0, 0.0, 0.0],
+                                       [0.0, 0.0, 1.0, 0.0],
+                                       [0.0, 0.0, 0.0, 1.0]]),
+                    ("not a matrix", "identity")):
+                with self.subTest(name=name):
+                    self._rewrite_reference(path, map_T_base=pose)
+                    with self.assertRaises(DatasetError):
+                        load_tiled_fault_reference(path, self._identity())
+
+    def test_reference_rejects_invalid_time_fields(self):
+        with TemporaryDirectory() as directory:
+            path = self._valid_reference(Path(directory) / "reference.json")
+            invalid = {
+                "bag_seconds NaN": {"bag_seconds": math.nan},
+                "bag_seconds inf": {"bag_seconds": math.inf},
+                "bag_seconds negative": {"bag_seconds": -1.0},
+                "bag_seconds string": {"bag_seconds": "1.0"},
+                "bag_seconds missing": {"bag_seconds": None},
+                "offset_seconds NaN": {"offset_seconds": math.nan},
+                "offset_seconds inf": {"offset_seconds": math.inf},
+                "offset_seconds negative": {"offset_seconds": -1.0},
+                "offset beyond bag": {"bag_seconds": 5.0,
+                                      "offset_seconds": 6.0},
+                "warmup NaN": {"warmup_seconds": math.nan},
+                "warmup inf": {"warmup_seconds": math.inf},
+                "warmup zero": {"warmup_seconds": 0.0},
+                "warmup negative": {"warmup_seconds": -1.0},
+            }
+            for name, overrides in invalid.items():
+                with self.subTest(name=name):
+                    self._rewrite_reference(path, **overrides)
+                    with self.assertRaises(DatasetError):
+                        load_tiled_fault_reference(path, self._identity())
+
+    def test_reference_rejects_missing_required_fields(self):
+        # A missing field must surface as DatasetError, not KeyError/TypeError.
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "reference.json"
+            for name in ("schema_version", "dataset", "bag_seconds",
+                         "map_T_base"):
+                with self.subTest(name=name):
+                    self._valid_reference(path)
+                    payload = json.loads(path.read_text(encoding="utf-8"))
+                    del payload[name]
+                    path.write_text(json.dumps(payload), encoding="utf-8")
+                    with self.assertRaises(DatasetError):
+                        load_tiled_fault_reference(path, self._identity())
+
+    def test_save_reference_reuses_the_load_contract(self):
+        # save() is the writer side of the contract load() enforces: a
+        # hand-built reference must not reach disk with a pose or timing that
+        # load() would reject, and a rejected save must leave no file behind.
+        invalid = {
+            "non-rigid pose": {"map_T_base": (
+                (2.0, 0.0, 0.0, 0.0), (0.0, 2.0, 0.0, 0.0),
+                (0.0, 0.0, 2.0, 0.0), (0.0, 0.0, 0.0, 1.0))},
+            "reflected pose": {"map_T_base": (
+                (-1.0, 0.0, 0.0, 0.0), (0.0, 1.0, 0.0, 0.0),
+                (0.0, 0.0, 1.0, 0.0), (0.0, 0.0, 0.0, 1.0))},
+            "bag_seconds negative": {"bag_seconds": -1.0},
+            "bag_seconds NaN": {"bag_seconds": math.nan},
+            "bag_seconds inf": {"bag_seconds": math.inf},
+            "bag_seconds bool": {"bag_seconds": True},
+            "bag_seconds string": {"bag_seconds": "1.0"},
+            "offset_seconds negative": {"offset_seconds": -1.0},
+            "offset_seconds NaN": {"offset_seconds": math.nan},
+            "offset_seconds beyond bag": {"offset_seconds": 2.0},
+            "warmup_seconds zero": {"warmup_seconds": 0.0},
+            "warmup_seconds negative": {"warmup_seconds": -1.0},
+            "warmup_seconds NaN": {"warmup_seconds": math.nan},
+            "warmup_seconds string": {"warmup_seconds": "10.0"},
+        }
+        with TemporaryDirectory() as directory:
+            for name, overrides in invalid.items():
+                with self.subTest(name=name):
+                    path = Path(directory) / "reference.json"
+                    with self.assertRaises(DatasetError):
+                        save_tiled_fault_reference(
+                            path, self._reference(**overrides))
+                    self.assertFalse(path.exists())
+
+    def test_save_reference_does_not_clobber_a_valid_file(self):
+        with TemporaryDirectory() as directory:
+            path = self._valid_reference(Path(directory) / "reference.json")
+            original = path.read_bytes()
+            with self.assertRaises(DatasetError):
+                save_tiled_fault_reference(
+                    path, self._reference(bag_seconds=math.nan))
+            self.assertEqual(path.read_bytes(), original)
+
+    def test_save_reference_writes_a_valid_hand_built_reference(self):
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "reference.json"
+            save_tiled_fault_reference(path, self._reference())
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(payload["schema_version"], 1)
+            loaded = load_tiled_fault_reference(path, self._identity())
+            self.assertEqual(loaded.bag_seconds, 1.0)
+            self.assertEqual(loaded.offset_seconds, 0.0)
+            self.assertEqual(loaded.warmup_seconds, 10.0)
+            self.assertEqual(
+                loaded.map_T_base,
+                tuple(tuple(row) for row in _TILED_FAULT_IDENTITY_POSE))
+
+    def test_huge_integer_times_surface_as_dataset_errors(self):
+        # float(10**400) raises OverflowError; make, load and save must all
+        # report DatasetError instead of leaking the conversion error.
+        huge = 10 ** 400
+        with TemporaryDirectory() as directory:
+            for field in ("bag_seconds", "warmup_seconds"):
+                with self.subTest(stage="make", field=field):
+                    arguments = {"bag_seconds": 1.0, "warmup_seconds": 10.0}
+                    arguments[field] = huge
+                    with self.assertRaises(DatasetError):
+                        make_tiled_fault_reference(
+                            self._identity(),
+                            map_T_base=_TILED_FAULT_IDENTITY_POSE,
+                            **arguments)
+            path = Path(directory) / "reference.json"
+            for field in ("bag_seconds", "offset_seconds", "warmup_seconds"):
+                with self.subTest(stage="load", field=field):
+                    self._valid_reference(path)
+                    self._rewrite_reference(path, **{field: huge})
+                    with self.assertRaises(DatasetError):
+                        load_tiled_fault_reference(path, self._identity())
+            for field in ("bag_seconds", "offset_seconds", "warmup_seconds"):
+                with self.subTest(stage="save", field=field):
+                    save_path = Path(directory) / "save.json"
+                    with self.assertRaises(DatasetError):
+                        save_tiled_fault_reference(
+                            save_path, self._reference(**{field: huge}))
+                    self.assertFalse(save_path.exists())
+
+    def test_huge_integer_pose_entries_surface_as_dataset_errors(self):
+        # float(10**400) raises OverflowError for matrix entries too; make,
+        # load and save must all report DatasetError, and a rejected save must
+        # neither write a new file nor clobber a valid one.
+        huge = 10 ** 400
+        pose = [list(row) for row in _TILED_FAULT_IDENTITY_POSE]
+        pose[0][3] = huge
+        with TemporaryDirectory() as directory:
+            with self.subTest(stage="make"):
+                with self.assertRaises(DatasetError):
+                    make_tiled_fault_reference(
+                        self._identity(), bag_seconds=1.0, map_T_base=pose)
+            path = self._valid_reference(Path(directory) / "reference.json")
+            with self.subTest(stage="load"):
+                self._rewrite_reference(path, map_T_base=pose)
+                with self.assertRaises(DatasetError):
+                    load_tiled_fault_reference(path, self._identity())
+            with self.subTest(stage="save"):
+                save_path = Path(directory) / "save.json"
+                with self.assertRaises(DatasetError):
+                    save_tiled_fault_reference(
+                        save_path, self._reference(map_T_base=pose))
+                self.assertFalse(save_path.exists())
+            with self.subTest(stage="save does not clobber"):
+                valid_path = self._valid_reference(
+                    Path(directory) / "valid.json")
+                original = valid_path.read_bytes()
+                with self.assertRaises(DatasetError):
+                    save_tiled_fault_reference(
+                        valid_path, self._reference(map_T_base=pose))
+                self.assertEqual(valid_path.read_bytes(), original)
 
 
 class TiledFaultRunTest(unittest.TestCase):

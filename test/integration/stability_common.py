@@ -24,10 +24,14 @@ class DatasetIdentity:
     topic_counts: Mapping[str, int]
     db3_bytes: int
     map_points: int
-    map_bytes: int
+    map_artifacts: Mapping[str, str]
 
 
 _REQUIRED_MAP_FILES = ("GlobalMap.pcd", "GroundMap.pcd", "sc_db.bin")
+# The tiled manifest is named relative to the map root, not by its local
+# path, so the identity is stable across machines.
+_TILED_MANIFEST_ARTIFACT = "tiled/manifest.yaml"
+_ARTIFACT_CHUNK_BYTES = 1024 * 1024
 _RUNTIME_PARAMETER_LINE = re.compile(
     r"^(?P<indent>\s*)(?P<key>map_path|map_mode|ground_map_path|sc_db_path)\s*:"
     r"(?P<value>.*)$"
@@ -38,13 +42,43 @@ _PCD_HEADER_LIMIT_BYTES = 64 * 1024
 _PCD_DATA_ENCODINGS = frozenset((b"ascii", b"binary", b"binary_compressed"))
 
 
+def _artifact_sha256(path):
+    """Return the lowercase SHA-256 of one map artifact."""
+    digest = hashlib.sha256()
+    try:
+        with Path(path).open("rb") as artifact:
+            for chunk in iter(lambda: artifact.read(_ARTIFACT_CHUNK_BYTES),
+                              b""):
+                digest.update(chunk)
+    except OSError as error:
+        raise DatasetError(
+            f"Unable to hash map artifact {path}: {error}") from error
+    return digest.hexdigest()
+
+
+def map_artifacts(map_root, tiled_dir=None):
+    """
+    Return artifact name -> SHA-256 for every file the map identity covers.
+
+    A byte count is not an identity: two different maps of the same size would
+    compare equal. The names are canonical paths relative to the map root, so
+    the same map hashes the same way on every machine and through a symlink.
+    """
+    map_root = Path(map_root)
+    artifacts = {name: map_root / name for name in _REQUIRED_MAP_FILES}
+    if tiled_dir is not None:
+        artifacts[_TILED_MANIFEST_ARTIFACT] = Path(tiled_dir) / "manifest.yaml"
+    return MappingProxyType(
+        {name: _artifact_sha256(path) for name, path in artifacts.items()})
+
+
 def validate_dataset(bag_dir: Path, map_dir: Path, *, tiled_dir=None) -> DatasetIdentity:
     bag_path = Path(bag_dir)
     map_path = Path(map_dir)
+    tiled_path = Path(tiled_dir) if tiled_dir is not None else None
     _require_directory(bag_path, "Bag")
     _require_directory(map_path, "Map")
-    if tiled_dir is not None:
-        tiled_path = Path(tiled_dir)
+    if tiled_path is not None:
         _require_directory(tiled_path, "Tiled map")
         resolved_map = map_path.resolve()
         resolved_tiled = tiled_path.resolve()
@@ -78,7 +112,6 @@ def validate_dataset(bag_dir: Path, map_dir: Path, *, tiled_dir=None) -> Dataset
     global_map = required_maps["GlobalMap.pcd"]
     try:
         db3_bytes = db3_files[0].stat().st_size
-        map_bytes = global_map.stat().st_size
     except OSError as error:
         raise DatasetError(f"Unable to stat dataset file: {error}") from error
 
@@ -88,7 +121,7 @@ def validate_dataset(bag_dir: Path, map_dir: Path, *, tiled_dir=None) -> Dataset
         topic_counts=MappingProxyType(topic_counts),
         db3_bytes=db3_bytes,
         map_points=_pcd_points(global_map),
-        map_bytes=map_bytes,
+        map_artifacts=map_artifacts(map_path, tiled_path),
     )
 
 
@@ -654,6 +687,26 @@ def _require_nonnegative_int(value, label: str) -> int:
     return value
 
 
+def _require_finite_number(value, name, *, minimum=None,
+                           exclusive_minimum=False):
+    """Return a finite float, rejecting bools and non-numeric values."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise DatasetError(f"{name} must be a finite number")
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError) as error:
+        # An integer too large to convert is out of range, not a crash.
+        raise DatasetError(f"{name} must be a finite number") from error
+    if not math.isfinite(number):
+        raise DatasetError(f"{name} must be a finite number")
+    if minimum is not None:
+        if exclusive_minimum and number <= minimum:
+            raise DatasetError(f"{name} must be greater than {minimum}")
+        if not exclusive_minimum and number < minimum:
+            raise DatasetError(f"{name} must be at least {minimum}")
+    return number
+
+
 def _pcd_points(pcd_path: Path) -> int:
     points = None
     header_bytes = 0
@@ -715,6 +768,9 @@ def _identity_matrix():
             for row in range(_TILE_MATRIX_ROWS)]
 
 
+_RIGID_TOLERANCE = 1e-6
+
+
 def _require_matrix4(value, name):
     if (not isinstance(value, (list, tuple)) or len(value) != _TILE_MATRIX_ROWS):
         raise DatasetError(f"{name} must be a 4x4 matrix")
@@ -722,7 +778,46 @@ def _require_matrix4(value, name):
     for row in value:
         if not isinstance(row, (list, tuple)) or len(row) != _TILE_MATRIX_ROWS:
             raise DatasetError(f"{name} must be a 4x4 matrix")
-        rows.append([float(entry) for entry in row])
+        entries = []
+        for entry in row:
+            if isinstance(entry, bool) or not isinstance(entry, (int, float)):
+                raise DatasetError(f"{name} must contain only numbers")
+            try:
+                number = float(entry)
+            except (TypeError, ValueError, OverflowError) as error:
+                # An integer too large to convert is out of range, not a crash.
+                raise DatasetError(
+                    f"{name} must contain only finite entries") from error
+            if not math.isfinite(number):
+                raise DatasetError(f"{name} must contain only finite entries")
+            entries.append(number)
+        rows.append(entries)
+    return rows
+
+
+def _require_rigid_matrix4(value, name):
+    rows = _require_matrix4(value, name)
+    if any(abs(rows[3][column] - expected) > _RIGID_TOLERANCE
+           for column, expected in enumerate((0.0, 0.0, 0.0, 1.0))):
+        raise DatasetError(
+            f"{name} must be a rigid transform with a [0, 0, 0, 1] bottom row")
+    rotation = [[rows[row][column] for column in range(3)] for row in range(3)]
+    for first in range(3):
+        for second in range(3):
+            product = sum(rotation[k][first] * rotation[k][second]
+                          for k in range(3))
+            expected = 1.0 if first == second else 0.0
+            if abs(product - expected) > _RIGID_TOLERANCE:
+                raise DatasetError(f"{name} rotation must be orthonormal")
+    determinant = (
+        rotation[0][0] * (rotation[1][1] * rotation[2][2] -
+                          rotation[1][2] * rotation[2][1]) -
+        rotation[0][1] * (rotation[1][0] * rotation[2][2] -
+                          rotation[1][2] * rotation[2][0]) +
+        rotation[0][2] * (rotation[1][0] * rotation[2][1] -
+                          rotation[1][1] * rotation[2][0]))
+    if abs(determinant - 1.0) > _RIGID_TOLERANCE:
+        raise DatasetError(f"{name} rotation must be right-handed (det +1)")
     return rows
 
 
@@ -782,37 +877,8 @@ def _dataset_identity_payload(identity):
                          for k, v in dict(identity.topic_counts).items()},
         "db3_bytes": int(identity.db3_bytes),
         "map_points": int(identity.map_points),
-        "map_bytes": int(identity.map_bytes),
-    }
-
-
-def map_fingerprint(map_root, tiled_dir=None):
-    """
-    Fingerprint the map artifacts a reference pose is only valid against.
-
-    `DatasetIdentity` covers GlobalMap.pcd; a pose measured on one tiled map is
-    equally meaningless on another, and on a different ground map or Scan
-    Context database.
-    """
-    map_root = Path(map_root)
-
-    def size_of(path):
-        try:
-            return int(Path(path).stat().st_size)
-        except OSError:
-            return None
-
-    digest = None
-    if tiled_dir is not None:
-        manifest = Path(tiled_dir) / "manifest.yaml"
-        try:
-            digest = hashlib.sha256(manifest.read_bytes()).hexdigest()
-        except OSError:
-            digest = None
-    return {
-        "ground_map_bytes": size_of(map_root / "GroundMap.pcd"),
-        "sc_db_bytes": size_of(map_root / "sc_db.bin"),
-        "tiled_manifest_sha256": digest,
+        "artifacts": {str(name): str(digest) for name, digest in
+                      dict(identity.map_artifacts).items()},
     }
 
 
@@ -833,34 +899,62 @@ class TiledFaultReference:
     warmup_seconds: float
 
 
+def _require_reference_fields(map_T_base, bag_seconds, warmup_seconds,
+                              offset_seconds=None):
+    """
+    Validate the pose and timing shared by make, save and load.
+
+    ``offset_seconds`` is derived from the warm-up window by make(); save and
+    load pass the value they intend to persist or accept. Validation happens
+    before the derivation, so an out-of-range integer surfaces as a
+    DatasetError instead of an OverflowError from ``float()``.
+    """
+    rows = _require_rigid_matrix4(map_T_base, "map_T_base")
+    bag_seconds = _require_finite_number(
+        bag_seconds, "reference bag_seconds", minimum=0.0)
+    warmup_seconds = _require_finite_number(
+        warmup_seconds, "reference warmup_seconds", minimum=0.0,
+        exclusive_minimum=True)
+    if offset_seconds is None:
+        offset_seconds = max(0.0, bag_seconds - warmup_seconds)
+    else:
+        offset_seconds = _require_finite_number(
+            offset_seconds, "reference offset_seconds", minimum=0.0)
+    if offset_seconds > bag_seconds:
+        raise DatasetError(
+            "reference offset_seconds must not exceed bag_seconds")
+    return (tuple(tuple(row) for row in rows), bag_seconds, offset_seconds,
+            warmup_seconds)
+
+
 def make_tiled_fault_reference(identity, bag_seconds, map_T_base,
-                               warmup_seconds=10.0, map_fingerprint_value=None):
-    map_T_base = _require_matrix4(map_T_base, "map_T_base")
-    if not math.isfinite(bag_seconds) or bag_seconds < 0.0:
-        raise DatasetError("reference bag time must be finite and non-negative")
-    if warmup_seconds <= 0.0:
-        raise DatasetError("reference warmup must be positive")
-    offset = max(0.0, bag_seconds - warmup_seconds)
-    payload = _dataset_identity_payload(identity)
-    if map_fingerprint_value is not None:
-        payload.update(dict(map_fingerprint_value))
+                               warmup_seconds=10.0):
+    map_T_base, bag_seconds, offset_seconds, warmup_seconds = (
+        _require_reference_fields(map_T_base, bag_seconds, warmup_seconds))
     return TiledFaultReference(
-        dataset=payload,
-        bag_seconds=float(bag_seconds),
-        map_T_base=tuple(tuple(row) for row in map_T_base),
-        offset_seconds=offset,
-        warmup_seconds=float(warmup_seconds),
+        dataset=_dataset_identity_payload(identity),
+        bag_seconds=bag_seconds,
+        map_T_base=map_T_base,
+        offset_seconds=offset_seconds,
+        warmup_seconds=warmup_seconds,
     )
 
 
 def save_tiled_fault_reference(path, reference):
+    # save is the writer side of the contract load enforces: a hand-built
+    # reference must not reach disk in a state load would reject, and nothing
+    # may be written when validation fails.
+    map_T_base, bag_seconds, offset_seconds, warmup_seconds = (
+        _require_reference_fields(
+            reference.map_T_base, reference.bag_seconds,
+            reference.warmup_seconds, reference.offset_seconds))
     payload = {
         "schema_version": _TILE_INDEX_SCHEMA_VERSION,
         "dataset": dict(reference.dataset),
-        "bag_seconds": reference.bag_seconds,
-        "map_T_base": [list(row) for row in reference.map_T_base],
-        "offset_seconds": reference.offset_seconds,
-        "warmup_seconds": reference.warmup_seconds,
+        "bag_seconds": bag_seconds,
+        "map_T_base": [list(row) for row in map_T_base],
+        "offset_seconds": offset_seconds,
+        "warmup_seconds": warmup_seconds,
     }
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -868,7 +962,7 @@ def save_tiled_fault_reference(path, reference):
     return path
 
 
-def load_tiled_fault_reference(path, identity, map_fingerprint_value=None):
+def load_tiled_fault_reference(path, identity):
     path = Path(path)
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -881,23 +975,20 @@ def load_tiled_fault_reference(path, identity, map_fingerprint_value=None):
 
     recorded = _require_mapping(payload.get("dataset"), "reference dataset")
     expected = _dataset_identity_payload(identity)
-    if map_fingerprint_value is not None:
-        expected = dict(expected)
-        for key, value in dict(map_fingerprint_value).items():
-            if recorded.get(key) != value:
-                raise DatasetError(
-                    f"Tiled fault reference was recorded against a different map "
-                    f"({key}: {recorded.get(key)!r} != {value!r}); recapture it")
     for key, value in expected.items():
         if recorded.get(key) != value:
             raise DatasetError(
                 f"Tiled fault reference was recorded against a different dataset "
                 f"({key}: {recorded.get(key)!r} != {value!r}); recapture it")
+    map_T_base, bag_seconds, offset_seconds, warmup_seconds = (
+        _require_reference_fields(
+            payload.get("map_T_base"), payload.get("bag_seconds"),
+            payload.get("warmup_seconds", 10.0),
+            payload.get("offset_seconds", 0.0)))
     return TiledFaultReference(
         dataset=recorded,
-        bag_seconds=float(payload["bag_seconds"]),
-        map_T_base=tuple(tuple(row) for row in
-                         _require_matrix4(payload["map_T_base"], "map_T_base")),
-        offset_seconds=float(payload.get("offset_seconds", 0.0)),
-        warmup_seconds=float(payload.get("warmup_seconds", 10.0)),
+        bag_seconds=bag_seconds,
+        map_T_base=map_T_base,
+        offset_seconds=offset_seconds,
+        warmup_seconds=warmup_seconds,
     )

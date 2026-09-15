@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+import hashlib
+import shutil
 import signal
 import unittest
 from pathlib import Path
@@ -78,7 +80,18 @@ class LocalizationStabilityCommonTest(unittest.TestCase):
         self.assertEqual(identity.topic_counts, {"/imu": 42617, "/lidar_points": 4258})
         self.assertEqual(identity.db3_bytes, len(b"sample bag data"))
         self.assertEqual(identity.map_points, 4)
-        self.assertEqual(identity.map_bytes, (self.map_dir / GLOBAL_MAP_NAME).stat().st_size)
+        self.assertEqual(
+            dict(identity.map_artifacts),
+            {
+                GLOBAL_MAP_NAME: hashlib.sha256(
+                    (self.map_dir / GLOBAL_MAP_NAME).read_bytes()).hexdigest(),
+                GROUND_MAP_NAME: hashlib.sha256(b"ground map").hexdigest(),
+                SCAN_CONTEXT_DB_NAME: hashlib.sha256(
+                    b"scan context").hexdigest(),
+            },
+        )
+        with self.assertRaises(TypeError):
+            identity.map_artifacts[GLOBAL_MAP_NAME] = "0" * 64
 
     def test_validate_dataset_accepts_binary_pcd_header_followed_by_payload(self):
         global_map = self.map_dir / GLOBAL_MAP_NAME
@@ -88,7 +101,9 @@ class LocalizationStabilityCommonTest(unittest.TestCase):
         identity = validate_dataset(self.bag_dir, self.map_dir)
 
         self.assertEqual(identity.map_points, 7)
-        self.assertEqual(identity.map_bytes, global_map.stat().st_size)
+        self.assertEqual(
+            identity.map_artifacts[GLOBAL_MAP_NAME],
+            hashlib.sha256(global_map.read_bytes()).hexdigest())
 
     def test_validate_dataset_rejects_pcd_data_without_encoding(self):
         (self.map_dir / GLOBAL_MAP_NAME).write_bytes(b"POINTS 4\nDATA\n")
@@ -123,6 +138,106 @@ class LocalizationStabilityCommonTest(unittest.TestCase):
         self.assertEqual(identity.topic_counts, {"/imu": 42617, "/lidar_points": 4258})
         with self.assertRaises(TypeError):
             identity.topic_counts["/imu"] = 0
+
+    def test_map_identity_distinguishes_same_size_artifacts(self):
+        before = validate_dataset(self.bag_dir, self.map_dir)
+        (self.map_dir / GROUND_MAP_NAME).write_bytes(b"6round map")
+
+        after = validate_dataset(self.bag_dir, self.map_dir)
+
+        self.assertEqual((self.map_dir / GROUND_MAP_NAME).stat().st_size,
+                         len(b"ground map"))
+        self.assertNotEqual(before.map_artifacts[GROUND_MAP_NAME],
+                            after.map_artifacts[GROUND_MAP_NAME])
+
+    def test_map_identity_includes_the_tiled_manifest(self):
+        tiled = self.map_dir / "tiled"
+        tiled.mkdir()
+        manifest = b"schema_version: 1\n"
+        (tiled / "manifest.yaml").write_bytes(manifest)
+
+        identity = validate_dataset(
+            self.bag_dir, self.map_dir, tiled_dir=tiled)
+
+        self.assertEqual(identity.map_artifacts["tiled/manifest.yaml"],
+                         hashlib.sha256(manifest).hexdigest())
+        self.assertEqual(
+            set(identity.map_artifacts),
+            {GLOBAL_MAP_NAME, GROUND_MAP_NAME, SCAN_CONTEXT_DB_NAME,
+             "tiled/manifest.yaml"},
+        )
+
+    def test_map_identity_requires_every_artifact(self):
+        for name in (GLOBAL_MAP_NAME, GROUND_MAP_NAME, SCAN_CONTEXT_DB_NAME):
+            with self.subTest(name=name):
+                backup = (self.map_dir / name).read_bytes()
+                (self.map_dir / name).unlink()
+                try:
+                    with self.assertRaisesRegex(DatasetError,
+                                                name.replace(".", "\\.")):
+                        validate_dataset(self.bag_dir, self.map_dir)
+                finally:
+                    (self.map_dir / name).write_bytes(backup)
+
+    def test_map_identity_requires_the_tiled_manifest(self):
+        tiled = self.map_dir / "tiled"
+        tiled.mkdir()
+
+        with self.assertRaisesRegex(DatasetError, "manifest\\.yaml"):
+            validate_dataset(self.bag_dir, self.map_dir, tiled_dir=tiled)
+
+    def test_map_identity_fails_closed_on_an_unreadable_artifact(self):
+        real_open = Path.open
+
+        def unreadable(path, *args, **kwargs):
+            if path.name == GROUND_MAP_NAME:
+                raise PermissionError("permission denied")
+            return real_open(path, *args, **kwargs)
+
+        with patch.object(Path, "open", unreadable):
+            with self.assertRaisesRegex(DatasetError,
+                                        "Unable to hash map artifact"):
+                validate_dataset(self.bag_dir, self.map_dir)
+
+    def test_map_identity_fails_closed_on_an_unreadable_tiled_manifest(self):
+        tiled = self.map_dir / "tiled"
+        tiled.mkdir()
+        (tiled / "manifest.yaml").write_bytes(b"schema_version: 1\n")
+        real_open = Path.open
+
+        def unreadable(path, *args, **kwargs):
+            if path.name == "manifest.yaml":
+                raise PermissionError("permission denied")
+            return real_open(path, *args, **kwargs)
+
+        with patch.object(Path, "open", unreadable):
+            with self.assertRaisesRegex(DatasetError,
+                                        "Unable to hash map artifact"):
+                validate_dataset(self.bag_dir, self.map_dir, tiled_dir=tiled)
+
+    def test_map_identity_is_stable_across_a_fixture_map(self):
+        # scripts/run_localization_stability.sh builds each fault case root by
+        # symlinking the real map artifacts and copying the tiled map, then
+        # loads the reference captured against the source map. The identity
+        # must therefore follow content, not the local path, and must ignore
+        # the fixture marker.
+        tiled = self.map_dir / "tiled"
+        tiled.mkdir()
+        (tiled / "manifest.yaml").write_bytes(b"schema_version: 1\n")
+        case_root = self.root / "missing-neighbor-map"
+        case_root.mkdir()
+        for name in (GLOBAL_MAP_NAME, GROUND_MAP_NAME, SCAN_CONTEXT_DB_NAME):
+            (case_root / name).symlink_to(self.map_dir / name)
+        shutil.copytree(tiled, case_root / "tiled")
+        (case_root / "tiled" / ".p22-fault-fixture.json").write_text(
+            '{"fault_case": "missing-neighbor"}', encoding="utf-8")
+
+        source = validate_dataset(self.bag_dir, self.map_dir, tiled_dir=tiled)
+        fixture = validate_dataset(self.bag_dir, case_root,
+                                   tiled_dir=case_root / "tiled")
+
+        self.assertEqual(dict(source.map_artifacts),
+                         dict(fixture.map_artifacts))
 
     def test_validate_dataset_rejects_incomplete_map(self):
         (self.map_dir / GROUND_MAP_NAME).unlink()
