@@ -117,7 +117,7 @@ Expected: FAIL, with `Expected: LoadMapping(...) throws an exception of type std
 In `src/common/slam_config.cpp`, replace lines 765-773:
 
 ```cpp
-  
+
   RequirePositive(map_save.tiled_map.tile_size_m,
 
                   "map_save.tiled_map.tile_size_m");

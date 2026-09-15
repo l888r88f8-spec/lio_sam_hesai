@@ -247,7 +247,7 @@ OdomTLidar::FromMatrix(trans2Affine3f(transformTobeMapped).matrix().cast<double>
 
 ## 九、P2.2 修复轮（2026-09-15）
 
-按 `docs/P2.2_fix.md` 执行。本轮修复的是第 8 节记录的四类问题：launch 参数方向、相对地图路径、分块覆盖语义与故障回放、以及独立参数复核。**分支仍未合并到 `main`。**
+按 `docs/P2.2_fix.md` 执行。本轮修复的是第 8 节记录的四类问题：launch 参数方向、相对地图路径、分块覆盖语义与故障回放、以及独立参数复核。**分支仍未合并到 `main`。**（现状补充：该分支随后已并入本地 `main`（`740dab9`），合并后的加固轮见 9.9；本句是当时的状态记录。）
 
 ### 9.1 状态区分
 
@@ -354,3 +354,62 @@ LIO_SAM_WORKSPACE=/tmp/p22_clean LIO_SAM_KEEP_RESULTS=1 \
 - 干净树 CTest：44/48，失败项与 `main` 的 4 个既有 lint 完全一致；约定 lint 门禁（排除 `copyright`/`cpplint`/`flake8`/`lint_cmake`/`uncrustify`/`xmllint`）零失败。
 - 四项回放全部退出码 0：`quick`、`tf-continuity`、`tiled-quick`、`tiled-faults`。
 - 建图 smoke（干净 install，60 秒，地图输出指向临时目录）：无 crash；`map -> odom` 单位变换；`odom -> base_link` 动态（19.74 → 28.03）；`base_link -> hesai_lidar` `[0.020, 0.000, 0.320]`；`base_link -> imu_link` `[0.020, 0.000, 0.220]`；临时地图目录为空。
+
+### 9.9 合并后加固轮（2026-09-15）
+
+9.8 那批复核修复已并入本地 `main`（当前基线 `740dab9`）。本轮从该提交拉出
+`fix/p22-postmerge-hardening`，修复一并遗留的验收判据/校验缺口后重新验收。计划与设计见
+`docs/superpowers/plans/2026-09-15-p22-postmerge-hardening.md` 与
+`docs/superpowers/specs/2026-09-15-p22-postmerge-hardening-design.md`。
+
+**分支状态**：`fix/p22-postmerge-hardening` 的代码修复止于 `bbfd47d`（基于 `740dab9`）；
+**尚未合并、尚未 push**，集成方式待用户选择。
+
+**修复内容**（提交 `9ddbe69` → `bbfd47d`）
+
+1. `9ddbe69` docs：本轮计划与设计文档。
+2. `144f374` 配置/回放闸门：删除 `map_save.tiled_map.tile_size_m` 的重复
+   `RequireNonNegative` 死代码并修正缩进，`test_slam_config.cpp` 新增
+   `MappingRejectsNonPositiveOrNonFiniteTileSize` 锁定"有限且 > 0"契约；fault case 的
+   center 缺失统一为 `DatasetError`；tracking 闸门改为非粘性，WARN/ERROR 或
+   `is_tracking != true` 会复位，不会把失去跟踪后的位姿记成参考。
+3. `20d4399` 地图身份：参考绑定从字节数升级为具名 artifact 的 SHA-256
+   （`GlobalMap.pcd`/`GroundMap.pcd`/`sc_db.bin`，tiled 另含 `tiled/manifest.yaml`）；
+   旧格式引用缺少 `artifacts` 键时 fail-closed 并要求重录；`schema_version` 仍为 1。
+4. `37e98d2` 参考位姿发布：`/initialpose` 只在存在 matched subscriber 时发布，否则下次
+   tick 重试，窗口内始终无订阅者则抛 `ReplayError`（不阻塞 executor）。
+5. `ae9226d` lint：清掉 `06a2427` 引入的 2 处 E303（仅删空行）。
+6. `64224f4` 判据解耦：record-reference 不再套用 quick 的性能阈值，但 `quick` 与
+   `tiled-quick` 的性能门禁保持原样。
+7. `bd87434` tile index 诊断比较只归一空白（`[-1, -1]` vs `[-1,-1]`），符号与数字仍须精确匹配。
+8. `bbfd47d` 校验边界：显式 `null` offset 与数值溢出统一转 `DatasetError`，非迭代
+   center 不再泄漏 `TypeError`；提取等价 subscriber helper，并补齐生产查询、
+   `tiled-quick` 接线和回放边界测试。仅动 Python，无 C++ 改动。
+
+**最终验证（HEAD `bbfd47d`）**
+
+- 干净 C++ 构建：成功、退出码 0。colcon 前端在配置阶段后挂起，改用同一生成树
+  `cmake --build ... --parallel 1` 完成编译、`cmake --install` 完成安装；`ae9226d` 之后
+  无 C++ 源码改动，故该生成树的二进制对 HEAD 有效。
+- CTest：共发现 50 项；约定门禁排除 `copyright`/`cpplint`/`flake8`/`lint_cmake`/
+  `uncrustify`/`xmllint` 后，44/44 通过。另单独跑 `test_slam_config` 与两处
+  `*TileSize*` 过滤器，均通过。本轮未把未执行的完整 50 项结果写成通过证据。
+- Python：7 个文件 173/173 通过（`test_localization_regression` 72、
+  `test_tiled_map_integration` 28、`test_localization_tf_continuity` 22、其余 4 个文件 51）。
+- 新增行 flake8：0 违规（BASE `740dab9` 对照，新增/改动 1062 行；12 处既有违规未动）。
+- `bash scripts/run_localization_stability.sh tiled-faults`：在 `bd87434` 上从头
+  （含 reference 捕获）跑完，退出码 0，reference + 三个 fault case 全部执行：
+  `corrupt-manifest` `corrupt_manifest_node_died: true`；`missing-center`
+  `first_ok_seconds: null`、`valid_odom_ratio: null`、`map_tile_load_failures: 1`；
+  `missing-neighbor` `first_ok_seconds: 8.19`、`valid_odom_ratio: 1.0`、
+  `map_tile_load_failures: 3`。`bd87434 → bbfd47d` 只改 Python 验证边界并提取等价
+  helper，最终 44/173 全绿即该脚本判据的复验。
+- 证据在 `.p22_build/tiled-faults-e2e-results/` 与 `.p22_build/final-verification/`，
+  **两目录均未跟踪，清理 worktree 会丢失**。
+
+**本轮未做**：未 push；未做版权头或全仓 lint 治理（仅保证新增行 0 违规、既有基线不恶化）；
+`tiled-quick`/`quick`/`tf-continuity` 的真实回放本轮**未重跑**（完整 `tiled-faults` 已跑），
+其最近一次全绿记录仍属 9.8 轮。
+
+**仍存的非本轮项**：P2.3，以及 9.7 的退出自动保存磁盘产物、`TightCouplingKF` 运行期
+`LOG(FATAL)` 桩、四项 lint 基线——本轮未清零，也不宣称清零。
