@@ -571,17 +571,21 @@ def main(argv=None):
                 for violation in violations:
                     print(f"fault violation: {violation}", file=sys.stderr)
         else:
-            violations = compare_quick_metrics(baseline, metrics)
-            if arguments.tiled_dir is not None:
-                violations.extend(
-                    tiled_metric_violations(
-                        metrics, baseline["quick"]["ok_deadline_seconds"]
+            # A reference capture is not a performance gate: the replay exists
+            # to observe a stable tracking pose, so a slow machine must not fail
+            # the capture before the fault cases can use its reference.
+            if arguments.record_reference is None:
+                violations = compare_quick_metrics(baseline, metrics)
+                if arguments.tiled_dir is not None:
+                    violations.extend(
+                        tiled_metric_violations(
+                            metrics, baseline["quick"]["ok_deadline_seconds"]
+                        )
                     )
-                )
-            if violations:
-                exit_code = 1
-                for violation in violations:
-                    print(f"metric violation: {violation}", file=sys.stderr)
+                if violations:
+                    exit_code = 1
+                    for violation in violations:
+                        print(f"metric violation: {violation}", file=sys.stderr)
     except KeyboardInterrupt:
         exit_code = 130
         error_message = "interrupted"

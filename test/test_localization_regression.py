@@ -432,6 +432,48 @@ class LocalizationRegressionCliTest(unittest.TestCase):
         self.assertEqual(observed["dataset"]["message_count"], 46875)
         self.assertEqual(observed["metrics"], self.metrics)
 
+    def test_record_reference_mode_skips_metric_comparison(self):
+        baseline = copy.deepcopy(BASELINE)
+        runtime_parameters = self.output_dir / "relocalization.runtime.yaml"
+        with (
+            patch.object(localization_regression, "validate_dataset", return_value=self.identity),
+            patch.object(
+                localization_regression,
+                "write_runtime_parameters",
+                return_value=runtime_parameters,
+            ),
+            patch.object(localization_regression, "load_baseline", return_value=baseline),
+            patch.object(
+                localization_regression, "_run_replay", return_value=self.metrics
+            ) as run_replay,
+            patch.object(
+                localization_regression,
+                "compare_quick_metrics",
+                return_value=["min_health_score too low"],
+            ) as compare,
+            patch.object(
+                localization_regression,
+                "tiled_metric_violations",
+                return_value=["first_ok_seconds too late"],
+            ) as tiled_compare,
+        ):
+            with redirect_stderr(StringIO()):
+                exit_code = localization_regression.main(
+                    self._arguments(
+                        "--baseline",
+                        str(self.root / "baseline.yaml"),
+                        "--tiled-dir",
+                        str(self.root / "tiled"),
+                        "--record-reference",
+                        str(self.root / "reference.json"),
+                    )
+                )
+
+        self.assertEqual(exit_code, 0)
+        run_replay.assert_called_once()
+        compare.assert_not_called()
+        tiled_compare.assert_not_called()
+
     def test_record_mode_writes_only_candidate_baseline_and_uses_default_quick_settings(self):
         runtime_parameters = self.output_dir / "relocalization.runtime.yaml"
         tracked_baseline = self.root / "hesai_sim.yaml"
