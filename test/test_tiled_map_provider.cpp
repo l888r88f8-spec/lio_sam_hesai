@@ -1031,3 +1031,115 @@ TEST(TiledMapProvider, InvalidConfigOrManifestFailsWithStableDiagnostics) {
 }
 
 }  // namespace
+
+// --- Real on-disk manifest contract -----------------------------------------
+//
+// The tests below use a real manifest and real PCD files read by the default
+// loader. The injected-loader tests above stay as they are: they cover worker
+// scheduling, not what "declared" means on disk.
+
+namespace {
+
+std::uintmax_t SaveTileFile(const fs::path& path) {
+  PCLPointCloudXYZI cloud;
+  cloud.push_back(Point(1.0F, 2.0F, 3.0F));
+  cloud.width = 1U;
+  cloud.height = 1U;
+  cloud.is_dense = true;
+  EXPECT_EQ(pcl::io::savePCDFileBinary(path.string(), cloud), 0);
+  std::error_code error;
+  return fs::file_size(path, error);
+}
+
+// Declares exactly `declared` global tiles and writes a real PCD file for each,
+// recording the byte size the manifest validates against.
+void SaveRealManifest(const fs::path& root,
+                      const std::vector<TileIndex>& declared) {
+  TileManifest manifest = EmptyManifest();
+  fs::create_directories(root / "global");
+  for (const TileIndex& index : declared) {
+    const fs::path relative =
+        fs::path("global") /
+        (std::to_string(index.x) + "_" + std::to_string(index.y) + ".pcd");
+    const std::uintmax_t bytes = SaveTileFile(root / relative);
+    manifest.global_tiles.emplace(
+        index, localization_map::TileFileMetadata{relative, 1U, bytes});
+  }
+  manifest.Save(root);
+  ASSERT_TRUE(fs::is_regular_file(root / "manifest.yaml"));
+}
+
+fs::path TileFile(const fs::path& root, TileIndex index) {
+  return root / "global" /
+         (std::to_string(index.x) + "_" + std::to_string(index.y) + ".pcd");
+}
+
+}  // namespace
+
+TEST(TiledMapProvider, UndeclaredHoleInsideBoundsIsNotRequestedOrDegraded) {
+  // (0,0) and (1,1) are declared; (1,0) and (0,1) sit inside the same
+  // bounding rectangle but are not declared. They must be skipped silently.
+  TemporaryDirectory directory;
+  SaveRealManifest(directory.root(), {TileIndex{0, 0}, TileIndex{1, 1}});
+
+  TiledMapProvider provider(Config(directory.root(), 1, 1));
+  ASSERT_TRUE(provider.Prepare(nullptr));
+
+  const auto result = WaitForTracking(provider, Pose(0.0));
+  ASSERT_EQ(result.state, MapRequestState::kReady);
+  ASSERT_NE(result.snapshot, nullptr);
+  EXPECT_FALSE(result.snapshot->degraded);
+  EXPECT_TRUE(result.snapshot->missing_indices.empty());
+  EXPECT_EQ(result.snapshot->indices.size(), 2U);
+  EXPECT_EQ(provider.Diagnostics().load_failures, 0U);
+}
+
+TEST(TiledMapProvider, UndeclaredCenterIsUnavailable) {
+  TemporaryDirectory directory;
+  SaveRealManifest(directory.root(), {TileIndex{1, 1}});
+
+  TiledMapProvider provider(Config(directory.root(), 1, 1));
+  ASSERT_TRUE(provider.Prepare(nullptr));
+
+  const auto result = provider.LoadCandidate(Pose(0.0), 1s);
+  EXPECT_EQ(result.state, MapRequestState::kUnavailable);
+  EXPECT_NE(result.error.find("[0,0]"), std::string::npos) << result.error;
+}
+
+TEST(TiledMapProvider, DeclaredCenterLostAtRuntimeFailsTheRequestByName) {
+  TemporaryDirectory directory;
+  SaveRealManifest(directory.root(), {TileIndex{0, 0}, TileIndex{1, 1}});
+
+  TiledMapProvider provider(Config(directory.root(), 1, 1));
+  ASSERT_TRUE(provider.Prepare(nullptr));
+
+  // The manifest still declares (0,0); only its payload disappears.
+  fs::remove(TileFile(directory.root(), TileIndex{0, 0}));
+
+  const auto result = provider.LoadCandidate(Pose(0.0), 1s);
+  EXPECT_EQ(result.state, MapRequestState::kUnavailable);
+  EXPECT_NE(result.error.find("[0,0]"), std::string::npos) << result.error;
+  EXPECT_GT(provider.Diagnostics().load_failures, 0U);
+}
+
+TEST(TiledMapProvider, DeclaredNeighborLostAtRuntimeDegradesAndNamesIt) {
+  TemporaryDirectory directory;
+  SaveRealManifest(directory.root(), {TileIndex{0, 0}, TileIndex{1, 1}});
+
+  TiledMapProvider provider(Config(directory.root(), 1, 1));
+  ASSERT_TRUE(provider.Prepare(nullptr));
+
+  fs::remove(TileFile(directory.root(), TileIndex{1, 1}));
+
+  const auto result = WaitForTracking(provider, Pose(0.0));
+  ASSERT_EQ(result.state, MapRequestState::kReady);
+  ASSERT_NE(result.snapshot, nullptr);
+  EXPECT_TRUE(result.snapshot->degraded);
+  EXPECT_EQ(result.snapshot->missing_indices,
+            (std::vector<TileIndex>{TileIndex{1, 1}}));
+  EXPECT_EQ(result.snapshot->indices,
+            (std::vector<TileIndex>{TileIndex{0, 0}}));
+  EXPECT_GT(provider.Diagnostics().load_failures, 0U);
+  EXPECT_NE(provider.Diagnostics().last_error.find("[1,1]"),
+            std::string::npos) << provider.Diagnostics().last_error;
+}

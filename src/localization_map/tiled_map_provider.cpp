@@ -369,33 +369,27 @@ class TiledMapProvider::Impl {
   }
 
   void UpdateManifestBounds() {
-    if (manifest.global_tiles.empty()) {
-      manifest_bounds_valid = false;
-      return;
-    }
-    const TileIndex first = manifest.global_tiles.begin()->first;
-    manifest_min_x = manifest_max_x = first.x;
-    manifest_min_y = manifest_max_y = first.y;
-    for (const auto& entry : manifest.global_tiles) {
-      manifest_min_x = std::min(manifest_min_x, entry.first.x);
-      manifest_max_x = std::max(manifest_max_x, entry.first.x);
-      manifest_min_y = std::min(manifest_min_y, entry.first.y);
-      manifest_max_y = std::max(manifest_max_y, entry.first.y);
-    }
-    manifest_bounds_valid = true;
+    // An empty manifest disables clipping so a caller still reports the
+    // request instead of silently dropping every index.
+    manifest_declares_tiles = !manifest.global_tiles.empty();
   }
 
-  bool InManifestBounds(const TileIndex& index) const {
-    return !manifest_bounds_valid ||
-           (index.x >= manifest_min_x && index.x <= manifest_max_x &&
-            index.y >= manifest_min_y && index.y <= manifest_max_y);
+  // A tile is usable only when the manifest actually declares it. Testing the
+  // min/max rectangle instead treated every cell inside the bounding box as
+  // present, but the covered region is irregular -- the mapping trajectory is a
+  // diagonal band, so the rectangle corners hold no points and therefore no
+  // tiles. Requests reaching those corners were reported as missing, which
+  // marked the snapshot degraded and pinned the diagnostic to WARN while
+  // localization was tracking normally.
+  bool IsDeclaredTile(const TileIndex& index) const {
+    return !manifest_declares_tiles || manifest.global_tiles.count(index) != 0U;
   }
 
-  void ClipToManifestBounds(std::vector<TileIndex>* indices) const {
+  void ClipToDeclaredTiles(std::vector<TileIndex>* indices) const {
     indices->erase(
         std::remove_if(indices->begin(), indices->end(),
                        [&](const TileIndex& index) {
-                         return !InManifestBounds(index);
+                         return !IsDeclaredTile(index);
                        }),
         indices->end());
   }
@@ -491,7 +485,7 @@ class TiledMapProvider::Impl {
     request->center = center;
     request->priority = priority;
     request->indices = SquareNeighborhood(center, config.active_radius);
-    ClipToManifestBounds(&request->indices);
+    ClipToDeclaredTiles(&request->indices);
     for (const TileIndex& index : request->indices) {
       request->outcomes.emplace(index, TileOutcome{});
     }
@@ -876,8 +870,8 @@ class TiledMapProvider::Impl {
       diagnostics.last_error = "prefetch neighborhood is outside tile range";
       return;
     }
-    ClipToManifestBounds(&prefetch);
-    ClipToManifestBounds(&active);
+    ClipToDeclaredTiles(&prefetch);
+    ClipToDeclaredTiles(&active);
     prefetch.erase(std::remove_if(prefetch.begin(), prefetch.end(),
                                   [&](const TileIndex& index) {
                                     return std::binary_search(
@@ -932,11 +926,7 @@ class TiledMapProvider::Impl {
   int root_descriptor{-1};
   bool prepared{false};
   bool stopping{false};
-  bool manifest_bounds_valid{false};
-  int manifest_min_x{0};
-  int manifest_max_x{0};
-  int manifest_min_y{0};
-  int manifest_max_y{0};
+  bool manifest_declares_tiles{false};
 };
 
 TiledMapProvider::TiledMapProvider(TiledMapProviderConfig config)

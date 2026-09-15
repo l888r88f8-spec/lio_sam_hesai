@@ -1,6 +1,8 @@
 from collections.abc import Mapping
 from dataclasses import dataclass
+import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -91,7 +93,8 @@ def validate_dataset(bag_dir: Path, map_dir: Path, *, tiled_dir=None) -> Dataset
 
 
 def write_runtime_parameters(
-    template, map_dir, output_dir, topic_overrides=None, *, tiled_dir=None
+    template, map_dir, output_dir, topic_overrides=None, *, tiled_dir=None,
+    auto_relocalization=None
 ):
     template_path = Path(template)
     if not template_path.is_file():
@@ -110,6 +113,11 @@ def write_runtime_parameters(
     }
     if tiled_dir is not None:
         replacements["map_mode"] = "tiled"
+    # A fault replay must not let Scan Context pick its own tile: the whole
+    # point is to observe the request the reference pose asks for.
+    forced_scalars = {}
+    if auto_relocalization is not None:
+        forced_scalars["auto_relocalization"] = bool(auto_relocalization)
     topic_overrides = _validate_topic_overrides(topic_overrides)
     replacement_counts = {key: 0 for key in replacements}
     topic_override_counts = {key: 0 for key in topic_overrides}
@@ -127,6 +135,15 @@ def write_runtime_parameters(
             continue
 
         scalar_line = _YAML_SCALAR_LINE.fullmatch(content)
+        if (scalar_line is not None and
+                scalar_line.group("key").strip() in forced_scalars):
+            key = scalar_line.group("key").strip()
+            _, comment = _split_inline_yaml_comment(scalar_line.group("value"))
+            rendered_lines.append(
+                f"{scalar_line.group('indent')}{key}: "
+                f"{json.dumps(forced_scalars[key])}{comment}{line_ending}"
+            )
+            continue
         if sensor_topic_indent is not None and scalar_line is not None:
             indentation = len(scalar_line.group("indent"))
             if indentation <= sensor_topic_indent:
@@ -209,10 +226,196 @@ def terminate_process_group(pid, timeout_seconds=10.0):
         pass
 
 
-def prepare_tiled_fault_case(source, destination, fault_case, center_index=None):
-    """Create a small, self-contained manifest fixture for replay fault checks."""
+def _fault_index(value, name):
+    """Return a tile index element, rejecting bool and float coercion."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise DatasetError(f"{name} must be an integer, not {value!r}")
+    return value
+
+
+def _tile_index(entry, kind):
+    index = entry["index"]
+    if not isinstance(index, list) or len(index) != 2:
+        raise DatasetError(f"Tiled manifest tiles.{kind} index must have two entries")
+    return (_fault_index(index[0], f"tiles.{kind} index[0]"),
+            _fault_index(index[1], f"tiles.{kind} index[1]"))
+
+
+def _declared_tile_path(root, relative, kind):
+    """
+    Resolve a manifest tile path under `root`, refusing every escape.
+
+    Used for both the source map and the fixture, because the two can disagree:
+    a symlinked directory in the source absorbs one `..` level, so the same
+    relative path that stays inside the source can climb out of the fixture.
+    """
+    if not isinstance(relative, str) or not relative:
+        raise DatasetError(f"Tiled manifest tiles.{kind} path must be a string")
+    relative_path = Path(relative)
+    if relative_path.is_absolute():
+        raise DatasetError(f"Tiled manifest tiles.{kind} path must be relative: {relative}")
+    # A generated map bundle never needs `..`; counting it is what made the
+    # source and the fixture disagree about depth.
+    if ".." in relative_path.parts:
+        raise DatasetError(
+            f"Tiled manifest tiles.{kind} path must not contain '..': {relative}")
+    # Every component, not just the leaf: a symlinked parent redirects the
+    # whole subtree while the leaf still looks ordinary.
+    current = root
+    for part in relative_path.parts:
+        current = current / part
+        if current.is_symlink():
+            raise DatasetError(
+                f"Tiled manifest tiles.{kind} path must not cross a symlink: {relative}")
+    candidate = root / relative_path
+    if not candidate.resolve().is_relative_to(root.resolve()):
+        raise DatasetError(
+            f"Tiled manifest tiles.{kind} path escapes its root: {relative}")
+    return candidate
+
+
+def _fixture_destination(destination_root, relative, kind):
+    """Resolve a copy destination inside the fixture, refusing an escape."""
+    destination = destination_root / Path(relative)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if not destination.resolve().is_relative_to(destination_root.resolve()):
+        raise DatasetError(
+            f"Tiled manifest tiles.{kind} path escapes the fixture: {relative}")
+    return destination
+
+
+# Written into every fixture by prepare_tiled_fault_case. inject() refuses to
+# move anything without it, so a --tiled-dir pointed at a real map can never be
+# mutated.
+_FAULT_FIXTURE_MARKER = ".p22-fault-fixture.json"
+
+
+@dataclass(frozen=True)
+class TiledFaultFixture:
+    """
+    A self-contained copy of a tiled map with one identified faulty tile.
+
+    Copying is complete and non-destructive: every manifest entry survives and
+    every tile file is present, so the fixture loads exactly like the real map
+    and the replay's trajectory stays inside its coverage. The fault is applied
+    separately by :meth:`inject`, after the node has prepared its map, so that
+    it surfaces as a runtime load failure instead of a manifest validation
+    failure.
+    """
+
+    root: Path
+    tiled_root: Path
+    center: tuple
+    fault_case: str
+    fault_index: object          # None for corrupt-manifest
+    fault_relative: object       # None for corrupt-manifest
+    active_radius: int
+    prefetch_radius: int
+
+    @property
+    def expected_index(self):
+        """Return the bracket string the degraded diagnostic must contain."""
+        if self.fault_index is None:
+            return None
+        return f"[{self.fault_index[0]},{self.fault_index[1]}]"
+
+    def _verify_provenance(self):
+        """
+        Prove this tiled root was created as a fault fixture for this fault.
+
+        Without this, pointing the CLI at a real map would let inject() rename a
+        live tile -- or manifest.yaml -- into the quarantine.
+        """
+        marker = self.tiled_root / _FAULT_FIXTURE_MARKER
+        if marker.is_symlink() or not marker.is_file():
+            raise DatasetError(
+                "refusing to inject: the tiled root has no fault-fixture marker, "
+                "so it is not a fixture created by prepare_tiled_fault_case")
+        try:
+            payload = json.loads(marker.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as error:
+            raise DatasetError(f"unreadable fault-fixture marker: {error}") from error
+        payload = _require_mapping(payload, "fault fixture marker")
+        if payload.get("fault_case") != self.fault_case:
+            raise DatasetError(
+                f"fault-fixture marker is for {payload.get('fault_case')!r}, "
+                f"not {self.fault_case!r}")
+        if payload.get("fault_relative") != self.fault_relative:
+            raise DatasetError(
+                "fault-fixture marker does not select this payload")
+        if list(payload.get("fault_index") or []) != list(self.fault_index or []):
+            raise DatasetError("fault-fixture marker does not match this index")
+        return payload
+
+    def _verify_declared_tile(self):
+        """Return only when the payload is a tile the fixture manifest declares."""
+        manifest_path = self.tiled_root / "manifest.yaml"
+        try:
+            manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, yaml.YAMLError) as error:
+            raise DatasetError(f"unable to read fixture manifest: {error}") from error
+        manifest = _require_mapping(manifest, "fixture manifest")
+        for entry in _manifest_tiles(manifest, "global"):
+            if entry["path"] == self.fault_relative:
+                if list(_tile_index(entry, "global")) != list(self.fault_index or []):
+                    raise DatasetError(
+                        "fixture manifest maps the payload to a different index")
+                return
+        raise DatasetError(
+            f"fixture manifest does not declare {self.fault_relative}")
+
+    def inject(self):
+        """Move the faulty global payload aside, leaving the manifest intact."""
+        if self.fault_relative is None:
+            raise DatasetError("corrupt-manifest has no payload to inject")
+        self._verify_provenance()
+        self._verify_declared_tile()
+        target = _declared_tile_path(self.tiled_root, self.fault_relative, "global")
+        if not target.is_file():
+            raise DatasetError(f"fault payload is missing: {self.fault_relative}")
+        quarantine = self.root / "quarantine"
+        if quarantine.is_symlink():
+            raise DatasetError("fault quarantine must not be a symlink")
+        quarantine.mkdir(parents=True, exist_ok=True)
+        if not quarantine.resolve().is_relative_to(self.root.resolve()):
+            raise DatasetError("fault quarantine must live inside the fixture")
+        destination = quarantine / Path(self.fault_relative).name
+        # Renaming replaces silently, so a planted quarantine symlink pointing
+        # at the real map could overwrite a same-named map file.
+        if destination.exists() or destination.is_symlink():
+            raise DatasetError(
+                f"refusing to overwrite {destination.name} in the fault quarantine")
+        try:
+            target.rename(destination)
+        except OSError as error:
+            raise DatasetError(
+                f"Unable to inject tiled fault {self.fault_relative}: {error}"
+            ) from error
+        return destination
+
+
+def prepare_tiled_fault_case(source, destination, fault_case, center_index,
+                             active_radius=1, prefetch_radius=1):
+    """
+    Copy a tiled map into a self-contained fixture for a replay fault check.
+
+    `center_index` is required: the map's first tile says nothing about where
+    the replay actually drives, and using it produced fixtures the trajectory
+    never reached.
+    """
+    if fault_case not in ("corrupt-manifest", "missing-center", "missing-neighbor"):
+        raise DatasetError(f"Unknown tiled fault case: {fault_case}")
+    if center_index is None and fault_case != "corrupt-manifest":
+        raise DatasetError(
+            "Tiled fault center index is required; pass the replay reference tile"
+        )
+    if active_radius < 0 or prefetch_radius < active_radius:
+        raise DatasetError("Tiled fault radii must satisfy 0 <= active <= prefetch")
+
     source_path = Path(source).resolve()
     destination_path = Path(destination)
+    if destination_path.resolve().is_relative_to(source_path):
+        raise DatasetError("Tiled fault fixture must not be created inside the source map")
     manifest_path = source_path / "manifest.yaml"
     try:
         manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
@@ -223,63 +426,114 @@ def prepare_tiled_fault_case(source, destination, fault_case, center_index=None)
     ground_tiles = _manifest_tiles(manifest, "ground")
     if not global_tiles:
         raise DatasetError("Tiled manifest has no global tiles")
-    if center_index is None:
-        center = tuple(global_tiles[0]["index"])
-    else:
-        center = tuple(int(value) for value in center_index)
-        if len(center) != 2:
-            raise DatasetError("Tiled fault center index must contain two integers")
-    selected = {
-        (center[0] + dx, center[1] + dy)
-        for dx in (-1, 0, 1)
-        for dy in (-1, 0, 1)
-    }
-    if fault_case != "missing-center" and not any(
-        tuple(entry["index"]) == center for entry in global_tiles
-    ):
-        raise DatasetError(
-            "Tiled fault center tile is absent; set LIO_SAM_TILED_FAULT_CENTER_INDEX"
-        )
-    global_indices = [tuple(entry["index"]) for entry in global_tiles]
-    neighbor = None
-    for candidate in sorted(selected - {center}):
-        remaining = [index for index in global_indices if index != candidate]
-        if candidate not in global_indices or not remaining:
-            continue
-        if (min(index[0] for index in remaining) <= candidate[0] <=
-                max(index[0] for index in remaining) and
-                min(index[1] for index in remaining) <= candidate[1] <=
-                max(index[1] for index in remaining)):
-            neighbor = candidate
-            break
-    if neighbor is None:
-        neighbor = (center[0] + 1, center[1])
-    missing = center if fault_case == "missing-center" else neighbor
-    if fault_case not in ("corrupt-manifest", "missing-center", "missing-neighbor"):
-        raise DatasetError(f"Unknown tiled fault case: {fault_case}")
+
+    center = tuple(_fault_index(value, "fault center index") for value in center_index)
+    if len(center) != 2:
+        raise DatasetError("Tiled fault center index must contain two integers")
+    declared = {_tile_index(entry, "global"): entry for entry in global_tiles}
+    if center not in declared:
+        raise DatasetError(f"Tiled fault center tile {center} is not declared")
 
     destination_path.mkdir(parents=True, exist_ok=False)
-    if fault_case == "corrupt-manifest":
-        (destination_path / "manifest.yaml").write_text("schema_version: [\n", encoding="utf-8")
-        return f"[{missing[0]},{missing[1]}]"
 
-    retained = {}
+    if fault_case == "corrupt-manifest":
+        (destination_path / "manifest.yaml").write_text(
+            "schema_version: [\n", encoding="utf-8")
+        return TiledFaultFixture(
+            root=destination_path, tiled_root=destination_path, center=center,
+            fault_case=fault_case, fault_index=None, fault_relative=None,
+            active_radius=active_radius, prefetch_radius=prefetch_radius,
+        )
+
+    if fault_case == "missing-center":
+        fault_index = center
+    else:
+        neighbourhood = sorted(
+            (center[0] + dx, center[1] + dy)
+            for dx in range(-active_radius, active_radius + 1)
+            for dy in range(-active_radius, active_radius + 1)
+        )
+        neighbours = [index for index in neighbourhood
+                      if index != center and index in declared]
+        if not neighbours:
+            raise DatasetError(
+                f"Tiled fault centre {center} declares no neighbour tile to remove"
+            )
+        fault_index = neighbours[0]
+
+    # Copy every declared payload, so the fixture covers exactly what the real
+    # map covers and the replay cannot fall off its edge.
     for kind, entries in (("global", global_tiles), ("ground", ground_tiles)):
-        retained[kind] = [
-            entry for entry in entries
-            if tuple(entry["index"]) in selected and tuple(entry["index"]) != missing
-        ]
-        for entry in retained[kind]:
-            _copy_manifest_relative_file(source_path, destination_path, entry["path"])
-    manifest["tiles"]["global"] = retained["global"]
-    manifest["tiles"]["ground"] = retained["ground"]
+        for entry in entries:
+            source_file = _declared_tile_path(source_path, entry["path"], kind)
+            if not source_file.is_file():
+                raise DatasetError(f"declared tile is missing: {entry['path']}")
+            destination_file = _fixture_destination(
+                destination_path, entry["path"], kind)
+            try:
+                shutil.copy2(source_file, destination_file)
+            except OSError as error:
+                raise DatasetError(
+                    f"Unable to copy tiled fixture file {entry['path']}: {error}"
+                ) from error
     overview = manifest.get("overview")
     if isinstance(overview, Mapping) and isinstance(overview.get("path"), str):
-        _copy_manifest_relative_file(source_path, destination_path, overview["path"])
-    (destination_path / "manifest.yaml").write_text(
-        yaml.safe_dump(manifest, sort_keys=False), encoding="utf-8"
+        overview_source = _declared_tile_path(source_path, overview["path"], "overview")
+        if overview_source.is_file():
+            shutil.copy2(overview_source, _fixture_destination(
+                destination_path, overview["path"], "overview"))
+    # Copied byte-for-byte, not re-serialised: the fixture is meant to be a
+    # faithful copy of the map, and re-dumping changed the bytes, which made
+    # the recorded map fingerprint (a hash of this file) differ between the
+    # capture run and the fault run.
+    shutil.copy2(manifest_path, destination_path / "manifest.yaml")
+    (destination_path / _FAULT_FIXTURE_MARKER).write_text(
+        json.dumps({
+            "fault_case": fault_case,
+            "fault_index": list(fault_index),
+            "fault_relative": declared[fault_index]["path"],
+            "center": list(center),
+            "root": str(destination_path.resolve()),
+        }, sort_keys=True),
+        encoding="utf-8",
     )
-    return f"[{missing[0]},{missing[1]}]"
+
+    return TiledFaultFixture(
+        root=destination_path, tiled_root=destination_path, center=center,
+        fault_case=fault_case, fault_index=fault_index,
+        fault_relative=declared[fault_index]["path"],
+        active_radius=active_radius, prefetch_radius=prefetch_radius,
+    )
+
+
+def load_tiled_fault_fixture(tiled_root, active_radius=1, prefetch_radius=1):
+    """
+    Load a fixture previously created by prepare_tiled_fault_case.
+
+    The replay CLI must not be able to *construct* a fixture from an arbitrary
+    directory: that would let a mistyped --tiled-dir move real map files.
+    """
+    tiled_root = Path(tiled_root)
+    marker = tiled_root / _FAULT_FIXTURE_MARKER
+    if marker.is_symlink() or not marker.is_file():
+        raise DatasetError(
+            f"{tiled_root} is not a fault fixture; run "
+            "prepare_tiled_fault_case first")
+    try:
+        payload = json.loads(marker.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise DatasetError(f"unreadable fault-fixture marker: {error}") from error
+    payload = _require_mapping(payload, "fault fixture marker")
+    return TiledFaultFixture(
+        root=tiled_root,
+        tiled_root=tiled_root,
+        center=tuple(payload.get("center") or ()),
+        fault_case=payload.get("fault_case"),
+        fault_index=tuple(payload.get("fault_index") or ()),
+        fault_relative=payload.get("fault_relative"),
+        active_radius=active_radius,
+        prefetch_radius=prefetch_radius,
+    )
 
 
 def _manifest_tiles(manifest, kind):
@@ -291,6 +545,7 @@ def _manifest_tiles(manifest, kind):
         if (not isinstance(entry, Mapping) or not isinstance(entry.get("index"), list)
                 or len(entry["index"]) != 2 or not isinstance(entry.get("path"), str)):
             raise DatasetError(f"Invalid tiled manifest tiles.{kind} entry")
+        _tile_index(entry, kind)
     return entries
 
 
@@ -439,3 +694,208 @@ def _pcd_points(pcd_path: Path) -> int:
         raise DatasetError(f"Unable to read PCD header {pcd_path}: {error}") from error
 
     raise DatasetError(f"PCD DATA header is missing or too large: {pcd_path}")
+
+
+# --- Tiled fault reference ---------------------------------------------------
+#
+# A fault replay needs to know where the vehicle actually is, in map tile
+# terms. Deriving that from the map's first tile says nothing about the
+# trajectory, so the index is computed from a pose captured during a no-fault
+# replay. The maths below is pure Python so the CI job that runs these tests
+# without ROS can still exercise it.
+
+_TILE_MATRIX_ROWS = 4
+_TILE_INDEX_SCHEMA_VERSION = 1
+
+
+def _identity_matrix():
+    return [[1.0 if row == column else 0.0 for column in range(_TILE_MATRIX_ROWS)]
+            for row in range(_TILE_MATRIX_ROWS)]
+
+
+def _require_matrix4(value, name):
+    if (not isinstance(value, (list, tuple)) or len(value) != _TILE_MATRIX_ROWS):
+        raise DatasetError(f"{name} must be a 4x4 matrix")
+    rows = []
+    for row in value:
+        if not isinstance(row, (list, tuple)) or len(row) != _TILE_MATRIX_ROWS:
+            raise DatasetError(f"{name} must be a 4x4 matrix")
+        rows.append([float(entry) for entry in row])
+    return rows
+
+
+def _matmul4(lhs, rhs):
+    return [[sum(lhs[row][k] * rhs[k][column] for k in range(_TILE_MATRIX_ROWS))
+             for column in range(_TILE_MATRIX_ROWS)]
+            for row in range(_TILE_MATRIX_ROWS)]
+
+
+def tile_index_for_pose(map_T_base, base_T_lidar, origin_xy, tile_size_m):
+    """
+    Return the tile index holding the lidar for a given base pose.
+
+    ``map_T_lidar = map_T_base * base_T_lidar``, so the base-to-lidar lever arm
+    is rotated by the base orientation before it is applied -- adding a fixed
+    offset in map axes is only correct when the base is unrotated.
+    """
+    map_T_base = _require_matrix4(map_T_base, "map_T_base")
+    base_T_lidar = _require_matrix4(base_T_lidar, "base_T_lidar")
+    if tile_size_m <= 0.0:
+        raise DatasetError("tile_size_m must be positive")
+    if len(origin_xy) != 2:
+        raise DatasetError("origin_xy must have two entries")
+
+    map_T_lidar = _matmul4(map_T_base, base_T_lidar)
+    lidar_x = map_T_lidar[0][3]
+    lidar_y = map_T_lidar[1][3]
+    return (int(math.floor((lidar_x - float(origin_xy[0])) / tile_size_m)),
+            int(math.floor((lidar_y - float(origin_xy[1])) / tile_size_m)))
+
+
+def reference_base_to_lidar(translation_xyz, rpy_radians=(0.0, 0.0, 0.0)):
+    """Build base_T_lidar from a translation and fixed-axis roll/pitch/yaw."""
+    roll, pitch, yaw = (float(value) for value in rpy_radians)
+    cr, sr = math.cos(roll), math.sin(roll)
+    cp, sp = math.cos(pitch), math.sin(pitch)
+    cy, sy = math.cos(yaw), math.sin(yaw)
+    rotation = [
+        [cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr],
+        [sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr],
+        [-sp, cp * sr, cp * cr],
+    ]
+    tx, ty, tz = (float(value) for value in translation_xyz)
+    return [
+        [rotation[0][0], rotation[0][1], rotation[0][2], tx],
+        [rotation[1][0], rotation[1][1], rotation[1][2], ty],
+        [rotation[2][0], rotation[2][1], rotation[2][2], tz],
+        [0.0, 0.0, 0.0, 1.0],
+    ]
+
+
+def _dataset_identity_payload(identity):
+    return {
+        "duration_ns": int(identity.duration_ns),
+        "message_count": int(identity.message_count),
+        "topic_counts": {str(k): int(v)
+                         for k, v in dict(identity.topic_counts).items()},
+        "db3_bytes": int(identity.db3_bytes),
+        "map_points": int(identity.map_points),
+        "map_bytes": int(identity.map_bytes),
+    }
+
+
+def map_fingerprint(map_root, tiled_dir=None):
+    """
+    Fingerprint the map artifacts a reference pose is only valid against.
+
+    `DatasetIdentity` covers GlobalMap.pcd; a pose measured on one tiled map is
+    equally meaningless on another, and on a different ground map or Scan
+    Context database.
+    """
+    map_root = Path(map_root)
+
+    def size_of(path):
+        try:
+            return int(Path(path).stat().st_size)
+        except OSError:
+            return None
+
+    digest = None
+    if tiled_dir is not None:
+        manifest = Path(tiled_dir) / "manifest.yaml"
+        try:
+            digest = hashlib.sha256(manifest.read_bytes()).hexdigest()
+        except OSError:
+            digest = None
+    return {
+        "ground_map_bytes": size_of(map_root / "GroundMap.pcd"),
+        "sc_db_bytes": size_of(map_root / "sc_db.bin"),
+        "tiled_manifest_sha256": digest,
+    }
+
+
+@dataclass(frozen=True)
+class TiledFaultReference:
+    """
+    Where the vehicle actually is, captured from a no-fault replay.
+
+    Bound to a dataset identity so a pose recorded against one bag or map can
+    never be replayed against another: tile indices are only meaningful inside
+    the map they were measured in.
+    """
+
+    dataset: Mapping
+    bag_seconds: float
+    map_T_base: tuple
+    offset_seconds: float
+    warmup_seconds: float
+
+
+def make_tiled_fault_reference(identity, bag_seconds, map_T_base,
+                               warmup_seconds=10.0, map_fingerprint_value=None):
+    map_T_base = _require_matrix4(map_T_base, "map_T_base")
+    if not math.isfinite(bag_seconds) or bag_seconds < 0.0:
+        raise DatasetError("reference bag time must be finite and non-negative")
+    if warmup_seconds <= 0.0:
+        raise DatasetError("reference warmup must be positive")
+    offset = max(0.0, bag_seconds - warmup_seconds)
+    payload = _dataset_identity_payload(identity)
+    if map_fingerprint_value is not None:
+        payload.update(dict(map_fingerprint_value))
+    return TiledFaultReference(
+        dataset=payload,
+        bag_seconds=float(bag_seconds),
+        map_T_base=tuple(tuple(row) for row in map_T_base),
+        offset_seconds=offset,
+        warmup_seconds=float(warmup_seconds),
+    )
+
+
+def save_tiled_fault_reference(path, reference):
+    payload = {
+        "schema_version": _TILE_INDEX_SCHEMA_VERSION,
+        "dataset": dict(reference.dataset),
+        "bag_seconds": reference.bag_seconds,
+        "map_T_base": [list(row) for row in reference.map_T_base],
+        "offset_seconds": reference.offset_seconds,
+        "warmup_seconds": reference.warmup_seconds,
+    }
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    return path
+
+
+def load_tiled_fault_reference(path, identity, map_fingerprint_value=None):
+    path = Path(path)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise DatasetError(f"Unable to read tiled fault reference {path}: {error}") from error
+    payload = _require_mapping(payload, "tiled fault reference")
+    if payload.get("schema_version") != _TILE_INDEX_SCHEMA_VERSION:
+        raise DatasetError(
+            f"Unsupported tiled fault reference schema: {payload.get('schema_version')!r}")
+
+    recorded = _require_mapping(payload.get("dataset"), "reference dataset")
+    expected = _dataset_identity_payload(identity)
+    if map_fingerprint_value is not None:
+        expected = dict(expected)
+        for key, value in dict(map_fingerprint_value).items():
+            if recorded.get(key) != value:
+                raise DatasetError(
+                    f"Tiled fault reference was recorded against a different map "
+                    f"({key}: {recorded.get(key)!r} != {value!r}); recapture it")
+    for key, value in expected.items():
+        if recorded.get(key) != value:
+            raise DatasetError(
+                f"Tiled fault reference was recorded against a different dataset "
+                f"({key}: {recorded.get(key)!r} != {value!r}); recapture it")
+    return TiledFaultReference(
+        dataset=recorded,
+        bag_seconds=float(payload["bag_seconds"]),
+        map_T_base=tuple(tuple(row) for row in
+                         _require_matrix4(payload["map_T_base"], "map_T_base")),
+        offset_seconds=float(payload.get("offset_seconds", 0.0)),
+        warmup_seconds=float(payload.get("warmup_seconds", 10.0)),
+    )

@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import re
 import math
 import os
 from pathlib import Path
@@ -22,7 +23,16 @@ from stability_baseline import (
     load_baseline,
     write_candidate,
 )
-from stability_common import DatasetError, validate_dataset, write_runtime_parameters
+from stability_common import (
+    DatasetError,
+    load_tiled_fault_fixture,
+    map_fingerprint,
+    load_tiled_fault_reference,
+    make_tiled_fault_reference,
+    save_tiled_fault_reference,
+    validate_dataset,
+    write_runtime_parameters,
+)
 
 
 _METRIC_FIELDS = (
@@ -81,7 +91,12 @@ def _observer_subscription_qos(sensor_data_qos, reliable_qos):
 class MetricCollector:
     """Pure, callback-friendly localization metric accumulator."""
 
-    def __init__(self):
+    def __init__(self, capture_pose=False):
+        self._capture_pose = capture_pose
+        self._captured_pose = None
+        self._tile_events = []
+        self._last_tile_event = None
+        self._tracking_confirmed = False
         self._clock_start = None
         self._odom_samples = 0
         self._valid_odom_samples = 0
@@ -116,6 +131,13 @@ class MetricCollector:
         self._valid_odom_samples += 1
         if self._first_valid_odom_seconds is None:
             self._first_valid_odom_seconds = timestamp
+        if self._capture_pose and self._captured_pose is None:
+            # The initialization result is published as odometry too, with
+            # is_tracking false, so the first valid sample is the initialization
+            # pose and not a tracking pose. Wait until a diagnostic confirms
+            # tracking.
+            if self._tracking_confirmed:
+                self._captured_pose = (timestamp, self._pose_matrix(values))
         if self._last_valid_odom is None:
             self._max_odom_gap = 0.0
         else:
@@ -125,9 +147,38 @@ class MetricCollector:
             )
         self._last_valid_odom = timestamp
 
+    @staticmethod
+    def _pose_matrix(values):
+        x, y, z, qx, qy, qz, qw = values
+        norm = math.sqrt(qx * qx + qy * qy + qz * qz + qw * qw)
+        qx, qy, qz, qw = (value / norm for value in (qx, qy, qz, qw))
+        return [
+            [1 - 2 * (qy * qy + qz * qz), 2 * (qx * qy - qz * qw),
+             2 * (qx * qz + qy * qw), x],
+            [2 * (qx * qy + qz * qw), 1 - 2 * (qx * qx + qz * qz),
+             2 * (qy * qz - qx * qw), y],
+            [2 * (qx * qz - qy * qw), 2 * (qy * qz + qx * qw),
+             1 - 2 * (qx * qx + qy * qy), z],
+            [0.0, 0.0, 0.0, 1.0],
+        ]
+
+    def captured_pose(self):
+        """
+        (bag_seconds, map_T_base) of the first valid sample, or None.
+
+        The timestamp is the replay clock, which is the bag's own time base --
+        an absolute value near 1.8e9, not an offset into the bag.
+        """
+        return self._captured_pose
+
+    def clock_start(self):
+        return self._clock_start
+
     def diagnostic(self, seconds, level, name, values):
         if name != _TARGET_DIAGNOSTIC:
             return
+        if isinstance(values, Mapping):
+            self._record_tile_event(values)
         timestamp = _finite_number(seconds)
         numeric_level = _diagnostic_level(level)
         if numeric_level is None or timestamp is None:
@@ -140,6 +191,10 @@ class MetricCollector:
         if numeric_level == 0:
             if self._first_ok_seconds is None:
                 self._first_ok_seconds = timestamp
+            # Healthy tracking, not just "a diagnostic arrived".
+            if isinstance(values, Mapping) and \
+                    str(values.get("is_tracking", "")).lower() == "true":
+                self._tracking_confirmed = True
         else:
             if numeric_level == 2:
                 self._error_samples += 1
@@ -171,6 +226,23 @@ class MetricCollector:
                 self._timestamp_monotonic = (
                     self._timestamp_monotonic and timestamp_monotonic
                 )
+
+    def _record_tile_event(self, values):
+        """
+        Track the tile-loading sequence, not just the final error string.
+
+        Startup diagnostics are published before /clock moves, so this runs
+        ahead of the clock filter. A run that only ever shows a startup state
+        and a final summary would otherwise look like an injected fault.
+        """
+        snapshot = (
+            values.get("map_tile_load_state"),
+            str(values.get("map_tile_load_failures")),
+            str(values.get("map_tile_load_error", "")),
+        )
+        if snapshot != self._last_tile_event:
+            self._last_tile_event = snapshot
+            self._tile_events.append(snapshot)
 
     def finish(self, seconds):
         finish_time = _finite_number(seconds)
@@ -207,6 +279,9 @@ class MetricCollector:
             "timestamp_monotonic": self._timestamp_monotonic,
         }
         metrics.update(self._map_diagnostics)
+        # The tile-loading sequence, kept alongside the final summary so a
+        # fault is judged on what happened during the run.
+        metrics["map_tile_events"] = [list(entry) for entry in self._tile_events]
         if self._map_diagnostics:
             metrics["max_diagnostic_level"] = self._max_target_diagnostic_level
         return metrics
@@ -232,22 +307,73 @@ def tiled_metric_violations(metrics, ok_deadline_seconds):
 
 
 def tiled_fault_violations(metrics, fault_case, expected_missing_index=None):
-    violations = []
-    first_ok = _finite_number(metrics.get("first_ok_seconds"))
-    if fault_case in ("corrupt-manifest", "missing-center"):
-        if first_ok is not None:
-            violations.append(f"{fault_case} must refuse readiness")
+    """
+    Judge a tiled fault replay from its event sequence, not one final string.
+
+    A run that never actually requested the faulty tile -- wrong seeded pose,
+    injection that never took effect -- must not pass because some unrelated
+    diagnostic happened to mention a tile index.
+    """
+    if fault_case == "corrupt-manifest":
+        # The manifest is already broken, so the only question is whether the
+        # node refused to come up. A launch process that keeps running says
+        # nothing, which is why the node's own death is reported separately.
+        violations = []
+        if metrics.get("corrupt_manifest_node_died") is not True:
+            violations.append(
+                "corrupt-manifest must make the localization node exit "
+                "non-zero, not merely kill it during cleanup")
+        if metrics.get("corrupt_manifest_map_preparation_failed") is not True:
+            violations.append(
+                "corrupt-manifest must fail map preparation")
+        if _finite_number(metrics.get("first_ok_seconds")) is not None:
+            violations.append(
+                "corrupt-manifest must not produce localization output")
         return violations
-    if fault_case != "missing-neighbor":
+    if fault_case not in ("missing-center", "missing-neighbor"):
         return [f"unknown tiled fault case: {fault_case}"]
-    level = _finite_number(metrics.get("max_diagnostic_level"))
-    if level is None or level < 1:
-        violations.append("missing-neighbor must report degraded diagnostics")
-    error = str(metrics.get("map_tile_load_error", ""))
-    if expected_missing_index and expected_missing_index not in error:
+
+    violations = []
+    events = [list(entry) for entry in (metrics.get("map_tile_events") or [])]
+    if not events:
+        violations.append(f"{fault_case} observed no tile diagnostics at all")
+    if not any(str(entry[1]) not in ("0", "0.0") for entry in events):
         violations.append(
-            f"missing-neighbor diagnostic must contain {expected_missing_index}"
-        )
+            f"{fault_case} never recorded a tile load failure, so the injected "
+            "payload was never missed")
+    if expected_missing_index and not any(
+            expected_missing_index in str(entry[2]) for entry in events):
+        violations.append(
+            f"{fault_case} never named {expected_missing_index} while the map "
+            "was being requested")
+
+    first_ok = _finite_number(metrics.get("first_ok_seconds"))
+    valid_ratio = _finite_number(metrics.get("valid_odom_ratio"))
+    if fault_case == "missing-center":
+        # The centre tile is gone, so nothing can be registered against it.
+        if first_ok is not None or (valid_ratio is not None and valid_ratio > 0.0):
+            violations.append(
+                "missing-center must not produce localization output")
+    else:
+        # The neighbour is gone but the centre survives, so the run must still
+        # localize and degrade. A startup WARN, or an initialization that never
+        # completes, is not a pass.
+        if first_ok is None:
+            violations.append("missing-neighbor must still localize")
+        if valid_ratio is None or valid_ratio <= 0.0:
+            violations.append(
+                "missing-neighbor must still publish valid odometry")
+        # The centre must have been usable at the same time: a degraded
+        # snapshot is a *ready* state that names the missing neighbour. A bare
+        # load failure only says the payload was missed.
+        degraded_snapshot = any(
+            str(entry[0]) == "ready" and "missing tiles:" in str(entry[2]) and
+            expected_missing_index and expected_missing_index in str(entry[2])
+            for entry in events)
+        if not degraded_snapshot:
+            violations.append(
+                "missing-neighbor must keep the centre usable and report a "
+                f"degraded snapshot naming {expected_missing_index}")
     return violations
 
 
@@ -342,6 +468,13 @@ def build_argument_parser():
         choices=("corrupt-manifest", "missing-center", "missing-neighbor"),
     )
     parser.add_argument("--expected-missing-index")
+    parser.add_argument(
+        "--record-reference", type=Path,
+        help="Record the first stable tracking pose for a later fault replay.")
+    parser.add_argument(
+        "--tiled-fault-reference", type=Path,
+        help="Reference pose file captured from a no-fault replay.")
+
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--baseline", type=Path)
     mode.add_argument("--record-baseline", action="store_true")
@@ -367,6 +500,10 @@ def main(argv=None):
         if (not arguments.record_baseline and arguments.baseline is None and
                 arguments.tiled_fault_case is None):
             raise ReplayError("--baseline is required unless --record-baseline is used")
+        if arguments.tiled_fault_case and arguments.record_baseline:
+            raise ReplayError(
+                "a tiled fault case must not record a baseline; the fault is "
+                "deliberate and the thresholds are not measurements")
 
         identity = validate_dataset(
             arguments.bag, arguments.map, tiled_dir=arguments.tiled_dir
@@ -376,19 +513,44 @@ def main(argv=None):
             arguments.map,
             output_dir,
             tiled_dir=arguments.tiled_dir,
+            # A fault replay seeds the pose itself; auto relocalization would
+            # pick a different tile and prove nothing.
+            auto_relocalization=(False if arguments.tiled_fault_case else None),
         )
         baseline = (copy.deepcopy(BASELINE) if arguments.record_baseline else
                     load_baseline(arguments.baseline) if arguments.baseline else
                     copy.deepcopy(BASELINE))
         if arguments.tiled_fault_case:
             baseline["quick"]["duration_seconds"] = _FAULT_DURATION_SECONDS
-        metrics = _run_replay(
-            arguments,
-            runtime_parameters,
-            baseline["quick"],
-            launch_log,
-            player_log,
-        )
+        fault = None
+        if arguments.tiled_fault_case == "corrupt-manifest":
+            # The manifest is already broken, so there is nothing to inject and
+            # nothing to replay: the only question is whether the node refuses
+            # to come up.
+            metrics = _run_launch_only(
+                arguments, runtime_parameters, baseline["quick"], launch_log)
+        else:
+            if arguments.tiled_fault_case is not None:
+                if arguments.tiled_fault_reference is None:
+                    raise ReplayError(
+                        "--tiled-fault-case requires --tiled-fault-reference")
+                # The fixture is loaded, never built from --tiled-dir: a
+                # mistyped directory must not be able to move real map files.
+                fault = TiledFaultRun(
+                    load_tiled_fault_fixture(arguments.tiled_dir),
+                    load_tiled_fault_reference(
+                        arguments.tiled_fault_reference, identity,
+                        map_fingerprint(arguments.map, arguments.tiled_dir)),
+                )
+            metrics = _run_replay(
+                arguments,
+                runtime_parameters,
+                baseline["quick"],
+                launch_log,
+                player_log,
+                fault=fault,
+                identity=identity,
+            )
 
         if arguments.record_baseline:
             candidate_path = output_dir / "candidate-baseline.yaml"
@@ -438,12 +600,103 @@ def main(argv=None):
     return exit_code
 
 
-def _run_replay(arguments, runtime_parameters, quick, launch_log, player_log):
+# How late a reference pose may still be published. Past this the vehicle has
+# moved far enough that the seeded pose no longer describes where it is, and
+# the replay would be asserting against the wrong tile.
+_FAULT_POSE_TOLERANCE_SECONDS = 1.0
+
+# Seconds of replay kept after the reference pose, to observe what the tile
+# request actually does.
+_FAULT_OBSERVATION_SECONDS = 15.0
+
+
+class TiledFaultRun:
+    """
+    Drive one tiled fault replay: inject the payload, then seed the pose.
+
+    The order matters and is the whole point of the exercise:
+
+    * the fault is injected only once the node reports a prepared map with no
+      load failures, so it lands as a *runtime* load failure and not as a
+      manifest validation failure;
+    * the reference pose is published only once the IMU is initialized, so the
+      node accepts it;
+    * both gates are read from diagnostics as they arrive, not through the
+      replay clock, because startup diagnostics are published before /clock
+      starts moving.
+    """
+
+    def __init__(self, fixture, reference,
+                 tolerance_seconds=_FAULT_POSE_TOLERANCE_SECONDS):
+        self.fixture = fixture
+        self.reference = reference
+        self.tolerance_seconds = tolerance_seconds
+        self.injected = False
+        self.published = False
+        self.published_at = None
+        self.values = {}
+
+    def observe_diagnostics(self, message):
+        # Only the localization node's status: another node reporting a
+        # same-named key would open the prepare or IMU gate by accident.
+        for status in message.status:
+            if status.name != _TARGET_DIAGNOSTIC:
+                continue
+            self.values.update({kv.key: kv.value for kv in status.values})
+
+    @property
+    def reference_offset(self):
+        """
+        Seconds after the replay clock starts when the reference pose is due.
+
+        The stored bag time is relative to the bag start and the player is
+        started at `offset_seconds`, so what the tick sees (`clock - clock_start`)
+        lines up with `bag_seconds - offset_seconds`.
+        """
+        return max(0.0, self.reference.bag_seconds -
+                   self.reference.offset_seconds)
+
+    def prepared(self):
+        return (self.values.get("map_tile_load_state") == "ready" and
+                str(self.values.get("map_tile_load_failures", "1")) in ("0", "0.0"))
+
+    def imu_initialized(self):
+        return str(self.values.get("has_imu_init", "")).lower() == "true"
+
+    def tick(self, clock_seconds, publish_pose):
+        if not self.injected:
+            if not self.prepared():
+                return "waiting-for-prepare"
+            self.fixture.inject()
+            self.injected = True
+            return "injected"
+        if self.published or clock_seconds is None:
+            return "waiting-for-reference"
+        if clock_seconds < self.reference_offset:
+            return "warming-up"
+        if not self.imu_initialized():
+            raise ReplayError(
+                "IMU was not initialized by the reference pose time; the replay "
+                "cannot seed a pose the node would reject")
+        if clock_seconds > self.reference_offset + self.tolerance_seconds:
+            raise ReplayError(
+                f"reference pose time {self.reference_offset:.2f}s after the "
+                f"replay clock starts was missed (now {clock_seconds:.2f}s); "
+                "refusing to seed a stale pose")
+        publish_pose()
+        self.published = True
+        self.published_at = clock_seconds
+        return "published"
+
+
+def _run_replay(arguments, runtime_parameters, quick, launch_log, player_log,
+                fault=None, identity=None):
     """Run the ROS observer and bounded playback after pure CLI validation."""
     import rclpy
     from diagnostic_msgs.msg import DiagnosticArray
     from nav_msgs.msg import Odometry
     from rclpy.parameter import Parameter
+    from geometry_msgs.msg import PoseWithCovarianceStamped
     from rclpy.qos import QoSProfile, QoSReliabilityPolicy, qos_profile_sensor_data
     from rosgraph_msgs.msg import Clock
 
@@ -475,6 +728,15 @@ def _run_replay(arguments, runtime_parameters, quick, launch_log, player_log):
         str(quick["start_offset_seconds"]),
         "--disable-keyboard-controls",
     ]
+    replay_duration = float(quick["duration_seconds"])
+    if fault is not None:
+        # Start early enough to warm the IMU up, then keep playing past the
+        # reference pose to watch the tile request fail.
+        player_command[player_command.index("--start-offset") + 1] = str(
+            fault.reference.offset_seconds)
+        replay_duration = ((fault.reference.bag_seconds -
+                            fault.reference.offset_seconds) +
+                           _FAULT_OBSERVATION_SECONDS)
 
     launch_process = None
     player_process = None
@@ -488,7 +750,8 @@ def _run_replay(arguments, runtime_parameters, quick, launch_log, player_log):
             "localization_regression_observer",
             parameter_overrides=[Parameter("use_sim_time", value=True)],
         )
-        collector = MetricCollector()
+        collector = MetricCollector(
+            capture_pose=arguments.record_reference is not None)
 
         def clock_callback(message):
             seconds = _ros_time_seconds(message.clock)
@@ -498,8 +761,19 @@ def _run_replay(arguments, runtime_parameters, quick, launch_log, player_log):
         def odometry_callback(message):
             _record_odom_at_replay_clock(collector, latest_clock[0], message)
 
+        initial_pose_publisher = None
+        if fault is not None:
+            initial_pose_publisher = node.create_publisher(
+                PoseWithCovarianceStamped, "/initialpose",
+                QoSProfile(depth=1, reliability=QoSReliabilityPolicy.RELIABLE),
+            )
+
         def diagnostics_callback(message):
             _record_diagnostics_at_replay_clock(collector, latest_clock[0], message)
+            if fault is not None:
+                # Raw, not clock-filtered: the prepare/IMU gates are published
+                # before /clock starts moving.
+                fault.observe_diagnostics(message)
 
         subscription_qos = _observer_subscription_qos(
             qos_profile_sensor_data,
@@ -539,14 +813,58 @@ def _run_replay(arguments, runtime_parameters, quick, launch_log, player_log):
             env=environment,
             start_new_session=True,
         )
+        fault_tick = None
+        if fault is not None:
+            clock_origin = [None]
+
+            def fault_tick(clock_seconds):
+                if clock_seconds is None:
+                    return
+                if clock_origin[0] is None:
+                    clock_origin[0] = clock_seconds
+                fault.tick(clock_seconds - clock_origin[0],
+                           lambda: initial_pose_publisher.publish(
+                               _initial_pose_message(node, fault)))
+
         _spin_bag_window(
             node,
             launch_process,
             player_process,
             latest_clock,
-            float(quick["duration_seconds"]),
+            replay_duration,
             float(quick["rate"]),
+            tick=fault_tick,
         )
+        if arguments.record_reference is not None:
+            captured = collector.captured_pose()
+            if captured is None:
+                raise ReplayError(
+                    "no stable tracking pose was observed, so no reference "
+                    "could be recorded")
+            # The recorded time has to be relative to the BAG start. The
+            # capture run may itself have started part-way in, so the elapsed
+            # clock alone is short by that start offset.
+            elapsed = _offset_from_clock(captured[0], collector.clock_start())
+            if elapsed is None:
+                raise ReplayError(
+                    "the reference pose arrived before the replay clock started, "
+                    "so it cannot be located in the bag")
+            bag_seconds = (float(quick["start_offset_seconds"]) + elapsed)
+            save_tiled_fault_reference(
+                arguments.record_reference,
+                make_tiled_fault_reference(
+                    identity, bag_seconds=bag_seconds,
+                    map_T_base=captured[1],
+                    map_fingerprint_value=map_fingerprint(
+                        arguments.map, arguments.tiled_dir)))
+        if fault is not None:
+            if not fault.injected:
+                raise ReplayError(
+                    "the fault was never injected: the node never reported a "
+                    "prepared map with zero load failures")
+            if not fault.published:
+                raise ReplayError(
+                    "the reference pose was never published before the replay ended")
         return collector.finish(latest_clock[0])
     finally:
         cleanup_error = None
@@ -564,6 +882,118 @@ def _run_replay(arguments, runtime_parameters, quick, launch_log, player_log):
                 rclpy.shutdown()
         if cleanup_error is not None and sys.exc_info()[0] is None:
             raise cleanup_error
+
+
+def _initial_pose_message(node, fault):
+    """Return the reference pose as /initialpose, in the map frame."""
+    from geometry_msgs.msg import PoseWithCovarianceStamped
+
+    matrix = fault.reference.map_T_base
+    message = PoseWithCovarianceStamped()
+    message.header.frame_id = "map"
+    message.header.stamp = node.get_clock().now().to_msg()
+    message.pose.pose.position.x = matrix[0][3]
+    message.pose.pose.position.y = matrix[1][3]
+    message.pose.pose.position.z = matrix[2][3]
+    quaternion = _quaternion_from_rotation(
+        [[matrix[row][column] for column in range(3)] for row in range(3)])
+    message.pose.pose.orientation.x = quaternion[0]
+    message.pose.pose.orientation.y = quaternion[1]
+    message.pose.pose.orientation.z = quaternion[2]
+    message.pose.pose.orientation.w = quaternion[3]
+    return message
+
+
+def _quaternion_from_rotation(rotation):
+    """Convert a 3x3 rotation matrix to (x, y, z, w); Shepperd's method."""
+    trace = rotation[0][0] + rotation[1][1] + rotation[2][2]
+    if trace > 0.0:
+        scale = math.sqrt(trace + 1.0) * 2.0
+        return ((rotation[2][1] - rotation[1][2]) / scale,
+                (rotation[0][2] - rotation[2][0]) / scale,
+                (rotation[1][0] - rotation[0][1]) / scale,
+                0.25 * scale)
+    if rotation[0][0] > rotation[1][1] and rotation[0][0] > rotation[2][2]:
+        scale = math.sqrt(1.0 + rotation[0][0] - rotation[1][1] -
+                          rotation[2][2]) * 2.0
+        return (0.25 * scale,
+                (rotation[0][1] + rotation[1][0]) / scale,
+                (rotation[0][2] + rotation[2][0]) / scale,
+                (rotation[2][1] - rotation[1][2]) / scale)
+    if rotation[1][1] > rotation[2][2]:
+        scale = math.sqrt(1.0 + rotation[1][1] - rotation[0][0] -
+                          rotation[2][2]) * 2.0
+        return ((rotation[0][1] + rotation[1][0]) / scale,
+                0.25 * scale,
+                (rotation[1][2] + rotation[2][1]) / scale,
+                (rotation[0][2] - rotation[2][0]) / scale)
+    scale = math.sqrt(1.0 + rotation[2][2] - rotation[0][0] -
+                      rotation[1][1]) * 2.0
+    return ((rotation[0][2] + rotation[2][0]) / scale,
+            (rotation[1][2] + rotation[2][1]) / scale,
+            0.25 * scale,
+            (rotation[1][0] - rotation[0][1]) / scale)
+
+
+_RELOCALIZATION_DEATH = re.compile(
+    r"\[lio_sam_hesai_relocalization-\d+\]: process has died \[pid \d+, "
+    r"exit code (-?\d+)")
+_MAP_PREPARATION_FAILURE = "Failed to prepare localization map"
+
+
+def _run_launch_only(arguments, runtime_parameters, quick, launch_log):
+    """
+    Launch without replaying, and report whether the node refused to start.
+
+    A child dying does not necessarily take the launch process with it, so the
+    launch log is inspected for the node's death rather than trusting the
+    launch exit code.
+    """
+    import rclpy
+    from rclpy.parameter import Parameter
+
+    environment = os.environ.copy()
+    environment["ROS_DOMAIN_ID"] = str(200 + (os.getpid() % 30))
+
+    launch_command = [
+        "ros2", "launch", "lio_sam_hesai",
+        "localization_with_nonground.launch.py",
+        "use_sim:=true", "use_rviz:=false", "publish_static_tf:=true",
+        f"params_file:={runtime_parameters}",
+    ]
+    rclpy.init(args=None)
+    launch_process = None
+    try:
+        node = rclpy.create_node(
+            "localization_regression_observer",
+            parameter_overrides=[Parameter("use_sim_time", value=True)])
+        try:
+            launch_process = subprocess.Popen(
+                launch_command, stdout=launch_log, stderr=subprocess.STDOUT,
+                env=environment, start_new_session=True)
+            time.sleep(float(quick["startup_grace_seconds"]))
+        finally:
+            node.destroy_node()
+    finally:
+        if launch_process is not None:
+            _stop_process_group(launch_process)
+        rclpy.shutdown()
+
+    launch_log.flush()
+    text = Path(launch_log.name).read_text(encoding="utf-8", errors="replace")
+    # "process has died" alone is not evidence: the normal cleanup also kills
+    # the static TF publishers and the ground segmentation node. Match the
+    # localization node specifically, with a non-zero exit code, and require
+    # the reason it refused.
+    died_non_zero = False
+    death = _RELOCALIZATION_DEATH.search(text)
+    if death is not None:
+        died_non_zero = int(death.group(1)) != 0
+    return {
+        "corrupt_manifest_node_died": died_non_zero,
+        "corrupt_manifest_map_preparation_failed":
+            _MAP_PREPARATION_FAILURE in text,
+    }
 
 
 def _wait_for_startup(node, launch_process, grace_seconds):
@@ -585,6 +1015,7 @@ def _spin_bag_window(
     rate,
     monotonic=time.monotonic,
     spin_once=None,
+    tick=None,
 ):
     if spin_once is None:
         spin_once = rclpy_spin_once
@@ -638,6 +1069,8 @@ def _spin_bag_window(
             )
 
         spin_once(node, min(0.1, max(0.0, deadline - monotonic())))
+        if tick is not None:
+            tick(latest_clock[0])
         if simulated_duration_reached():
             drain_final_callbacks()
             return

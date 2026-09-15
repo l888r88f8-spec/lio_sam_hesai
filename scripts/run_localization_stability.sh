@@ -98,6 +98,35 @@ case "$mode" in
       echo "required tiled manifest is missing: $tiled_dir/manifest.yaml" >&2
       exit 2
     fi
+
+    # base_link -> hesai_lidar, mirroring the launch static transform. It has
+    # to be applied to the reference pose before the tile index means anything.
+    base_to_lidar_translation="0.02,0.0,0.32"
+
+    reference_file="$results_dir/tiled-fault-reference.json"
+    echo "capturing a no-fault reference pose"
+    python3 test/integration/localization_regression.py \
+      --bag "$bag_dir" \
+      --map "$map_dir" \
+      --params-template config/relocalization.yaml \
+      --output-dir "$results_dir/reference" \
+      --tiled-dir "$tiled_dir" \
+      --baseline test/integration/baselines/hesai_sim.yaml \
+      --record-reference "$reference_file"
+
+    center_index=$(PYTHONPATH=test/integration python3 -c '
+import json, sys, yaml
+from stability_common import reference_base_to_lidar, tile_index_for_pose
+reference = json.load(open(sys.argv[1], encoding="utf-8"))
+manifest = yaml.safe_load(open(sys.argv[2], encoding="utf-8"))
+base_T_lidar = reference_base_to_lidar(
+    tuple(float(v) for v in sys.argv[3].split(",")))
+index = tile_index_for_pose(reference["map_T_base"], base_T_lidar,
+                            manifest["origin_xy"], manifest["tile_size_m"])
+print("%d,%d" % index)
+' "$reference_file" "$tiled_dir/manifest.yaml" "$base_to_lidar_translation")
+    echo "reference tile index: $center_index"
+
     for fault_case in corrupt-manifest missing-center missing-neighbor; do
       case_root="$results_dir/$fault_case-map"
       case_tiled="$case_root/tiled"
@@ -105,13 +134,19 @@ case "$mode" in
       ln -s "$map_dir/GlobalMap.pcd" "$case_root/GlobalMap.pcd"
       ln -s "$map_dir/GroundMap.pcd" "$case_root/GroundMap.pcd"
       ln -s "$map_dir/sc_db.bin" "$case_root/sc_db.bin"
-      center_args=()
-      if [[ -n "${LIO_SAM_TILED_FAULT_CENTER_INDEX:-}" ]]; then
-        center_args+=("$LIO_SAM_TILED_FAULT_CENTER_INDEX")
-      fi
-      missing_index=$(PYTHONPATH=test/integration python3 -c \
-        'import sys; from stability_common import prepare_tiled_fault_case; center=tuple(map(int, sys.argv[4].split(","))) if len(sys.argv) > 4 else None; print(prepare_tiled_fault_case(sys.argv[1], sys.argv[2], sys.argv[3], center))' \
-        "$tiled_dir" "$case_tiled" "$fault_case" "${center_args[@]}")
+
+      fixture_info=$(PYTHONPATH=test/integration python3 -c '
+import json, sys
+from stability_common import prepare_tiled_fault_case
+fixture = prepare_tiled_fault_case(
+    sys.argv[1], sys.argv[2], sys.argv[3],
+    center_index=tuple(int(v) for v in sys.argv[4].split(",")))
+print(json.dumps({
+    "fault_relative": fixture.fault_relative,
+    "expected_index": fixture.expected_index,
+}))
+' "$tiled_dir" "$case_tiled" "$fault_case" "$center_index")
+
       fault_args=(
         --bag "$bag_dir"
         --map "$case_root"
@@ -120,8 +155,13 @@ case "$mode" in
         --tiled-dir "$case_tiled"
         --tiled-fault-case "$fault_case"
       )
-      if [[ "$fault_case" == "missing-neighbor" ]]; then
-        fault_args+=(--expected-missing-index "$missing_index")
+      if [[ "$fault_case" != "corrupt-manifest" ]]; then
+        expected_index=$(printf '%s' "$fixture_info" | python3 -c \
+          'import json,sys; print(json.load(sys.stdin)["expected_index"])')
+        fault_args+=(
+          --tiled-fault-reference "$reference_file"
+          --expected-missing-index "$expected_index"
+        )
       fi
       python3 test/integration/localization_regression.py "${fault_args[@]}"
     done

@@ -13,6 +13,14 @@ from unittest.mock import Mock, call, patch
 import localization_regression
 from localization_regression import MetricCollector
 from stability_baseline import BASELINE
+from stability_common import (
+    DatasetError,
+    load_tiled_fault_reference,
+    make_tiled_fault_reference,
+    reference_base_to_lidar,
+    save_tiled_fault_reference,
+    tile_index_for_pose,
+)
 
 
 class MetricCollectorTest(unittest.TestCase):
@@ -75,6 +83,7 @@ class MetricCollectorTest(unittest.TestCase):
                 "min_lidar_rate_hz",
                 "min_imu_rate_hz",
                 "timestamp_monotonic",
+                "map_tile_events",
             ),
         )
         self.assertEqual(metrics["first_odom_seconds"], 1.5)
@@ -731,6 +740,223 @@ class LocalizationRegressionCliTest(unittest.TestCase):
             spin_calls,
             1 + localization_regression._FINAL_CALLBACK_DRAIN_MAX_CALLBACKS,
         )
+
+
+class TiledFaultReferenceTest(unittest.TestCase):
+    def _identity(self, **overrides):
+        base = {
+            "duration_ns": 100, "message_count": 10, "topic_counts": {},
+            "db3_bytes": 1000, "map_points": 50, "map_bytes": 500,
+        }
+        base.update(overrides)
+        return SimpleNamespace(**base)
+
+    def test_rotated_lever_arm_moves_the_lidar_into_another_tile(self):
+        # Base at (-5, -5) yawed 90 degrees, lidar 9.9 m ahead in base axes.
+        # Rotating the lever arm puts the lidar at (-5, 4.9) -> tile (-1, 0).
+        # Adding it in map axes would put it at (4.9, -5) -> tile (0, -1).
+        map_T_base = [
+            [0.0, -1.0, 0.0, -5.0],
+            [1.0, 0.0, 0.0, -5.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ]
+        base_T_lidar = reference_base_to_lidar((9.9, 0.0, 0.32))
+
+        self.assertEqual(
+            tile_index_for_pose(map_T_base, base_T_lidar, (0.0, 0.0), 10.0),
+            (-1, 0),
+        )
+        # A coarser grid still separates the rotated result (-5, 4.9) from the
+        # unrotated one (4.9, -5): (-1, 0) against (0, -1).
+        self.assertEqual(
+            tile_index_for_pose(map_T_base, base_T_lidar, (0.0, 0.0), 100.0),
+            (-1, 0),
+        )
+
+    def test_negative_coordinates_floor_towards_negative_infinity(self):
+        base_T_lidar = reference_base_to_lidar((0.0, 0.0, 0.0))
+        for x, expected_column in ((-0.001, -1), (-10.0, -1), (-10.001, -2),
+                                   (0.0, 0), (9.999, 0), (10.0, 1)):
+            pose = [[1.0, 0.0, 0.0, x], [0.0, 1.0, 0.0, 0.0],
+                    [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]
+            with self.subTest(x=x):
+                self.assertEqual(
+                    tile_index_for_pose(pose, base_T_lidar, (0.0, 0.0), 10.0),
+                    (expected_column, 0),
+                )
+
+    def test_origin_offsets_the_tile_grid(self):
+        base_T_lidar = reference_base_to_lidar((0.0, 0.0, 0.0))
+        pose = [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0],
+                [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]
+        self.assertEqual(
+            tile_index_for_pose(pose, base_T_lidar, (0.0, 0.0), 10.0), (0, 0))
+        self.assertEqual(
+            tile_index_for_pose(pose, base_T_lidar, (-5.0, 5.0), 10.0), (0, -1))
+
+    def test_rejects_a_malformed_pose(self):
+        base_T_lidar = reference_base_to_lidar((0.0, 0.0, 0.0))
+        with self.assertRaises(DatasetError):
+            tile_index_for_pose([[1.0, 0.0, 0.0]], base_T_lidar, (0.0, 0.0), 10.0)
+        with self.assertRaises(DatasetError):
+            tile_index_for_pose([[1.0] * 4] * 4, base_T_lidar, (0.0, 0.0), 0.0)
+
+    def test_reference_round_trips_and_records_the_offset(self):
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "reference.json"
+            identity = self._identity()
+            reference = make_tiled_fault_reference(
+                identity, bag_seconds=42.5,
+                map_T_base=[[1.0, 0.0, 0.0, 1.0], [0.0, 1.0, 0.0, 2.0],
+                            [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]],
+                warmup_seconds=10.0)
+            self.assertEqual(reference.offset_seconds, 32.5)
+            save_tiled_fault_reference(path, reference)
+
+            loaded = load_tiled_fault_reference(path, identity)
+            self.assertEqual(loaded.bag_seconds, 42.5)
+            self.assertEqual(loaded.offset_seconds, 32.5)
+            self.assertEqual(loaded.map_T_base[0][3], 1.0)
+
+    def test_reference_refuses_a_different_dataset(self):
+        # A pose measured in one map has no meaning in another, and a reused
+        # bag would silently point the fault at the wrong tile.
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "reference.json"
+            save_tiled_fault_reference(
+                path,
+                make_tiled_fault_reference(
+                    self._identity(), bag_seconds=1.0,
+                    map_T_base=[[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0],
+                                [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]))
+            for overrides in ({"map_bytes": 999}, {"message_count": 11},
+                              {"db3_bytes": 1}):
+                with self.subTest(**overrides):
+                    with self.assertRaises(DatasetError):
+                        load_tiled_fault_reference(
+                            path, self._identity(**overrides))
+
+    def test_reference_rejects_an_unknown_schema(self):
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "reference.json"
+            path.write_text(json.dumps({"schema_version": 99}), encoding="utf-8")
+            with self.assertRaises(DatasetError):
+                load_tiled_fault_reference(path, self._identity())
+
+
+class TiledFaultRunTest(unittest.TestCase):
+    class _Fixture:
+        def __init__(self, fail=False):
+            self.injections = 0
+            self.fail = fail
+
+        def inject(self):
+            if self.fail:
+                raise DatasetError("injection failed")
+            self.injections += 1
+
+    def _reference(self, bag_seconds=20.0):
+        return SimpleNamespace(bag_seconds=bag_seconds, offset_seconds=10.0)
+
+    def _status(self, values, name=None):
+        return SimpleNamespace(status=[
+            SimpleNamespace(
+                name=(name if name is not None
+                      else localization_regression._TARGET_DIAGNOSTIC),
+                values=[SimpleNamespace(key=k, value=v)
+                        for k, v in values.items()])])
+
+    def test_other_nodes_cannot_open_the_gates(self):
+        # A different localization-relevant node reporting the same key names
+        # must not satisfy the prepare or IMU gate.
+        run, fixture, published, publish = self._run()
+        run.observe_diagnostics(self._status(
+            {"map_tile_load_state": "ready", "map_tile_load_failures": "0"},
+            name="lio_sam_hesai: runtime"))
+        self.assertEqual(run.tick(0.0, publish), "waiting-for-prepare")
+        self.assertEqual(fixture.injections, 0)
+
+        run.observe_diagnostics(self._status(
+            {"has_imu_init": "true"}, name="some_other_node"))
+        run.observe_diagnostics(self._status(
+            {"map_tile_load_state": "ready", "map_tile_load_failures": "0"}))
+        run.tick(0.0, publish)
+        with self.assertRaises(localization_regression.ReplayError):
+            run.tick(10.0, publish)
+
+    def _run(self, **kwargs):
+        fixture = self._Fixture(**kwargs.pop("fixture", {}))
+        run = localization_regression.TiledFaultRun(
+            fixture, self._reference(**kwargs.pop("reference", {})))
+        published = []
+        return run, fixture, published, lambda: published.append(1)
+
+    def test_does_not_inject_before_the_map_is_prepared(self):
+        run, fixture, published, publish = self._run()
+        run.observe_diagnostics(self._status({"map_tile_load_state": "loading"}))
+        self.assertEqual(run.tick(0.0, publish), "waiting-for-prepare")
+        self.assertEqual(fixture.injections, 0)
+        self.assertEqual(published, [])
+
+    def test_zero_load_failures_is_part_of_the_prepare_gate(self):
+        run, fixture, _published, publish = self._run()
+        run.observe_diagnostics(self._status({
+            "map_tile_load_state": "ready", "map_tile_load_failures": "1"}))
+        run.tick(0.0, publish)
+        self.assertEqual(fixture.injections, 0)
+
+    def test_injects_once_then_waits_for_the_reference_time(self):
+        run, fixture, published, publish = self._run()
+        run.observe_diagnostics(self._status({
+            "map_tile_load_state": "ready", "map_tile_load_failures": "0"}))
+        self.assertEqual(run.tick(0.0, publish), "injected")
+        self.assertEqual(fixture.injections, 1)
+        self.assertEqual(run.tick(5.0, publish), "warming-up")
+        self.assertEqual(fixture.injections, 1)
+        self.assertEqual(published, [])
+
+    def test_publishes_at_the_reference_time_once_the_imu_is_ready(self):
+        # Ticks carry elapsed replay time; the pose is due at
+        # bag_seconds - offset_seconds, which is the warm-up window.
+        run, fixture, published, publish = self._run()
+        self.assertEqual(run.reference_offset, 10.0)
+        run.observe_diagnostics(self._status({
+            "map_tile_load_state": "ready", "map_tile_load_failures": "0"}))
+        run.tick(0.0, publish)
+        run.observe_diagnostics(self._status({"has_imu_init": "true"}))
+        self.assertEqual(run.tick(10.0, publish), "published")
+        self.assertEqual(len(published), 1)
+        self.assertEqual(run.tick(11.0, publish), "waiting-for-reference")
+        self.assertEqual(len(published), 1)
+
+    def test_refuses_to_publish_without_imu_initialization(self):
+        run, _fixture, published, publish = self._run()
+        run.observe_diagnostics(self._status({
+            "map_tile_load_state": "ready", "map_tile_load_failures": "0"}))
+        run.tick(0.0, publish)
+        with self.assertRaises(localization_regression.ReplayError):
+            run.tick(10.0, publish)
+        self.assertEqual(published, [])
+
+    def test_refuses_a_reference_time_that_was_missed(self):
+        # Continuing with a stale pose would assert against the wrong tile.
+        run, _fixture, published, publish = self._run()
+        run.observe_diagnostics(self._status({
+            "map_tile_load_state": "ready", "map_tile_load_failures": "0"}))
+        run.tick(0.0, publish)
+        run.observe_diagnostics(self._status({"has_imu_init": "true"}))
+        with self.assertRaises(localization_regression.ReplayError):
+            run.tick(30.0, publish)
+        self.assertEqual(published, [])
+
+    def test_injection_failure_propagates(self):
+        run, fixture, _published, publish = self._run(fixture={"fail": True})
+        run.observe_diagnostics(self._status({
+            "map_tile_load_state": "ready", "map_tile_load_failures": "0"}))
+        with self.assertRaises(DatasetError):
+            run.tick(0.0, publish)
+        self.assertFalse(run.injected)
 
 
 if __name__ == "__main__":
