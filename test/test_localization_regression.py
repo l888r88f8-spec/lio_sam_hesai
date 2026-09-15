@@ -1245,7 +1245,12 @@ class TiledFaultRunTest(unittest.TestCase):
         run = localization_regression.TiledFaultRun(
             fixture, self._reference(**kwargs.pop("reference", {})))
         published = []
-        return run, fixture, published, lambda: published.append(1)
+
+        def publish():
+            published.append(1)
+            return True
+
+        return run, fixture, published, publish
 
     def test_does_not_inject_before_the_map_is_prepared(self):
         run, fixture, published, publish = self._run()
@@ -1284,6 +1289,62 @@ class TiledFaultRunTest(unittest.TestCase):
         self.assertEqual(len(published), 1)
         self.assertEqual(run.tick(11.0, publish), "waiting-for-reference")
         self.assertEqual(len(published), 1)
+
+    def test_waits_for_a_matched_subscriber_before_publishing(self):
+        run, _fixture, published, publish = self._run()
+        run.observe_diagnostics(self._status({
+            "map_tile_load_state": "ready", "map_tile_load_failures": "0"}))
+        run.tick(0.0, publish)
+        run.observe_diagnostics(self._status({"has_imu_init": "true"}))
+        attempts = []
+
+        def no_subscriber_yet():
+            attempts.append(1)
+            return False
+
+        self.assertEqual(run.tick(10.0, no_subscriber_yet),
+                         "waiting-for-subscriber")
+        self.assertEqual(attempts, [1])
+        self.assertFalse(run.published)
+        self.assertIsNone(run.published_at)
+        # The executor keeps ticking, so a match found later still publishes
+        # the pose inside the tolerance window.
+        self.assertEqual(run.tick(10.2, publish), "published")
+        self.assertTrue(run.published)
+        self.assertEqual(run.published_at, 10.2)
+        self.assertEqual(len(published), 1)
+
+    def test_reports_the_missing_subscriber_once_the_window_expires(self):
+        run, _fixture, published, publish = self._run()
+        run.observe_diagnostics(self._status({
+            "map_tile_load_state": "ready", "map_tile_load_failures": "0"}))
+        run.tick(0.0, publish)
+        run.observe_diagnostics(self._status({"has_imu_init": "true"}))
+        run.tick(10.0, lambda: False)
+
+        with self.assertRaisesRegex(
+                localization_regression.ReplayError, "subscriber"):
+            run.tick(11.5, lambda: False)
+        self.assertFalse(run.published)
+        self.assertIsNone(run.published_at)
+        self.assertEqual(published, [])
+
+    def test_a_late_subscriber_cannot_extend_the_reference_window(self):
+        # Retries happen between ticks, but the stale tolerance still bounds
+        # them: a subscriber that shows up after the window cannot publish a
+        # pose that no longer describes where the vehicle is.
+        run, _fixture, published, publish = self._run()
+        run.observe_diagnostics(self._status({
+            "map_tile_load_state": "ready", "map_tile_load_failures": "0"}))
+        run.tick(0.0, publish)
+        run.observe_diagnostics(self._status({"has_imu_init": "true"}))
+        self.assertEqual(run.tick(10.0, lambda: False),
+                         "waiting-for-subscriber")
+        with self.assertRaises(localization_regression.ReplayError):
+            run.tick(11.5, publish)
+        self.assertFalse(run.published)
+        self.assertIsNone(run.published_at)
+        self.assertEqual(published, [])
 
     def test_refuses_to_publish_without_imu_initialization(self):
         run, _fixture, published, publish = self._run()

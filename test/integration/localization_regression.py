@@ -625,6 +625,8 @@ class TiledFaultRun:
       manifest validation failure;
     * the reference pose is published only once the IMU is initialized, so the
       node accepts it;
+    * the pose is published only once a matched `/initialpose` subscriber
+      exists, because a publish with no subscription is dropped silently;
     * both gates are read from diagnostics as they arrive, not through the
       replay clock, because startup diagnostics are published before /clock
       starts moving.
@@ -638,6 +640,7 @@ class TiledFaultRun:
         self.injected = False
         self.published = False
         self.published_at = None
+        self.missing_subscriber = False
         self.values = {}
 
     def observe_diagnostics(self, message):
@@ -683,11 +686,22 @@ class TiledFaultRun:
                 "IMU was not initialized by the reference pose time; the replay "
                 "cannot seed a pose the node would reject")
         if clock_seconds > self.reference_offset + self.tolerance_seconds:
+            if self.missing_subscriber:
+                raise ReplayError(
+                    "the reference pose was never published: no /initialpose "
+                    "subscriber matched the publisher within the reference "
+                    "window")
             raise ReplayError(
                 f"reference pose time {self.reference_offset:.2f}s after the "
                 f"replay clock starts was missed (now {clock_seconds:.2f}s); "
                 "refusing to seed a stale pose")
-        publish_pose()
+        # Only an explicit True from the callback counts as published: a
+        # publish() with no matched subscription is dropped by the middleware,
+        # so retry from later ticks instead of blocking the executor with a
+        # sleep or wait_for_all_acked().
+        if publish_pose() is not True:
+            self.missing_subscriber = True
+            return "waiting-for-subscriber"
         self.published = True
         self.published_at = clock_seconds
         return "published"
@@ -821,14 +835,23 @@ def _run_replay(arguments, runtime_parameters, quick, launch_log, player_log,
         if fault is not None:
             clock_origin = [None]
 
+            def publish_reference_pose():
+                # get_subscription_count() is a local, non-blocking query:
+                # without a matched subscriber the middleware drops the
+                # message, so defer to the next tick.
+                if initial_pose_publisher.get_subscription_count() <= 0:
+                    return False
+                initial_pose_publisher.publish(
+                    _initial_pose_message(node, fault))
+                return True
+
             def fault_tick(clock_seconds):
                 if clock_seconds is None:
                     return
                 if clock_origin[0] is None:
                     clock_origin[0] = clock_seconds
                 fault.tick(clock_seconds - clock_origin[0],
-                           lambda: initial_pose_publisher.publish(
-                               _initial_pose_message(node, fault)))
+                           publish_reference_pose)
 
         _spin_bag_window(
             node,
