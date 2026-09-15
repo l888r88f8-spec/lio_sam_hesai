@@ -114,7 +114,6 @@ const std::vector<ParameterContract> kParameterContracts = {
   {"extrinsicTrans", "calibration.translation", kSharedSurfaces},
   {"extrinsicRot", "calibration.rotation", kSharedSurfaces},
   {"extrinsicRPY", "calibration.rpy", kSharedSurfaces},
-  {"savePCD", "map_save.enabled", kMappingSurfaces},
   {"generateScDb", "map_save.generate_scan_context_db", kMappingSurfaces},
   {"savePCDDirectory", "map_save.directory", kMappingSurfaces},
   {"savePCDResolution", "map_save.resolution", kMappingSurfaces},
@@ -488,6 +487,11 @@ std::set<std::string> LegacyNames()
   return names;
 }
 
+const std::set<std::string> kRemovedExternalNames = {
+  "map_save.enabled",
+  "savePCD",
+};
+
 std::set<std::string> Union(
   const std::set<std::string> & lhs,
   const std::set<std::string> & rhs)
@@ -725,7 +729,8 @@ TEST(UnifiedParameterSchema, LaunchOverridesUseCanonicalNames) {
 }
 
 TEST(UnifiedParameterSchema, ProjectSurfaceRejectsLegacyExternalNames) {
-  const std::set<std::string> legacy_names = LegacyNames();
+  const std::set<std::string> legacy_names =
+    Union(LegacyNames(), kRemovedExternalNames);
   for (const auto & relative_path : kParameterFiles) {
     const bool is_yaml =
       relative_path.size() >= 5 &&
@@ -842,5 +847,58 @@ TEST(UnifiedParameterSchema, ShutdownAutoSaveImplementationIsAbsent) {
   for (const auto & [file, token] : forbidden) {
     SCOPED_TRACE(file + ": " + token);
     EXPECT_EQ(ReadProjectFile(file).find(token), std::string::npos);
+  }
+}
+
+namespace {
+
+std::size_t CountOccurrences(const std::string & text,
+                             const std::string & needle) {
+  std::size_t count = 0;
+  for (std::size_t pos = text.find(needle); pos != std::string::npos;
+       pos = text.find(needle, pos + needle.size())) {
+    ++count;
+  }
+  return count;
+}
+
+}  // namespace
+
+TEST(UnifiedParameterSchema, ShutdownAutoSaveContract) {
+  const std::string mapping_yaml = ReadProjectFile("config/mapping.yaml");
+  const YamlParameterSurface mapping_surface =
+    ReadYamlParameterSurface("config/mapping.yaml");
+  const std::string mapping_launch = StripPythonComments(
+    ReadProjectFile("launch/mapping.launch.py"));
+  const std::string guard_file =
+    ReadProjectFile("src/common/slam_config.cpp");
+
+  // Reverse contract: the removed keys must not come back through the YAML or
+  // any launch override. "enabled:" is forbidden because it only ever existed
+  // under map_save, which now has exactly one export path.
+  EXPECT_FALSE(HasLegacyYamlName(mapping_surface, "savePCD"));
+  EXPECT_FALSE(HasLegacyYamlName(mapping_surface, "map_save.enabled"));
+  EXPECT_FALSE(HasQuotedString(mapping_launch, "savePCD"));
+  EXPECT_FALSE(HasQuotedString(mapping_launch, "map_save.enabled"));
+
+  // The fail-closed guard is the only place allowed to keep the removed
+  // literals, and it must keep exactly one copy of each: a naive zero-match
+  // scan would either miss a dropped guard or be forced to ignore real
+  // re-introductions.
+  const std::vector<std::string> guard_literals = {
+    "\"map_save.enabled\"", "\"savePCD\"",
+  };
+  for (const auto & literal : guard_literals) {
+    SCOPED_TRACE(literal);
+    EXPECT_EQ(CountOccurrences(guard_file, literal), std::size_t{1});
+  }
+
+  // The historical artifact names must not survive in the mapping YAML.
+  const std::vector<std::string> removed_artifacts = {
+    "cloudCorner.pcd", "cloudSurf.pcd", "cloudGlobal.pcd", "cloudGround.pcd",
+  };
+  for (const auto & artifact : removed_artifacts) {
+    SCOPED_TRACE(artifact);
+    EXPECT_EQ(mapping_yaml.find(artifact), std::string::npos);
   }
 }

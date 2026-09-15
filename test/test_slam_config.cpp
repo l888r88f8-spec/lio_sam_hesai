@@ -294,6 +294,25 @@ TEST(SlamConfig, MappingRejectsNonPositiveOrNonFiniteTileSize) {
   EXPECT_DOUBLE_EQ(accepted.mapping.map_save.tiled_map.tile_size_m, 25.0);
 }
 
+TEST(SlamConfig, RejectsRemovedShutdownAutoSaveParameters) {
+  // Ctrl+C auto-save was deleted. Both the canonical key and its flat alias
+  // must now fail closed at startup instead of being silently accepted, and
+  // the error must name the replacement interface.
+  for (const std::string key : {"map_save.enabled", "savePCD"}) {
+    for (const bool value : {false, true}) {
+      SCOPED_TRACE(key + "=" + (value ? "true" : "false"));
+      try {
+        LoadMapping({rclcpp::Parameter(key, value)});
+        FAIL() << "accepted removed shutdown auto-save parameter";
+      } catch (const std::invalid_argument& error) {
+        const std::string message = error.what();
+        EXPECT_NE(message.find(key), std::string::npos);
+        EXPECT_NE(message.find("/lio_sam/save_map"), std::string::npos);
+      }
+    }
+  }
+}
+
 TEST(SlamConfig, LocalizationMultiAliasesEachWarnOnceWithCanonicalYaml) {
   const std::vector<rclcpp::Parameter> aliases = {
       {"sensor", "Hesai"}, {"lidar.lidar_sensor_type", "Hesai"},

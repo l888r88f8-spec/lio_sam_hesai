@@ -86,9 +86,8 @@
              0.0,  1.0,  0.0,
              0.0,  0.0,  1.0 ]                          # 用于姿态初始化的RPY外参矩阵
 
-    # CTRL+C地图与点云导出
+    # 显式地图与点云导出（仅通过 /lio_sam/save_map 服务触发）
     map_save:
-      enabled: false                                     # 程序退出时是否自动保存全局地图点云
       save_tiled_map: false                              # 同时按瓦片导出地图
       tiled_map:
         tile_size_m: 100.0

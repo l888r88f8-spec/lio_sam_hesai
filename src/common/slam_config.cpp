@@ -23,6 +23,22 @@ const char* ModeName(SlamMode mode) {
   throw std::invalid_argument(name + " " + why);
 }
 
+// Rejects parameters that were removed with the Ctrl+C auto-save path. The
+// keys are deliberately not declared any more, so the guard reads the raw
+// override map: a declared-key check would silently accept them and a
+// typo'd config would look like a working one.
+void RejectRemovedMappingParameters(rclcpp::Node& node) {
+  const auto overrides =
+      node.get_node_parameters_interface()->get_parameter_overrides();
+  for (const std::string& name : {"map_save.enabled", "savePCD"}) {
+    if (overrides.count(name) != 0U) {
+      Reject(name,
+             "was removed with Ctrl+C automatic map saving; use "
+             "/lio_sam/save_map instead");
+    }
+  }
+}
+
 void RequireNonEmpty(const std::string& value, const std::string& name) {
   if (value.empty()) {
     Reject(name, "must not be empty");
@@ -509,9 +525,6 @@ void LoadMappingConfig(rclcpp::Node& node, SlamConfig& config,
       gps.pose_covariance_threshold, warnings);
 
   MapSaveConfig& map_save = mapping.map_save;
-  map_save.enabled = ReadParam<bool>(node, "map_save.enabled",
-                                     std::string("savePCD"),
-                                     map_save.enabled, warnings);
   map_save.save_tiled_map = ReadParam<bool>(
       node, "map_save.save_tiled_map", std::nullopt, map_save.save_tiled_map,
       warnings);
@@ -1179,6 +1192,10 @@ SlamConfig LoadSlamConfig(rclcpp::Node& node, SlamMode mode) {
   SlamConfig config;
   config.mode = mode;
   LegacyWarningSet warnings;
+
+  if (mode == SlamMode::kMapping) {
+    RejectRemovedMappingParameters(node);
+  }
 
   LoadFrames(node, mode, config, warnings);
   LoadCalibration(node, config, warnings);

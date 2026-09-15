@@ -98,7 +98,6 @@ struct TiledMapSaveConfig {
 };
 
 struct MapSaveConfig {
-  bool enabled{false};
   bool save_tiled_map{false};
   TiledMapSaveConfig tiled_map;
   bool generate_scan_context_db{true};
