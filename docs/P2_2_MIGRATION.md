@@ -107,6 +107,13 @@ removed in `fe61c5e` and P2.2 does not reintroduce it.
 Surfaces column: where the canonical key must be present. "reader" is the C++
 node or shared loader; "YAML" is the repository configuration file.
 
+`calibration.lidar_to_imu` was never a ROS configuration key: the old
+`System::InitConfig` derived its internal matrix from `calibration.translation`,
+`calibration.rotation`, and `calibration.rpy`. It is not a translation alias;
+there is no matrix-to-translation compatibility conversion. Likewise,
+`system.mapping_mode` / `mappingMode` do not select a mapping pipeline inside
+the localization executable; only the mapping reader consumes that setting.
+
 | Legacy key | Canonical key | Surfaces |
 |---|---|---|
 | `pointCloudTopic` | `sensor_topic.lidar_topic` | mapping reader, localization reader, mapping YAML, localization YAML |
@@ -158,7 +165,6 @@ node or shared loader; "YAML" is the repository configuration file.
 | `extrinsicTrans` | `calibration.translation` | mapping reader, localization reader, mapping YAML, localization YAML |
 | `extrinsicRot` | `calibration.rotation` | mapping reader, localization reader, mapping YAML, localization YAML |
 | `extrinsicRPY` | `calibration.rpy` | mapping reader, localization reader, mapping YAML, localization YAML |
-| `calibration.lidar_to_imu` | `calibration.translation` | localization reader, localization YAML |
 | `savePCD` | `map_save.enabled` | mapping reader, mapping YAML |
 | `generateScDb` | `map_save.generate_scan_context_db` | mapping reader, mapping YAML |
 | `savePCDDirectory` | `map_save.directory` | mapping reader, mapping YAML |
@@ -269,9 +275,57 @@ One default did change: an empty `localization.map_path` used to resolve to
 through the layout. `map.pcd` never existed under `data/`, so the old default
 was dead. Any explicitly configured path is unaffected.
 
+## 7a. Relative map paths
+
+A `localization.map_path` that has no parent directory now resolves instead of
+being rejected. These are equivalent and all point at the same file:
+
+```yaml
+localization:
+  map_path: "GlobalMap.pcd"        # previously rejected
+  map_path: "./GlobalMap.pcd"
+```
+
+The same applies to a tiled root (`tiled`, `tiled/`, `./tiled`) and to the
+`GroundMap.pcd` / `sc_db.bin` paths that are derived from the configured one
+when they are left empty. Absolute paths, and relative paths with a parent
+directory, behave exactly as before. Nothing about the on-disk layout changed;
+only paths that used to be refused are now accepted.
+
 ## 8. Launch argument naming
 
-`use_sim_time` is the canonical launch argument for all three launch files.
-`use_sim` is still accepted for one cycle: an explicitly supplied `use_sim`
-wins over `use_sim_time`, otherwise the canonical value is used. Every default,
-every static transform and every node name is unchanged.
+All three launch files take **`use_sim`** as their external simulation-clock
+argument. The ROS node parameter keeps its original name, `use_sim_time`; the
+launch file maps one to the other.
+
+```bash
+ros2 launch lio_sam_hesai mapping.launch.py use_sim:=true
+ros2 launch lio_sam_hesai localization.launch.py use_sim:=true
+```
+
+Defaults: `false` for `mapping.launch.py`, `true` for both localization launch
+files — unchanged from before P2.2. Static transforms, node names and every
+other launch argument are unchanged.
+
+**Migration required, and it fails silently if you skip it.** Earlier P2.2
+revisions of these files accepted `use_sim_time:=...` as the external
+argument. That spelling is no longer declared. `ros2 launch` accepts
+undeclared `name:=value` arguments without complaint -- verified on this
+Humble install, where the nodes started normally and nothing was printed --
+so
+
+```bash
+ros2 launch lio_sam_hesai mapping.launch.py use_sim_time:=true   # WRONG
+```
+
+is **not** rejected. `use_sim` keeps its default (`false` for
+`mapping.launch.py`) and the run silently uses wall clock instead of the bag
+clock. Rename it:
+
+```bash
+ros2 launch lio_sam_hesai mapping.launch.py use_sim:=true        # correct
+```
+
+The value is interpreted identically. Only the *launch argument* changed -- the
+node parameter is still `use_sim_time`, so a `params_file` entry or
+`--ros-args -p use_sim_time:=true` override is unaffected.

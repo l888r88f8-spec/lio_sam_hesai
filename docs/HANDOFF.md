@@ -244,3 +244,113 @@ OdomTLidar::FromMatrix(trans2Affine3f(transformTobeMapped).matrix().cast<double>
 - 空的 `localization.map_path` 默认值从 `<package>/data/map.pcd` 改为 `<package>/data/GlobalMap.pcd`（计划要求删除 `kGlobalMapFileName`）。`data/` 下从未存在 `map.pcd`，因此旧默认值是死代码；任何显式配置的路径不受影响。
 - `docs/P2_2_MIGRATION.md` 已在 `.gitignore` 的 `docs/` 下但被跟踪，新克隆后需要 `git add -f`。
 - 迁移文档中的 legacy→canonical 键表由 `test_unified_parameter_schema.cpp` 的 `kParameterContracts` 生成，改动该表后应重新生成。
+
+## 九、P2.2 修复轮（2026-09-15）
+
+按 `docs/P2.2_fix.md` 执行。本轮修复的是第 8 节记录的四类问题：launch 参数方向、相对地图路径、分块覆盖语义与故障回放、以及独立参数复核。**分支仍未合并到 `main`。**
+
+### 9.1 状态区分
+
+| 维度 | 状态 |
+| --- | --- |
+| 实现完成 | §0-§4 全部代码、配置、测试、脚本、文档改动完成 |
+| 单元/契约测试 | 通过：48 项 CTest 中 44 项通过，失败 4 项全部是 `main` 上既有的 lint 基线 |
+| 生产构建 | 通过：全新临时 `build/install/log` 目录从零构建，退出码 0，耗时 27 分 41 秒 |
+| 回放验收 | 通过：`quick`、`tf-continuity`、`tiled-quick`、`tiled-faults` 四项全部退出码 0，建图 smoke 通过 |
+
+### 9.2 干净构建与 CTest
+
+```bash
+cd /home/robot/slam_ws
+colcon --log-base /tmp/p22_clean/log build --symlink-install \
+  --packages-select lio_sam_hesai \
+  --build-base /tmp/p22_clean/build --install-base /tmp/p22_clean/install \
+  --cmake-args -DBUILD_TESTING=ON --executor sequential --parallel-workers 1
+```
+
+退出码 0。`--log-base` 是 colcon 的全局参数，必须写在 `build` 之前，否则报 `unrecognized arguments`。
+
+- 干净树完整 CTest：44/48，失败项与增量树**完全一致**（`flake8`、`lint_cmake`、`uncrustify`、`xmllint`）。
+- 约定 lint 门禁通过：
+
+```bash
+ctest --test-dir /tmp/p22_clean/build/lio_sam_hesai --output-on-failure -j1 \
+  -E '^(copyright|cpplint|flake8|lint_cmake|uncrustify|xmllint)$'
+```
+
+本轮新修改的文件都单独查过 flake8 / pydocstyle，没有引入新违规；三个 launch 的 E501 数量与 `main` 完全相同。
+
+### 9.3 四项回放
+
+全部使用干净 install（`LIO_SAM_WORKSPACE=/tmp/p22_clean`），避免误跑旧二进制。
+
+```bash
+LIO_SAM_WORKSPACE=/tmp/p22_clean LIO_SAM_KEEP_RESULTS=1 \
+  scripts/run_localization_stability.sh {quick|tf-continuity|tiled-quick|tiled-faults}
+```
+
+| 模式 | 退出码 | 关键指标 |
+| --- | --- | --- |
+| `quick` | 0 | `map_mode: global`、`error_samples: 0`、odom 单调、`valid_odom_ratio: 1.0`、`first_ok: 2.87 s`、`max_non_ok_gap: 2.87 s`、`max_odom_gap: 0.40 s` |
+| `tf-continuity` | 0 | `violations: []`、`error_samples: 0`、`valid_odom_ratio: 1.0` |
+| `tiled-quick` | 0 | `map_mode: tiled`、`error_samples: 0`、`valid_odom_ratio: 1.0`、`max_non_ok_gap` 回到 ~2.9 s（修复前 49.7 s） |
+| `tiled-faults` | 0 | 三个用例全部通过，见 9.4 |
+
+结果目录在每次运行的 `results_dir=` 行；`LIO_SAM_KEEP_RESULTS=1` 时保留。
+
+### 9.4 三类故障的验收证据
+
+- **corrupt-manifest**：`corrupt_manifest_node_died: true`。按计划要求检查 launch 日志里节点自身的死亡，而不是假设子节点退出整个 launch 必然退出。
+- **missing-center**：注入 payload 可证（`quarantine/-1_-1.pcd` 存在）、`map_tile_load_failures: 1`、诊断点名 `[-1,-1]`、且 `first_ok_seconds: null`、`valid_odom_ratio: null`——没有任何定位输出。
+- **missing-neighbor**：`map_tile_load_failures: 3`、事件序列里同时出现 `global file validation failed for tile [-2,-2]` 与 `missing tiles: [-2,-2]`，且 `first_ok_seconds: 5.26`、`valid_odom_ratio: 1.0`、`error_samples: 0`——**降级但仍然正常定位**。
+
+判定不再只看最终那条错误字符串，而是看 `map_tile_events` 记录的加载状态序列；「目标未请求」「只有启动 WARN」「索引只出现在最终汇总」「启动超时」四条假通过路径都有 mock 时序测试覆盖。
+
+### 9.5 建图 smoke（60 秒）
+
+干净 install，`use_sim:=true`，`map_save.directory` 覆盖到临时目录。
+
+- `map -> odom`：平移 `[0.000, 0.000, 0.000]`，静态单位变换。
+- `odom -> base_link`：动态，两次采样 `[19.439, -0.008, -0.217]` → `[27.031, -0.016, -0.177]`。
+- `base_link -> hesai_lidar`：`[0.020, 0.000, 0.320]`；`base_link -> imu_link`：`[0.020, 0.000, 0.220]`。
+- 22 个 P2.2 前建图话题**全部存在**；无 crash、无 `process has died`；`bag_play_exit=0`。
+- 临时地图输出目录为空——没有任何写入落到配置的默认目录。
+
+### 9.6 对第 8 节两处结论的修正
+
+**一、"旧分支复现相同失败就证明 P2.2 无回归"这个结论过强。** 当时的 A/B 对照构建的是 `main`（`30d6e88`），而分支实际是从 `45df657` 分出的，`45df657`（`chore(p2.1): preserve P2.1 follow-up edits`）位于 `main` 之上，包含了用户的 P2.1 跟进改动。因此正确的说法是"在 `main` 上复现了相同的失败"，**不能**表述为"相对保留的 P2.1 基线已证明无回归"——真正的基线树从未参与那次对照。修复轮之后 `tiled-quick` 与 `tiled-faults` 均已通过，该问题不再影响签收，但历史记录的措辞应予更正。
+
+**二、分块裁剪的根因描述不完整。** 第 8 节写的是"包围盒四角有 28 个空格子"，实测那 28 格确实是包围盒角上的覆盖外区域，不是数据内部的洞；`RootDirectoryOf` 与 `FromTiledRoot` 对末尾分隔符处理不一致也是同期发现的独立缺陷。
+
+### 9.7 范围外遗留（未处理）
+
+- **退出自动保存的产物无人消费**：`map_save.enabled` 只控制这一条路径，写出的 `cloudCorner/cloudSurf/cloudGlobal/cloudGround.pcd` 没有任何回读方，且不写 `sc_db.bin`；只靠 Ctrl+C 保存的地图无法被定位或分块生成器加载。修它需要重命名磁盘文件，超出 P2.2 范围。
+- **`TightCouplingKF` 被校验器接受但运行期 `LOG(FATAL)`**：`ValidateLocalizationRuntime` 的报错信息把它列为合法值，`test_slam_config.cpp` 也断言它被接受，但 `localization.cpp` 对该模式走 `LOG(FATAL) << "Kalman filter support will be coming soon!"`。这是有意保留的未实现桩，属产品决策，本轮未改动。
+- **四项 lint 基线**（`flake8`、`lint_cmake`、`uncrustify`、`xmllint`）在 `main` 上就失败，本轮保持不恶化。
+
+### 9.8 复核轮修复（2026-09-15）
+
+对 9.1-9.7 那批实现做独立复核后发现的 8 个问题（4 个必须修 + 4 个次要），全部已修复并复验。
+
+**判据类（会误判通过，最危险）**
+
+- `corrupt-manifest` 原先只匹配 `"process has died"`，而正常清理也会杀死 static TF 与地面分割节点。实测日志里定位节点是 `exit code -6`、其余是 `-2`，旧判据确实会误判。现改为精确匹配 `[lio_sam_hesai_relocalization-\d+]` + **非零退出码** + `Failed to prepare localization map`，两个信号必须同时成立。
+- 保存的参考位姿原本取"第一条格式合法的 odom"，但初始化结果 `is_tracking=false` 同样会发布，所以记下的是**初始化位姿**（实测 2.52 s，而 first OK 是 2.78 s）。现在门控在"目标诊断 `is_tracking=true` 且 level OK"之后，实测记录到 2.78 s。
+- `missing-neighbor` 原先分别检查"某次 tile 失败"和"整个运行有输出"，两者可以是无关的事。现在要求事件序列里出现 `ready` 状态且错误串同时含 `missing tiles:` 与故障索引——即**中心可用且产生了对应的降级状态**。
+
+**安全类**
+
+- fault CLI 原先直接按 `--tiled-dir` 构造 `TiledFaultFixture`，指向真实地图时 `inject()` 会 `rename()` 真实 tile 甚至 `manifest.yaml`。现在 `prepare_tiled_fault_case` 写入 `.p22-fault-fixture.json` 标记，`inject()` 强制校验来源、故障选择与 manifest 声明三者一致；harness 改为 `load_tiled_fault_fixture()`，**只能加载不能构造**，`--tiled-fault-relative` 从契约中移除。
+- 参考位姿的身份绑定原先只覆盖 `DatasetIdentity`，现已扩展 `topic_counts`、`ground_map_bytes`、`sc_db_bytes`、`tiled_manifest_sha256`。**该绑定一启用就暴露了连带缺陷**：夹具用 `yaml.safe_dump` 重写 manifest，字节与真实地图不同、指纹必然对不上；新夹具本就不修改 manifest，改为逐字节复制。
+
+**契约类**
+
+- 非零回放 offset 时参考时间算错：保存的是"相对当前播放起点"，却当成"相对 bag 起点"使用。现为 `bag_seconds = start_offset_seconds + captured_clock - replay_clock_start`。当前 baseline offset 为 0 所以此前未暴露。
+- `slam_config.cpp` 接受 `tile_size_m = 0`，而 `tile_map_generator.cpp` 运行期拒绝。已补 `RequirePositive`，配置校验与运行时契约对齐。
+- `TiledFaultRun.observe_diagnostics` 原先合并全部 `DiagnosticStatus`，其他节点报同名键可能误开 prepare/IMU 闸门。现只读 `lio_sam_hesai: localization`。
+
+**复核后的完整验收（干净树重建 27 分 37 秒，退出码 0）**
+
+- 干净树 CTest：44/48，失败项与 `main` 的 4 个既有 lint 完全一致；约定 lint 门禁（排除 `copyright`/`cpplint`/`flake8`/`lint_cmake`/`uncrustify`/`xmllint`）零失败。
+- 四项回放全部退出码 0：`quick`、`tf-continuity`、`tiled-quick`、`tiled-faults`。
+- 建图 smoke（干净 install，60 秒，地图输出指向临时目录）：无 crash；`map -> odom` 单位变换；`odom -> base_link` 动态（19.74 → 28.03）；`base_link -> hesai_lidar` `[0.020, 0.000, 0.320]`；`base_link -> imu_link` `[0.020, 0.000, 0.220]`；临时地图目录为空。
