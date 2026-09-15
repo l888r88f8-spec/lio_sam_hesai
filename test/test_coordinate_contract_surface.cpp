@@ -205,8 +205,11 @@ TEST(CoordinateContractSurface, RvizTopicsResolveToCanonicalConfigValues)
   EXPECT_GT(checked, 0U) << "no topic entries were checked in config/rviz2.rviz";
 }
 
-TEST(CoordinateContractSurface, LaunchFilesUseCanonicalUseSimTime)
+TEST(CoordinateContractSurface, LaunchFilesDeclareOnlyUseSim)
 {
+  // The external launch argument is `use_sim`; `use_sim_time` remains the ROS
+  // node parameter name. Behaviour is covered by test_launch_sim_clock.py;
+  // this only pins the static surface.
   const std::array<std::string, 3> launches = {
     "launch/mapping.launch.py",
     "launch/localization.launch.py",
@@ -214,15 +217,14 @@ TEST(CoordinateContractSurface, LaunchFilesUseCanonicalUseSimTime)
   };
   for (const auto & file : launches) {
     const auto text = ReadProjectFile(file);
-    // Canonical argument name, plus the legacy alias accepted for one cycle.
-    EXPECT_NE(text.find("\"use_sim_time\","), std::string::npos) << file;
     EXPECT_NE(text.find("\"use_sim\","), std::string::npos) << file;
-    EXPECT_NE(text.find("LEGACY_USE_SIM_UNSET"), std::string::npos) << file;
-    // Every node is wired to the resolved value, not to either raw argument.
-    EXPECT_NE(text.find("_effective_use_sim_time()"), std::string::npos) << file;
+    // A trailing comma is how a DeclareLaunchArgument names itself, so this
+    // rejects a declared use_sim_time while allowing the parameter dict.
+    EXPECT_EQ(text.find("\"use_sim_time\","), std::string::npos)
+      << file << " must not declare use_sim_time as a launch argument";
     EXPECT_NE(text.find("\"use_sim_time\": use_sim"), std::string::npos) << file;
-    EXPECT_EQ(text.find("\"use_sim_time\": use_sim_time"), std::string::npos)
-      << file << " must not read the raw canonical argument directly";
+    EXPECT_EQ(text.find("LEGACY_USE_SIM_UNSET"), std::string::npos) << file;
+    EXPECT_EQ(text.find("_effective_use_sim_time"), std::string::npos) << file;
   }
 }
 
