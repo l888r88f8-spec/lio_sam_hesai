@@ -4,7 +4,7 @@
 
 **Goal:** 删除 Ctrl+C 退出时的地图自动保存路径、它独占的参数/产物契约，并把“不可回读的退出保存”改为启动期 fail-closed 拒绝加迁移提示，使 `/lio_sam/save_map` 成为唯一地图导出入口。
 
-**Architecture:** Phase 0 先确认代码基线 `c9aa44a` 与工作区状态，然后把本计划文件用 `git add -f` 单独提交为受跟踪工件（`docs: plan shutdown auto-save removal`），再在 `c9aa44a` 上固定构建、门禁、基线扫描事实和旧二进制阳性 smoke。Task A 用 TDD 删除运行期关闭路径（`save_map_enabled_`、`visualizeGlobalMapThread()` 尾部导出代码）与仅供该路径使用的 `MapArtifactLayout::Saved*Cloud()` API，本任务内自洽可编译。Task B 再用 TDD 删除 `MapSaveConfig::enabled`、读取语句、YAML leaf 与 `savePCD` 别名契约，并在任何 `Load*` 之前加原始 override fail-closed guard，同时补 YAML/launch 反向契约。Phase 1 用一次性 `rg`/`grep` allowlist 扫描加注入自检、新旧二进制对照 smoke（固定路径 + marker 文件）、fail-closed 冒烟、`/lio_sam/save_map` 服务接口 smoke 和最终门禁收口，最后更新 `docs/PROJECT_STATUS.md`。本轮不新增任何脚本。
+**Architecture:** Phase 0 先确认代码基线 `c9aa44a` 与工作区状态，然后把本计划文件用 `git add -f` 单独提交为受跟踪工件（`docs: plan shutdown auto-save removal`），再在 `c9aa44a` 上固定构建、门禁、基线扫描事实和旧版关闭路径基线（旧二进制进入导出块后因空点云写入抛 `pcl::IOException`、非零退出、零 PCD）。该实测与计划原契约不符，因此 Phase 0 内按第 0 节第 2 条插入一次强制计划修订提交（`docs: revise shutdown auto-save removal plan`，只改本计划文件）。Task A 用 TDD 删除运行期关闭路径（`save_map_enabled_`、`visualizeGlobalMapThread()` 尾部导出代码）与仅供该路径使用的 `MapArtifactLayout::Saved*Cloud()` API，本任务内自洽可编译。Task B 再用 TDD 删除 `MapSaveConfig::enabled`、读取语句、YAML leaf 与 `savePCD` 别名契约，并在任何 `Load*` 之前加原始 override fail-closed guard，同时补 YAML/launch 反向契约。Phase 1 用一次性 `rg`/`grep` allowlist 扫描加注入自检、新旧二进制对照 smoke（固定路径 + marker 文件）、fail-closed 冒烟、`/lio_sam/save_map` 服务接口 smoke 和最终门禁收口，最后更新 `docs/PROJECT_STATUS.md`。本轮不新增任何脚本。
 
 **Tech Stack:** C++17、ROS 2 Humble `rclcpp`、GoogleTest/CTest、PCL、ROS 2 参数 YAML、Bash（`rg`、`ros2` CLI、`ctest`）
 
@@ -12,7 +12,9 @@
 
 ## 0. 基线与硬约束
 
-**基线：** 代码基线是 `c9aa44a docs: design shutdown auto-save removal`（当前 `main` HEAD，工作区干净）。本轮在它之上的第一个提交是 Phase 0 的计划提交 `docs: plan shutdown auto-save removal`，该提交只新增本计划文件；所有实现与文档改动都发生在它之后。因此最终范围检查以 `c9aa44a..HEAD` 为准时，允许出现本计划文件（它确实是本轮唯一的 `docs/superpowers/plans/` 变更）。
+**基线：** 代码基线是 `c9aa44a docs: design shutdown auto-save removal`（最初 `main` HEAD，工作区干净）。本轮在它之上的第一个提交是 Phase 0 的计划提交 `docs: plan shutdown auto-save removal`，该提交只新增本计划文件；紧随其后是强制计划修订提交 `docs: revise shutdown auto-save removal plan`（同样只改本计划文件），所有实现与文档改动都发生在它们之后。因此最终范围检查以 `c9aa44a..HEAD` 为准时，允许出现本计划文件（它确实是本轮唯一的 `docs/superpowers/plans/` 变更），文件数契约不变（10 条路径）。
+
+**执行状态（2026-09-15 本次修订时）：** Task 0.1、Task 0.2、Task 0.3 与 Task 0.4 的 Step 1-3 已实际执行，旧行为的真实观测见 Task 0.4“本次实测事实”。当前历史为 `c9aa44a` → `docs: plan shutdown auto-save removal` → `docs: revise shutdown auto-save removal plan`（本次修订提交，位于 Task A 之前）。恢复执行时**从 Task 0.4 Step 0（安全恢复遗留空目录）继续**，不要再重跑 Task 0.1-0.3 与 Task 0.4 Step 1-3，也不要重复创建修订提交；下文 Task 0.2 的 `git log -2` 期望是**修订发生前**的历史输出。
 
 **行号说明：** 全文所有 `file:line` 都是**基线 `c9aa44a` 上的行号**，用于定位，不是编辑后仍成立的行号。同一任务内先做的删除会让后面的行号平移；**以引用的原文片段为准**。
 
@@ -28,7 +30,7 @@
    - `test/test_slam_config.cpp`
    - `test/test_unified_parameter_schema.cpp`
    - `docs/PROJECT_STATUS.md`
-2. 禁止修改任何其他文件（包括 `CMakeLists.txt`、launch、`include/lio_sam/utility.hpp`、`src/slam/*`）。唯一例外是本计划文档自身 `docs/superpowers/plans/2026-09-15-remove-shutdown-auto-save.md`：它在 Phase 0 用 `git add -f` 单独提交（提交信息 `docs: plan shutdown auto-save removal`）后成为受跟踪工件，此后不得再改动。若实测数字与本计划的确定性契约不符，必须停止执行，另起一个 `docs: revise shutdown auto-save removal plan` 提交（禁止 `--amend`）修订本计划后再继续。
+2. 禁止修改任何其他文件（包括 `CMakeLists.txt`、launch、`include/lio_sam/utility.hpp`、`src/slam/*`）。唯一例外是本计划文档自身 `docs/superpowers/plans/2026-09-15-remove-shutdown-auto-save.md`：它在 Phase 0 用 `git add -f` 单独提交（提交信息 `docs: plan shutdown auto-save removal`）后成为受跟踪工件，此后不得再改动。若实测数字与本计划的确定性契约不符，必须停止执行，另起一个 `docs: revise shutdown auto-save removal plan` 提交（禁止 `--amend`）修订本计划后再继续。**本次即按该条执行**：`9e1927e` 之后、Task A 之前已有该修订提交，它只改本计划文件；执行者从修订后的本文件继续，不得重做该提交。
 3. 禁止 `git add -A` / `git add .`；禁止 `git commit --amend` / `git reset` / `git rebase` / `git checkout` / `git restore` / `git clean` / `git gc` / `git reflog`。只按第 5 条的规则显式暂存具体文件。
 4. 不要 push。
 5. **`.gitignore` 事实与暂存规则：** 仓库根 `.gitignore` 第 3 行是 `docs/*`（第 4 行 `!docs/PROJECT_STATUS.md` 是例外），第 5 行是 `test/`（整目录忽略，无例外）。因此：
@@ -47,17 +49,17 @@
 | 新二进制证据 | `/home/robot/shutdown_auto_save_evidence/new/lio_sam_hesai_mapOptimization` |
 | smoke 工作目录 | `/home/robot/shutdown_auto_save_evidence/run` |
 | smoke 导出目录 | `/home/robot/shutdown_auto_save_smoke` |
-| 旧行为导出归档 | `/home/robot/shutdown_auto_save_evidence/old-export` |
+| 旧行为导出归档（**空目录**，不是 PCD 归档） | `/home/robot/shutdown_auto_save_evidence/old-export` |
 | 旧参数阴性 fixture | `/home/robot/shutdown_auto_save_evidence/run/legacy-enabled.yaml` |
 | 改动后参数 fixture（指向 smoke 目录） | `/home/robot/shutdown_auto_save_evidence/run/final-mapping.yaml` |
 
-**旧二进制会写入的产物（阳性对照判据）：** 一定写入的是 `/home/robot/shutdown_auto_save_smoke/trajectory.pcd`、`/home/robot/shutdown_auto_save_smoke/transformations.pcd`、`/home/robot/shutdown_auto_save_smoke/cloudCorner.pcd`、`/home/robot/shutdown_auto_save_smoke/cloudSurf.pcd`、`/home/robot/shutdown_auto_save_smoke/cloudGlobal.pcd` 五个；`cloudGround.pcd` 在空地图下会走 `Ground map is empty, skip saving` 分支而不写，**不作为判据**。
+**旧二进制在空跑下的实测行为（2026-09-15，此前的阳性对照判据已作废）：** 旧代码在退出时先 `rm -r` 残留目录、再 `mkdir` 导出目录，随后**在第一次空点云写入就抛 `pcl::IOException`**（`[pcl::PCDWriter::writeASCII] Input point cloud has no data!`），异常逃出线程触发 `std::terminate`/SIGABRT，因此**一个 PCD 也不会写出**，导出目录只被创建为空目录。旧版的正确判据是“进入导出块 + 空数据异常 + 非零 wrapper 退出 + 零 PCD + 空目录”，**不是**“完整写出历史 PCD、退出码 0”。具体退出码与异常文本以 Task 0.4 的实测输出为准。
 
 ---
 
-## Phase 0：基线构建、门禁、扫描取证与旧行为阳性对照
+## Phase 0：基线构建、门禁、扫描取证与旧版关闭路径基线
 
-本阶段**不做任何源码修改**；唯一的仓库写操作是 Task 0.2 用 `git add -f` 提交本计划文件。目的：在 `c9aa44a` 上固定“改动前”事实，并把旧二进制存成后续对照物。
+本阶段**不做任何源码修改**；唯一的仓库写操作是用 `git add -f` 提交本计划文件（Task 0.2 的计划提交与本次修订提交）。目的：在 `c9aa44a` 上固定“改动前”事实，并把旧二进制存成后续对照物、把旧版关闭路径的失败形态固化为基线。
 
 ### Task 0.1: 固定基线事实
 
@@ -151,7 +153,7 @@ git commit -m "docs: plan shutdown auto-save removal"
 git log -2 --oneline
 ```
 
-Expected: 提交成功；`git log -2 --oneline` 第一行是 `docs: plan shutdown auto-save removal`，第二行是 `c9aa44a docs: design shutdown auto-save removal`。
+Expected: 提交成功；`git log -2 --oneline` 第一行是 `docs: plan shutdown auto-save removal`，第二行是 `c9aa44a docs: design shutdown auto-save removal`。这是**修订发生前**的历史快照；本次修订提交 `docs: revise shutdown auto-save removal plan` 之后会出现在它上方（见第 0 节“执行状态”），该步已执行，无需重跑。
 
 - [ ] **Step 3: 确认计划已成为受跟踪文件**
 
@@ -239,14 +241,42 @@ rg -n 'RejectRemovedMappingParameters|was removed with Ctrl\+C' src/common/slam_
 
 Expected: 无输出，退出码 1。这两条正是后续 Task B 要加入的 fail-closed guard 标识。
 
-### Task 0.4: 旧行为阳性对照 smoke（旧二进制 + 旧参数）
+### Task 0.4: 旧版关闭路径基线 smoke（旧二进制 + 旧参数）
 
-**关键理解：** `mapOptimization` 主线程 `exec.spin()` 在 Ctrl+C 后返回，`rclcpp::shutdown()` 把 `rclcpp::ok()` 置为 false，`visualizeGlobalMapThread()` 因此退出 `while (rclcpp::ok())` 循环，**然后**执行 `if (save_map_enabled_ == false) return;` 之后的导出代码。所以不播 bag、不启 rviz、没有 keyframe 也会写 `trajectory.pcd`、`transformations.pcd`、`cloudCorner.pcd`、`cloudSurf.pcd`、`cloudGlobal.pcd`。`publishGlobalMap()` 在没有订阅者或没有 keyframe 时提前返回，空跑 12 秒是安全的。
+**本次实测事实（2026-09-15，修订依据）：** 在与下面 Step 3 完全相同的 harness 下，旧二进制空跑 12 秒后收到 SIGINT，日志依次出现 `Map Optimization Started.`、`signal_handler(SIGINT/SIGTERM)`、恰一次 `Saving map to pcd files ...`，随后是 `rm: cannot remove '/home/robot/shutdown_auto_save_smoke/': No such file or directory`，紧接着 `terminate called after throwing an instance of 'pcl::IOException'`、`what(): : [pcl::PCDWriter::writeASCII] Input point cloud has no data!`、`[ros2run]: Aborted`；wrapper shell 退出码观测为 `250`（**仅记录本次观测值，不作为契约**，契约是“非零”）；`/home/robot/shutdown_auto_save_smoke` 被 `mkdir` 创建但为空，0 个 PCD；日志中没有 `Saving map to pcd files completed`、`Processing frame`、`Save destination`、`Ground map is empty`。这就是“进入导出块、空数据异常、非零退出、零产物”的旧版关闭路径基线。
+
+**关键理解（已由本次实测修正）：** `mapOptimization` 主线程 `exec.spin()` 在 Ctrl+C 后返回，`rclcpp::shutdown()` 把 `rclcpp::ok()` 置为 false，`visualizeGlobalMapThread()` 因此退出 `while (rclcpp::ok())` 循环，**然后**执行 `if (save_map_enabled_ == false) return;` 之后的导出代码：先 `rm -r` 旧目录、再 `mkdir`，接着按顺序写 PCD。空跑（无 bag、无 rviz、无关键帧）时 `cloudKeyPoses3D` 为空，**第一次 `pcl::io::savePCDFileASCII(Trajectory())` 就抛 `pcl::IOException`**，异常逃出该线程导致 `std::terminate`/SIGABRT，导出块在写出任何文件前终止——所以不会出现 `Saving map to pcd files completed`。`publishGlobalMap()` 在没有订阅者或没有 keyframe 时提前返回，空跑 12 秒是安全的。
 
 **为什么不用 `launch/mapping.launch.py`：** 该 launch 除了 `lio_sam_hesai_mapOptimization` 还会启动两个 static TF、`imuPreintegration`、`imageProjection`、`featureExtraction` 和 `rviz2`（`launch/mapping.launch.py` 末尾），既引入 rviz 又让 SIGINT 的落点变成 launch 进程，无法把退出码归因到被观察的节点。而 `visualizeGlobalMapThread()` 只在 `MO->MappingMode()` 为真时启动（基线 `src/mapOptimization.cpp:2759`），单独 `ros2 run` 该节点就足以走出完整关闭路径，且 PID/退出码可以直接管理。因此本计划的 smoke 一律直接用 `ros2 run`。
 
 **Files:**
 - 只写证据目录，**不修改仓库任何文件**
+
+- [ ] **Step 0: 安全恢复本次实跑遗留的空目录（确定性的前置恢复）**
+
+本次实测已在 `/home/robot/shutdown_auto_save_smoke` 留下一个**已确认空**的目录（`mkdir` 成功、第一次写 PCD 失败，0 个文件）。下面的重跑需要一个不存在的导出目录，因此先做确定性恢复：**只对已确认空的目录用 `rmdir`，禁止 `rm -rf`**；若目录非空、不是目录，或 `old-export` 已存在，则停止并人工判断，不要删除任何东西。修订前的实测日志 `run/old-positive.log` 与 `run/old-positive.pid` **原样保留**，不删除、不覆盖（重跑写入新的 `old-behavior.*` 文件名）。
+
+Run:
+
+```bash
+set +e
+if [ -e /home/robot/shutdown_auto_save_smoke ]; then
+  test -d /home/robot/shutdown_auto_save_smoke
+  echo "leftover_is_dir=$?"
+  test -z "$(ls -A /home/robot/shutdown_auto_save_smoke)"
+  echo "leftover_is_empty=$?"
+  rmdir /home/robot/shutdown_auto_save_smoke
+  echo "leftover_rmdir=$?"
+else
+  echo "leftover_absent=1"
+fi
+test ! -e /home/robot/shutdown_auto_save_smoke
+echo "smoke_dir_absent_after_recovery=$?"
+test ! -e /home/robot/shutdown_auto_save_evidence/old-export
+echo "old_export_absent_before_rerun=$?"
+```
+
+Expected: `smoke_dir_absent_after_recovery=0`、`old_export_absent_before_rerun=0`；若目录原本存在，则 `leftover_is_dir=0`、`leftover_is_empty=0`、`leftover_rmdir=0`，否则只有 `leftover_absent=1`。若 `leftover_is_empty` 非 0 或 `rmdir` 非 0，**停止执行**并记录，不得改用 `rm -rf`。
 
 - [ ] **Step 1: 生成旧参数 fixture（`enabled: true` + 固定导出目录）**
 
@@ -283,25 +313,32 @@ Expected: 文件存在且大小非 0。这是 `c9aa44a` 上编出的旧二进制
 
 同时注意：`ros2 run` 解析到的是 `install/lio_sam_hesai/lib/lio_sam_hesai/lio_sam_hesai_mapOptimization`，它是 `--symlink-install` 建立的符号链接，指向 `build/lio_sam_hesai/lio_sam_hesai_mapOptimization`。所以在 Phase 0 期间（重编 `mapOptimization` 之前）它就是基线旧二进制；这份 `cp` 备份是防止后续重编覆盖的保险。
 
-- [ ] **Step 3: 旧二进制阳性对照（SIGINT 后必须写文件）**
+- [ ] **Step 3: 旧版关闭路径基线 harness（SIGINT 后进入导出块并失败退出）**
 
 **为什么不能只 `kill -INT $!`：** `ros2 run` 的实现是 `subprocess.Popen(cmd)` + `communicate()`（见 `/opt/ros/humble/lib/python3.10/site-packages/ros2run/api/__init__.py`），它**不转发信号**；只有终端把 Ctrl+C 发给整个前台进程组时子进程才收得到。所以必须先用 `pgrep -P` 找到真正的节点子进程，再把 SIGINT 发给它，并用有界轮询避免 `wait` 永久挂起。
+
+**为什么必须 `set +e` 并显式捕获退出码：** 旧版在这个 harness 下**必然非零退出**（本次观测 250），若调用方 shell 带 `set -e`，或写成 `wait "$wrapper_pid"` 后让 `-e` 生效，脚本会在打印 `old_exit` 之前中断。本块以 `set +e` 开头，用 `wait "$wrapper_pid"` 后立即 `old_exit=$?` 捕获，再用 `test "$old_exit" -ne 0` 断言。
 
 Run:
 
 ```bash
+set +e
 export HOME=/home/robot
 source /opt/ros/humble/setup.bash
 source /home/robot/slam_ws/install/setup.bash
 ros2 run lio_sam_hesai lio_sam_hesai_mapOptimization --ros-args \
   --params-file /home/robot/shutdown_auto_save_evidence/run/legacy-enabled.yaml \
-  > /home/robot/shutdown_auto_save_evidence/run/old-positive.log 2>&1 &
+  > /home/robot/shutdown_auto_save_evidence/run/old-behavior.log 2>&1 &
 wrapper_pid=$!
-echo "$wrapper_pid" > /home/robot/shutdown_auto_save_evidence/run/old-positive.pid
+echo "$wrapper_pid" > /home/robot/shutdown_auto_save_evidence/run/old-behavior.pid
 sleep 12
 node_pid=$(pgrep -P "$wrapper_pid" -f lio_sam_hesai_mapOptimization | head -n 1)
 echo "node_pid=$node_pid"
 test -n "$node_pid"
+kill -0 "$node_pid" 2>/dev/null
+node_alive_before_signal=$?
+echo "node_alive_before_signal=$node_alive_before_signal"
+test "$node_alive_before_signal" -eq 0
 kill -INT "$node_pid"
 for _ in $(seq 1 40); do
   kill -0 "$wrapper_pid" 2>/dev/null || break
@@ -315,56 +352,95 @@ else
   echo "wrapper_still_running=0"
 fi
 wait "$wrapper_pid"
-echo "old_exit=$?"
+old_exit=$?
+echo "old_exit=$old_exit"
+test "$old_exit" -ne 0
+echo "old_exit_nonzero=$?"
 ```
 
 `export HOME=/home/robot` 是必须的：旧代码把导出目录解析为 `std::getenv("HOME") + map_save.directory`，只有 HOME 确定时 `/home/robot/shutdown_auto_save_smoke/` 这个固定路径才成立。
 
-Expected: `node_pid=` 是一个非空数字（`test -n` 退出码 0）；`wrapper_still_running=0`（节点在 40 秒内自行退出）；`old_exit=0`；日志中出现 `Saving map to pcd files ...` 与 `Saving map to pcd files completed`。
+Expected: `node_pid=` 是一个非空数字（`test -n` 退出码 0）；`node_alive_before_signal=0`（**发信号前节点确实存活**）；`wrapper_still_running=0`（节点在 40 秒内自行退出）；`old_exit` **非 0**（`old_exit_nonzero=0`）——本次实测观测值为 `250`，但具体数值只是观测值，契约仅为“非零”；日志中出现 `Map Optimization Started.`、`signal_handler(SIGINT/SIGTERM)`，以及恰一次 `Saving map to pcd files ...`。
 
-若 `node_pid` 为空：说明 `ros2 run` 的进程模型与预期不同，**停止执行并记录该事实**，不要继续用未验证的进程控制方式做 smoke。
+若 `node_pid` 为空或 `node_alive_before_signal` 非 0：说明 `ros2 run` 的进程模型与预期不同，**停止执行并记录该事实**，不要继续用未验证的进程控制方式做 smoke。
 
-- [ ] **Step 4: 断言旧二进制确实写入了历史产物**
+- [ ] **Step 4: 精确断言旧版关闭路径日志与零产物，并创建 marker**
+
+本步只读磁盘上的固定路径与 `old-behavior.log`，判定“进入导出块 + 空数据异常 + 零 PCD + 空目录”。所有断言都打印标签，便于逐条核对；`set +e` 保证单条断言失败不会吞掉后续输出。
 
 Run:
 
 ```bash
-test -f /home/robot/shutdown_auto_save_smoke/trajectory.pcd
-test -f /home/robot/shutdown_auto_save_smoke/transformations.pcd
-test -f /home/robot/shutdown_auto_save_smoke/cloudCorner.pcd
-test -f /home/robot/shutdown_auto_save_smoke/cloudSurf.pcd
-test -f /home/robot/shutdown_auto_save_smoke/cloudGlobal.pcd
-ls -l /home/robot/shutdown_auto_save_smoke/
-touch /home/robot/shutdown_auto_save_evidence/run/old-positive.marker
+set +e
+smoke_dir=/home/robot/shutdown_auto_save_smoke
+log=/home/robot/shutdown_auto_save_evidence/run/old-behavior.log
+
+test -d "$smoke_dir"
+echo "smoke_dir_exists=$?"
+test -z "$(ls -A "$smoke_dir")"
+echo "smoke_dir_empty=$?"
+
+for pcd in trajectory transformations cloudCorner cloudSurf cloudGlobal cloudGround; do
+  test ! -e "$smoke_dir/$pcd.pcd"
+  echo "absent_${pcd}_pcd=$?"
+done
+
+expect_log_count() {
+  local needle="$1" expected="$2" count
+  count=$(grep -c -F -- "$needle" "$log")
+  echo "log_count[\"$needle\"]=$count"
+  test "$count" -eq "$expected"
+  echo "log_count_ok[\"$needle\"]=$?"
+}
+
+expect_log_count "Map Optimization Started." 1
+expect_log_count "signal_handler(SIGINT/SIGTERM)" 1
+expect_log_count "Saving map to pcd files ..." 1
+expect_log_count "pcl::IOException" 1
+expect_log_count "Input point cloud has no data" 1
+expect_log_count "[ros2run]: Aborted" 1
+
+for forbidden in "Saving map to pcd files completed" "Processing frame" \
+                 "Save destination" "Ground map is empty"; do
+  expect_log_count "$forbidden" 0
+done
+
+touch /home/robot/shutdown_auto_save_evidence/run/old-behavior.marker
 ```
 
-Expected: 五条 `test -f` 全部退出码 0；`ls` 列出 5 个 `.pcd`（`cloudGround.pcd` 允许不存在，空地图会打印 `Ground map is empty, skip saving`）；marker 文件创建成功。
+Expected: `smoke_dir_exists=0`、`smoke_dir_empty=0`（`mkdir` 成功但没写出任何文件）；六条 `absent_<name>_pcd=0`（`trajectory` / `transformations` / `cloudCorner` / `cloudSurf` / `cloudGlobal` / `cloudGround` **全部不存在**）；正向日志各恰一次：`log_count_ok["Map Optimization Started."]=0`、`log_count_ok["signal_handler(SIGINT/SIGTERM)"]=0`、`log_count_ok["Saving map to pcd files ..."]=0`、`log_count_ok["pcl::IOException"]=0`、`log_count_ok["Input point cloud has no data"]=0`、`log_count_ok["[ros2run]: Aborted"]=0`；负向日志各 0 次：`Saving map to pcd files completed`、`Processing frame`、`Save destination`、`Ground map is empty` 的 `log_count_ok[...]=0`；marker `old-behavior.marker` 创建成功。若 `smoke_dir_exists` 非 0，说明 Step 3 的旧二进制没有走到 `mkdir`，**停止执行**并记录，不要继续归档。
 
-- [ ] **Step 5: 归档旧导出目录，为 Task A 的“新二进制零写入”对照准备**
+- [ ] **Step 5: 归档空的旧导出目录，为 Task D 的“新二进制零写入”对照准备**
 
 Run:
 
 ```bash
+set +e
+test ! -e /home/robot/shutdown_auto_save_evidence/old-export
+echo "old_export_absent_before_archive=$?"
 mv /home/robot/shutdown_auto_save_smoke \
    /home/robot/shutdown_auto_save_evidence/old-export
+test -d /home/robot/shutdown_auto_save_evidence/old-export
+echo "old_export_is_dir=$?"
+test -z "$(ls -A /home/robot/shutdown_auto_save_evidence/old-export)"
+echo "old_export_empty=$?"
 test ! -e /home/robot/shutdown_auto_save_smoke
-test -f /home/robot/shutdown_auto_save_evidence/old-export/cloudGlobal.pcd
+echo "smoke_dir_absent_after_archive=$?"
 ```
 
-Expected: 退出码 0。旧输出以可恢复方式归档到 `old-export/`，阳性对照证据由
-`old-positive.log`、`old-positive.marker` 与该目录共同保存；smoke 目标目录回到不存在状态。
+Expected: `old_export_absent_before_archive=0`、`old_export_is_dir=0`、`old_export_empty=0`、`smoke_dir_absent_after_archive=0`。旧输出以可恢复方式归档到 `old-export/`，但它是**空目录**（旧版在写第一个 PCD 前就抛异常），**不是**包含 `cloudGlobal.pcd` 的 PCD 归档；证据由 `old-behavior.log`、`old-behavior.pid`、`old-behavior.marker` 与该空目录共同保存，smoke 目标目录回到不存在状态。全程只用 `mv` 与只读断言，**不得用 `rm -rf`**。
 
-- [ ] **Step 6: Phase 0 交接记录（本阶段唯一提交是 Task 0.2 的计划提交）**
+- [ ] **Step 6: Phase 0 交接记录（阶段提交：计划提交 + 强制计划修订提交）**
 
 Run:
 
 ```bash
 cd /home/robot/slam_ws/src/lio_sam_hesai
 git status --short
-git log -2 --oneline
+git log -3 --oneline
 ```
 
-Expected: `git status --short` 无输出（除 Task 0.2 的计划提交外，Phase 0 只写了 `/home/robot/...` 下的证据文件）；`git log -2 --oneline` 顶部两行是 `docs: plan shutdown auto-save removal`、`c9aa44a docs: design shutdown auto-save removal`。
+Expected: `git status --short` 无输出（Phase 0 只提交了本计划文件，其余只写 `/home/robot/...` 下的证据文件）；`git log -3 --oneline` 顶部三行依次是 `docs: revise shutdown auto-save removal plan`、`docs: plan shutdown auto-save removal`、`c9aa44a docs: design shutdown auto-save removal`。
 
 ---
 
@@ -938,8 +1014,8 @@ Expected: 注入副本的 `rg` 恰好输出 2 行，分别含 `reintroduced: map
 
 | 场景 | 二进制 | 参数 | 期望 |
 | --- | --- | --- | --- |
-| 旧阳性（Phase 0 已完成） | 旧 | `enabled: true` | 写 5 个历史 pcd |
-| 新阳性 | 新 | 基线 `mapping.yaml` | 退出码 0，零写入 |
+| 旧行为基线（Phase 0 已完成） | 旧 | `enabled: true` | 进入导出块、第一次空点云写入抛 `pcl::IOException`、非零退出、空目录 + 0 PCD |
+| 新行为正向 | 新 | 基线 `mapping.yaml`（改指向固定导出目录） | 节点信号前存活、退出码 0、目录始终不存在、零写入、无异常/`Aborted` |
 | 新 fail-closed | 新 | `legacy-enabled.yaml` | 启动即非零退出，日志含迁移提示，零写入 |
 | 服务接口 smoke | 新 | 基线 `mapping.yaml` | `/lio_sam/save_map` 已注册且类型为 `lio_sam_hesai/srv/SaveMap`（只验证注册/类型，不调用导出） |
 
@@ -959,12 +1035,16 @@ echo "cmp_exit=$?"
 
 Expected: 两个文件都存在且大小非 0；`cmp_exit` 非 0 且 `cmp` 打印首个差异字节位置（例如 `... differ: byte 12345, line 1`），证明新二进制确实是重编产物，而不是旧文件被复制了两次。
 
-- [ ] **Step 2: 新二进制正向 smoke（SIGINT 后零写入）**
+- [ ] **Step 2: 新二进制正向 smoke（与旧版同一 fixture/等待/信号 harness，SIGINT 后零写入）**
+
+本步与 Task 0.4 Step 3 使用同一套进程控制（`ros2 run` + `pgrep -P` + `sleep 12` + `kill -INT` + 40 秒有界轮询）与同一套日志/存活断言，只把旧参数 fixture 换成改动后的 `final-mapping.yaml`，并把“非零退出 + 空数据异常”反转为“退出码 0 + 无异常 + 零写入”。
 
 Run:
 
 ```bash
+set +e
 test ! -e /home/robot/shutdown_auto_save_smoke
+echo "smoke_dir_absent_before_run=$?"
 cp /home/robot/slam_ws/src/lio_sam_hesai/config/mapping.yaml \
    /home/robot/shutdown_auto_save_evidence/run/final-mapping.yaml
 sed -i 's#^      directory: .*#      directory: "/shutdown_auto_save_smoke/"#' \
@@ -981,9 +1061,15 @@ ros2 run lio_sam_hesai lio_sam_hesai_mapOptimization --ros-args \
 wrapper_pid=$!
 echo "$wrapper_pid" > /home/robot/shutdown_auto_save_evidence/run/new-positive.pid
 sleep 12
+test ! -e /home/robot/shutdown_auto_save_smoke
+echo "smoke_dir_absent_before_signal=$?"
 node_pid=$(pgrep -P "$wrapper_pid" -f lio_sam_hesai_mapOptimization | head -n 1)
 echo "node_pid=$node_pid"
 test -n "$node_pid"
+kill -0 "$node_pid" 2>/dev/null
+node_alive_before_signal=$?
+echo "node_alive_before_signal=$node_alive_before_signal"
+test "$node_alive_before_signal" -eq 0
 kill -INT "$node_pid"
 for _ in $(seq 1 40); do
   kill -0 "$wrapper_pid" 2>/dev/null || break
@@ -997,23 +1083,41 @@ else
   echo "wrapper_still_running=0"
 fi
 wait "$wrapper_pid"
-echo "new_exit=$?"
+new_exit=$?
+echo "new_exit=$new_exit"
+test "$new_exit" -eq 0
+echo "new_exit_zero=$?"
 test ! -e /home/robot/shutdown_auto_save_smoke
-echo "smoke_dir_absent=$?"
-grep -c "Saving map to pcd files" \
-  /home/robot/shutdown_auto_save_evidence/run/new-positive.log || true
+echo "smoke_dir_absent_after_exit=$?"
+
+new_log=/home/robot/shutdown_auto_save_evidence/run/new-positive.log
+expect_new_log_count() {
+  local needle="$1" expected="$2" count
+  count=$(grep -c -F -- "$needle" "$new_log")
+  echo "log_count[\"$needle\"]=$count"
+  test "$count" -eq "$expected"
+  echo "log_count_ok[\"$needle\"]=$?"
+}
+
+expect_new_log_count "Map Optimization Started." 1
+expect_new_log_count "signal_handler(SIGINT/SIGTERM)" 1
+expect_new_log_count "Saving map to pcd files" 0
+expect_new_log_count "pcl::IOException" 0
+expect_new_log_count "Input point cloud has no data" 0
+expect_new_log_count "[ros2run]: Aborted" 0
 touch /home/robot/shutdown_auto_save_evidence/run/new-positive.marker
 ```
 
-**为什么必须用 `final-mapping.yaml` 而不是仓库原始 `config/mapping.yaml`：** 原始 YAML 的导出目录是 `/home/robot/Downloads/LOAM_hesai/`，与被观察的 `/home/robot/shutdown_auto_save_smoke` 无关，那样 `smoke_dir_absent` 会恒为真——即使关闭保存代码仍在也会“通过”。`final-mapping.yaml` 是**改动后**的仓库契约加一个可观察导出目录，所以“目录始终不出现”才真正等价于“退出时零写入”。fixture 还必须确认已不含 `enabled:`（`fixture_has_no_enabled_key=1`），否则跑的就是 fail-closed 分支而不是正常退出分支。
+**为什么必须用 `final-mapping.yaml` 而不是仓库原始 `config/mapping.yaml`：** 原始 YAML 的导出目录是 `/home/robot/Downloads/LOAM_hesai/`，与被观察的 `/home/robot/shutdown_auto_save_smoke` 无关，那样 `smoke_dir_absent_*` 会恒为真——即使关闭保存代码仍在也会“通过”。`final-mapping.yaml` 是**改动后**的仓库契约加一个可观察导出目录，所以“目录始终不出现”才真正等价于“退出时零写入”。fixture 还必须确认已不含 `enabled:`（`fixture_has_no_enabled_key=1`），否则跑的就是 fail-closed 分支而不是正常退出分支。
 
-Expected: `grep` 输出一行 `      directory: "/shutdown_auto_save_smoke/"`；`rg -n 'enabled:'` 无输出且 `fixture_has_no_enabled_key=1`；`node_pid=` 非空；`wrapper_still_running=0`；`new_exit=0`；`smoke_dir_absent=0`（目录不存在，因为新代码不再 `mkdir`）；`grep -c` 输出 `0`（日志中没有 `Saving map to pcd files`）。
+Expected: `smoke_dir_absent_before_run=0`；`grep` 输出一行 `      directory: "/shutdown_auto_save_smoke/"`；`rg -n 'enabled:'` 无输出且 `fixture_has_no_enabled_key=1`；`smoke_dir_absent_before_signal=0`；`node_pid=` 非空；`node_alive_before_signal=0`（节点信号前存活）；`wrapper_still_running=0`；`new_exit=0` 且 `new_exit_zero=0`；`smoke_dir_absent_after_exit=0`（目录始终不存在，因为新代码不再 `mkdir`）；日志断言：`log_count_ok["Map Optimization Started."]=0`、`log_count_ok["signal_handler(SIGINT/SIGTERM)"]=0`，且 `Saving map to pcd files`、`pcl::IOException`、`Input point cloud has no data`、`[ros2run]: Aborted` 的 `log_count_ok[...]=0`（计数均为 0）。若 `node_alive_before_signal` 非 0 或 `new_exit` 非 0，**停止执行**并记录真实输出，不得把未达成的项写成通过。
 
 - [ ] **Step 3: 新二进制 fail-closed smoke（旧参数必须拒绝启动）**
 
 Run:
 
 ```bash
+set +e
 test ! -e /home/robot/shutdown_auto_save_smoke
 export HOME=/home/robot
 source /opt/ros/humble/setup.bash
@@ -1043,7 +1147,10 @@ else
   echo "still_running=0"
 fi
 wait "$wrapper_pid"
-echo "fail_closed_exit=$?"
+fail_closed_exit=$?
+echo "fail_closed_exit=$fail_closed_exit"
+test "$fail_closed_exit" -ne 0
+echo "fail_closed_exit_nonzero=$?"
 grep -n "was removed with Ctrl+C automatic map saving" \
   /home/robot/shutdown_auto_save_evidence/run/new-fail-closed.log
 grep -n "/lio_sam/save_map" \
@@ -1053,7 +1160,7 @@ echo "smoke_dir_absent=$?"
 touch /home/robot/shutdown_auto_save_evidence/run/new-fail-closed.marker
 ```
 
-Expected: `still_running=0`（8 秒内进程已自行退出，说明 fail-closed 真的在启动期生效）；`fail_closed_exit` 为非 0；两条 `grep -n` 都能命中 `map_save.enabled was removed with Ctrl+C automatic map saving; use /lio_sam/save_map instead`；`smoke_dir_absent=0`。若 `still_running=1`，说明 guard 没有在启动期触发，必须回到 Task B 定位。
+Expected: `still_running=0`（8 秒内进程已自行退出，说明 fail-closed 真的在启动期生效）；`fail_closed_exit` 为非 0 且 `fail_closed_exit_nonzero=0`；两条 `grep -n` 都能命中 `map_save.enabled was removed with Ctrl+C automatic map saving; use /lio_sam/save_map instead`；`smoke_dir_absent=0`。若 `still_running=1`，说明 guard 没有在启动期触发，必须回到 Task B 定位。
 
 失败形态说明：`ParamServer` 在成员初始化列表里调用 `LoadSlamConfig(*this, SlamMode::kMapping)` 且没有 try/catch（`include/lio_sam/utility.hpp:105-110`），所以异常会从节点构造函数抛出、无人捕获而 abort，libstdc++ 默认 terminate handler 会把 `what()` 打到 stderr，因此 `grep` 能命中迁移提示。典型观测是 `ros2 run` 打印 `[ros2run]: Aborted` 且 `fail_closed_exit=134`，但这只是观测值：**判据是“退出码非 0 + 迁移提示 + 零写入”，不得把 134 或任何具体非零码写成契约。**
 
@@ -1064,6 +1171,7 @@ Expected: `still_running=0`（8 秒内进程已自行退出，说明 fail-closed
 Run:
 
 ```bash
+set +e
 test ! -e /home/robot/shutdown_auto_save_smoke
 export HOME=/home/robot
 source /opt/ros/humble/setup.bash
@@ -1093,28 +1201,38 @@ else
   echo "wrapper_still_running=0"
 fi
 wait "$wrapper_pid"
-echo "service_exit=$?"
+service_exit=$?
+echo "service_exit=$service_exit"
+test "$service_exit" -eq 0
+echo "service_exit_zero=$?"
 touch /home/robot/shutdown_auto_save_evidence/run/service.marker
 ```
 
-Expected: `grep` 命中 `lio_sam/save_map`；`ros2 service type` 输出 `lio_sam_hesai/srv/SaveMap`；`wrapper_still_running=0`；`service_exit=0`。这就是“服务接口 smoke”的全部判据——注册与类型，不含导出。若 DDS/发现层在该机器上不可用，记录 `ros2 service list` 的真实输出与具体原因，**不得**把未跑成写成通过。
+Expected: `grep` 命中 `lio_sam/save_map`；`ros2 service type` 输出 `lio_sam_hesai/srv/SaveMap`；`wrapper_still_running=0`；`service_exit=0` 且 `service_exit_zero=0`。这就是“服务接口 smoke”的全部判据——注册与类型，不含导出。若 DDS/发现层在该机器上不可用，记录 `ros2 service list` 的真实输出与具体原因，**不得**把未跑成写成通过。
 
-- [ ] **Step 5: 确认 smoke 目录未被重建并汇总证据**
+- [ ] **Step 5: 确认 smoke 目录未被重建，并验证 old-export 是空目录（不是 `cloudGlobal.pcd`）**
 
 Run:
 
 ```bash
+set +e
 test ! -e /home/robot/shutdown_auto_save_smoke
 echo "smoke_dir_absent=$?"
-test -f /home/robot/shutdown_auto_save_evidence/old-export/cloudGlobal.pcd
+test -d /home/robot/shutdown_auto_save_evidence/old-export
+echo "old_export_is_dir=$?"
+test -z "$(ls -A /home/robot/shutdown_auto_save_evidence/old-export)"
+echo "old_export_empty=$?"
+test ! -e /home/robot/shutdown_auto_save_evidence/old-export/cloudGlobal.pcd
+echo "old_export_has_no_cloudGlobal_pcd=$?"
 ls -l /home/robot/shutdown_auto_save_evidence/run/
 ```
 
-Expected: `smoke_dir_absent=0`；旧输出归档仍含 `cloudGlobal.pcd`；`run/` 下能看到
-`old-positive.log/marker`、`new-positive.log/marker`、`new-fail-closed.log/marker`、
-`service.log/marker`、对应的 `*.pid`、`baseline-ctest.txt`、`baseline-tokens.txt`、
-`guard-literals.txt`、`mapping.yaml.bak`、`mapping.yaml.injected`，以及两个参数 fixture
-`legacy-enabled.yaml` 与 `final-mapping.yaml`（`final-ctest.txt` 在 Task E 才产生）。
+Expected: `smoke_dir_absent=0`；`old_export_is_dir=0`、`old_export_empty=0`、`old_export_has_no_cloudGlobal_pcd=0`——旧行为归档是**空目录**，旧版在第一次空点云写入就抛异常，从未落盘任何 PCD，因此这里**不得**出现 `cloudGlobal.pcd` 或任何其他 `.pcd`；`run/` 下能看到
+`old-behavior.log/marker/pid`（旧版关闭路径基线）、`new-positive.log/marker/pid`、
+`new-fail-closed.log/marker/pid`、`service.log/marker/pid`、`baseline-ctest.txt`、
+`baseline-tokens.txt`、`guard-literals.txt`、`mapping.yaml.bak`、`mapping.yaml.injected`，
+以及两个参数 fixture `legacy-enabled.yaml` 与 `final-mapping.yaml`（`final-ctest.txt` 在 Task E 才产生）。
+此外，本次修订前那次实跑遗留的 `old-positive.log` 与 `old-positive.pid` **原样保留**，仅作历史观测、不作为任何判据。
 本任务不读取、删除或断言 `/home/robot/Downloads/LOAM_hesai` 等真实导出目录的状态。
 
 ### Task E: 最终门禁与 PROJECT_STATUS 更新
@@ -1197,13 +1315,13 @@ Expected: `100% tests passed, 0 tests failed out of 44`，与 Phase 0 基线计�
 
 - [ ] **Step 6: 追加第 10 节验收记录（模板中所有数字都是确定性契约值）**
 
-在文件末尾追加下面的内容。模板里的数字全部是本计划固定的契约值：约定门禁 44/44、旧行为 wrapper 判据通过、新行为退出码 0 且 banner 计数 0、fail-closed 非零退出。**模板不含任何待填占位符**；若 Task E Step 1 或 Task D 的实际输出与这些数字不符，先停止并按第 0 节第 2 条修订本计划，不得直接写入不同数字。
+在文件末尾追加下面的内容。模板里的数字全部是本计划固定的契约值：约定门禁 44/44、旧行为进入导出块且在空数据异常下**非零退出**（具体码不写死）、新行为节点信号前存活且退出码 0、目录始终不存在且 banner 计数 0、fail-closed 非零退出。**模板不含任何待填占位符**；若 Task E Step 1 或 Task D 的实际输出与这些数字不符，先停止并按第 0 节第 2 条修订本计划，不得直接写入不同数字。
 
 ```markdown
 
 ## 十、退出自动保存删除（2026-09-15）
 
-按 [计划](superpowers/plans/2026-09-15-remove-shutdown-auto-save.md) 执行，代码基线 `c9aa44a`（计划提交 `docs: plan shutdown auto-save removal` 只新增本计划文件，不含实现改动）。目标：Ctrl+C 不再写任何地图文件、不改动导出目录，`/lio_sam/save_map` 成为唯一导出入口，删除的参数在启动期 fail-closed 拒绝。
+按 [计划](superpowers/plans/2026-09-15-remove-shutdown-auto-save.md) 执行，代码基线 `c9aa44a`（计划提交 `docs: plan shutdown auto-save removal` 与计划修订提交 `docs: revise shutdown auto-save removal plan` 都只改本计划文件，不含实现改动）。目标：Ctrl+C 不再写任何地图文件、不改动导出目录，`/lio_sam/save_map` 成为唯一导出入口，删除的参数在启动期 fail-closed 拒绝。
 
 ### 10.1 改动
 
@@ -1218,8 +1336,8 @@ Expected: `100% tests passed, 0 tests failed out of 44`，与 Phase 0 基线计�
 
 - 基线构建：`cmake --build /home/robot/slam_ws/build/lio_sam_hesai -- -j1`，退出码 0。
 - 约定 CTest 门禁（排除 `copyright`/`cpplint`/`flake8`/`lint_cmake`/`uncrustify`/`xmllint`）：基线 44/44 通过，改动后 44/44 通过；完整输出见 `run/baseline-ctest.txt` 与 `run/final-ctest.txt`。
-- 旧二进制阳性对照：`/home/robot/shutdown_auto_save_evidence/old/` 的 `c9aa44a` 二进制配 `enabled: true`，SIGINT 后写入 `trajectory.pcd`、`transformations.pcd`、`cloudCorner.pcd`、`cloudSurf.pcd`、`cloudGlobal.pcd`，wrapper 判据通过（`wrapper_still_running=0`），退出码 0。
-- 新二进制正向 smoke：同一固定导出目录在 SIGINT 后仍不存在，退出码 0，日志中 `Saving map to pcd files` 出现 0 次。
+- 旧行为关闭路径基线：`/home/robot/shutdown_auto_save_evidence/old/` 的 `c9aa44a` 二进制配 `enabled: true`，在与新版完全相同的 fixture/等待/SIGINT harness 下：节点在信号前存活（`node_alive_before_signal=0`），日志含恰一次 `Map Optimization Started.` 与 `signal_handler(SIGINT/SIGTERM)`、恰一次 `Saving map to pcd files ...`，随后第一次空点云写入抛 `pcl::IOException`（`Input point cloud has no data`）并打印 `[ros2run]: Aborted`，wrapper **非零退出**（`old_exit` 本次观测值为 `250`，不作为契约；`wrapper_still_running=0`）；`/home/robot/shutdown_auto_save_smoke` 被 `mkdir` 创建但为空，`trajectory`/`transformations`/`cloudCorner`/`cloudSurf`/`cloudGlobal`/`cloudGround` 六个 PCD 全部不存在，日志无 `Saving map to pcd files completed`；该空目录归档为 `old-export/`（`old_export_is_dir=0`、`old_export_empty=0`，**不是** `cloudGlobal.pcd`）。
+- 新二进制正向 smoke：与旧版相同的 fixture/等待/SIGINT harness（`final-mapping.yaml`），`smoke_dir_absent_before_signal=0`、`node_alive_before_signal=0`、`wrapper_still_running=0`，日志含恰一次 `Map Optimization Started.` 与 `signal_handler(SIGINT/SIGTERM)`，`new_exit=0`（`new_exit_zero=0`），导出目录在信号前与退出后始终不存在（`smoke_dir_absent_after_exit=0`），`Saving map to pcd files`、`pcl::IOException`、`Input point cloud has no data`、`[ros2run]: Aborted` 计数均为 0。
 - 新二进制 fail-closed smoke：`enabled: true` 参数文件启动即退出，退出码非 0，日志含 `was removed with Ctrl+C automatic map saving; use /lio_sam/save_map instead`，导出目录不存在；具体非零码不作为契约。
 - `/lio_sam/save_map` 服务接口 smoke：`ros2 service list` 含 `lio_sam/save_map`，`ros2 service type` 为 `lio_sam_hesai/srv/SaveMap`；只验证注册与类型，未调用导出。
 - 静态 allowlist 扫描（Task C 的一次性 `rg`，非脚本）：生产路径 `include/ src/ config/ launch/` 的历史 token 零匹配，guard 文件 `map_save.enabled` 与 `savePCD` 各恰好 1 次；注入自检先命中、恢复后无匹配，`git status --short` 干净。
@@ -1247,6 +1365,8 @@ echo "--- 保留项仍在 ---"
 rg -n 'P2\.3 地图产物版本化与兼容校验（暂缓）|TightCouplingKF` 产品决策|历史 lint 基线治理' docs/PROJECT_STATUS.md
 echo "--- 第 10 节存在且为确定性数字 ---"
 rg -n '^## 十、退出自动保存删除|基线 44/44 通过|改动后 44/44 通过' docs/PROJECT_STATUS.md
+echo "--- 第 10 节如实记录旧行为基线与空目录归档 ---"
+rg -n '旧行为关闭路径基线|pcl::IOException|非零退出|old-export' docs/PROJECT_STATUS.md
 echo "--- 服务接口 smoke 与未跑项如实记录 ---"
 rg -n '服务接口 smoke|未做真实 bag 导出' docs/PROJECT_STATUS.md
 echo "--- 计划链接有效且计划文件受跟踪 ---"
@@ -1255,7 +1375,7 @@ git ls-files --error-unmatch docs/superpowers/plans/2026-09-15-remove-shutdown-a
 echo "plan_tracked_exit=$?"
 ```
 
-Expected: 第一段列出 `1.`、`2.`、`3.` 三条连续编号（P2.3、`TightCouplingKF`、lint 基线）；`leftover_open_item_exit=1`（该待办项已删除）；保留项三条各命中一次；`## 十、退出自动保存删除（2026-09-15）`、`基线 44/44 通过`、`改动后 44/44 通过` 各命中；`服务接口 smoke` 与 `未做真实 bag 导出` 各命中；计划链接命中一次且 `plan_tracked_exit=0`。
+Expected: 第一段列出 `1.`、`2.`、`3.` 三条连续编号（P2.3、`TightCouplingKF`、lint 基线）；`leftover_open_item_exit=1`（该待办项已删除）；保留项三条各命中一次；`## 十、退出自动保存删除（2026-09-15）`、`基线 44/44 通过`、`改动后 44/44 通过` 各命中；`旧行为关闭路径基线`、`pcl::IOException`、`非零退出`、`old-export` 各至少命中一次；`服务接口 smoke` 与 `未做真实 bag 导出` 各命中；计划链接命中一次且 `plan_tracked_exit=0`。
 
 - [ ] **Step 8: 暂存并提交文档**
 
@@ -1281,21 +1401,22 @@ Run:
 ```bash
 cd /home/robot/slam_ws/src/lio_sam_hesai
 git status --short
-git log -5 --oneline
+git log -6 --oneline
 git diff --check
 ```
 
-Expected: `git status --short` 无输出；`git log -5 --oneline` 由上到下恰好是
+Expected: `git status --short` 无输出；`git log -6 --oneline` 由上到下恰好是
 
 ```text
 docs: record shutdown auto-save removal
 fix(config): reject removed shutdown auto-save parameters
 refactor(mapping): delete shutdown auto-save runtime path
+docs: revise shutdown auto-save removal plan
 docs: plan shutdown auto-save removal
 c9aa44a docs: design shutdown auto-save removal
 ```
 
-即本轮共 4 个新提交（计划提交、Task A、Task B、Task E 文档）；`git diff --check` 退出码 0。若中途按第 0 节第 2 条提交过 `docs: revise shutdown auto-save removal plan`，它会位于计划提交与 Task A 之间，属预期修订，此时提交总数为 5。
+即本轮相对 `c9aa44a` 共 **5 个新提交**（计划提交、强制计划修订提交、Task A、Task B、Task E 文档）；`git diff --check` 退出码 0。修订提交是第 0 节第 2 条的强制流程产物，位于计划提交与 Task A 之间，不允许 `--amend`、也不允许再出现第二次修订提交。
 
 - [ ] **Step 2: 复查只动了允许的文件**
 
@@ -1321,7 +1442,7 @@ test/test_slam_config.cpp
 test/test_unified_parameter_schema.cpp
 ```
 
-本计划文件出现在这里是因为 Task 0.2 已把它提交为受跟踪工件，`c9aa44a..HEAD` 天然包含它；若改用计划提交之后的范围比较，则恰好是上面除计划文件外的 9 行。`scripts/` 下不得出现任何路径（本轮不新增脚本），出现第 11 个路径即越界修改，必须回退该文件后再提交。
+本计划文件出现在这里是因为 Task 0.2 已把它提交为受跟踪工件（后续的计划修订提交也只改它），`c9aa44a..HEAD` 天然包含它；若改用计划提交之后的范围比较，则恰好是上面除计划文件外的 9 行。`scripts/` 下不得出现任何路径（本轮不新增脚本），出现第 11 个路径即越界修改，必须回退该文件后再提交。
 
 - [ ] **Step 3: 最终扫描与测试收口**
 
@@ -1348,14 +1469,15 @@ Expected: `final_scan_exit=1`（生产路径零匹配）；`uniq -c` 恰好两�
 | 顺序 | 任务 | 提交信息 | 依赖 |
 | --- | --- | --- | --- |
 | 1 | Task 0.2（Phase 0 内） | `docs: plan shutdown auto-save removal` | 基线 `c9aa44a` |
-| 2 | Phase 0 其余步骤 | 无提交 | Task 0.2（计划已受跟踪，后续 diff 才包含它） |
-| 3 | Task A | `refactor(mapping): delete shutdown auto-save runtime path` | Phase 0 |
-| 4 | Task B | `fix(config): reject removed shutdown auto-save parameters` | Task A（`Saved*` 与运行期路径已删，配置删除才自洽） |
-| 5 | Task C | 无提交 | Task B（一次性扫描要求生产路径零匹配） |
-| 6 | Task D | 无提交 | Task B + Task C（需要新二进制与 guard 已生效） |
-| 7 | Task E | `docs: record shutdown auto-save removal` | Task D（证据来自 D 与 Phase 0） |
-| 8 | Task F | 无提交 | Task E |
+| 2 | Phase 0 强制计划修订（已发生；只改本计划文件，禁止 `--amend`、禁止重做） | `docs: revise shutdown auto-save removal plan` | Task 0.4 实测与计划原契约不符（第 0 节第 2 条） |
+| 3 | Phase 0 其余步骤（Task 0.4 Step 0 起的恢复与基线取证） | 无提交 | Task 0.2 + 修订提交（计划已受跟踪，后续 diff 才包含它） |
+| 4 | Task A | `refactor(mapping): delete shutdown auto-save runtime path` | Phase 0 |
+| 5 | Task B | `fix(config): reject removed shutdown auto-save parameters` | Task A（`Saved*` 与运行期路径已删，配置删除才自洽） |
+| 6 | Task C | 无提交 | Task B（一次性扫描要求生产路径零匹配） |
+| 7 | Task D | 无提交 | Task B + Task C（需要新二进制与 guard 已生效） |
+| 8 | Task E | `docs: record shutdown auto-save removal` | Task D（证据来自 D 与 Phase 0） |
+| 9 | Task F | 无提交 | Task E |
 
-**本轮共 4 个提交**：Task 0.2 的计划提交、Task A、Task B、Task E 的文档提交；Task C/D/F 只读或只写证据目录，不产生提交。`docs/superpowers/plans/` 下只有 Task 0.2 一次强制暂存（`git add -f`），不会再有第二次。
+**本轮相对 `c9aa44a` 共 5 个提交**：Task 0.2 的计划提交、强制的计划修订提交、Task A、Task B、Task E 的文档提交；Task C/D/F 只读或只写证据目录，不产生提交。`docs/superpowers/plans/` 下恰好两次强制暂存（`git add -f`）：Task 0.2 的计划提交与本次修订提交；修订提交已在历史中，执行者不得再加第三次。
 
 **Task A 与 Task B 的顺序不可交换：** Task B 删除 `MapSaveConfig::enabled` 之前，Task A 必须先删掉它的唯一运行期读者；否则 Task A 单独编译时 `save_map_enabled_` 仍在读一个已删字段。反向顺序（先删配置再删运行期）会让 Task A 无法独立编译，正是本计划要避免的。
