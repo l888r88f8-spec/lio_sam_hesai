@@ -4,6 +4,7 @@
 #include <Eigen/Geometry>
 
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 #include "common/rigid_transform.h"
@@ -30,15 +31,15 @@ inline LidarImuCalibration ParseLidarImuCalibration(
 {
   if (translation.size() != 3) {
     throw std::invalid_argument(
-        "Lidar-to-IMU translation must contain exactly 3 values");
+        "calibration.translation must contain exactly 3 values");
   }
   if (rotation.size() != 9) {
     throw std::invalid_argument(
-        "Lidar-to-IMU rotation must contain exactly 9 values");
+        "calibration.rotation must contain exactly 9 values");
   }
   if (rpy.size() != 9) {
     throw std::invalid_argument(
-        "Lidar-to-IMU RPY rotation must contain exactly 9 values");
+        "calibration.rpy must contain exactly 9 values");
   }
 
   using RowMajorMatrix3d =
@@ -47,6 +48,20 @@ inline LidarImuCalibration ParseLidarImuCalibration(
       translation.data());
   const Eigen::Map<const RowMajorMatrix3d> rotation_matrix(rotation.data());
   const Eigen::Map<const RowMajorMatrix3d> rpy_matrix(rpy.data());
+
+  if (!translation_vector.allFinite()) {
+    throw std::invalid_argument("calibration.translation must be finite");
+  }
+  const auto validate_rotation = [](const Eigen::Matrix3d& matrix,
+                                    const char* key) {
+    if (!matrix.allFinite() ||
+        !(matrix.transpose() * matrix).isApprox(Eigen::Matrix3d::Identity()) ||
+        std::abs(matrix.determinant() - 1.0) > 1e-6) {
+      throw std::invalid_argument(std::string(key) + " must be a finite SO(3) rotation with determinant +1");
+    }
+  };
+  validate_rotation(rotation_matrix, "calibration.rotation");
+  validate_rotation(rpy_matrix, "calibration.rpy");
 
   // The configured rotation places the lidar in the IMU frame, so the
   // validated canonical transform is imu_T_lidar and its inverse follows.

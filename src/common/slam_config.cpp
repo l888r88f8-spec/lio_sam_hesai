@@ -1,7 +1,9 @@
 #include "common/slam_config.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -59,11 +61,126 @@ void RequireNonNegative(int value, const std::string& name) {
   }
 }
 
+// These values feed covariance and inverse covariance, so finite input alone
+// is insufficient: squaring a very small/large standard deviation can fail.
+void RequireNoise(double value, const std::string& name) {
+  RequirePositive(value, name);
+  const double variance = value * value;
+  if (!std::isfinite(variance) || variance <= 0.0 ||
+      !std::isfinite(1.0 / variance)) {
+    Reject(name, "must have a finite positive variance and inverse variance");
+  }
+}
+
+void RequireVoxelLeaf(double value, const std::string& name) {
+  RequirePositive(value, name);
+  // PCL consumes float leaves and computes their reciprocals.
+  const float leaf = static_cast<float>(value);
+  if (!std::isfinite(leaf) || leaf <= 0.0F || !std::isfinite(1.0F / leaf)) {
+    Reject(name, "must be a finite positive PCL leaf size");
+  }
+}
+
+void ValidateRange(double minimum, double maximum) {
+  RequireNonNegative(minimum, "lidar.min_range");
+  RequirePositive(maximum, "lidar.max_range");
+  if (maximum <= minimum) Reject("lidar.max_range", "must exceed lidar.min_range");
+}
+
+void ValidateLocalizationRuntime(const LocalizationConfig& config) {
+  const auto& lidar = config.lidar;
+  const auto& imu = config.imu;
+  const auto& frontend = config.frontend;
+  const auto& registration = frontend.registration;
+  const auto& backend = frontend.registration_and_searcher_mode;
+  const bool icp = backend == "IcpOptimized";
+  const bool ndt = backend == "IncrementalNDT";
+  const bool ivox = backend == "PointToPlane_IVOX";
+  const bool kdtree = backend == "PointToPlane_KdTree";
+  if (!icp && !ndt && !ivox && !kdtree) {
+    Reject("frontend.registration_and_searcher_mode",
+           "must be IcpOptimized, IncrementalNDT, PointToPlane_IVOX, or PointToPlane_KdTree");
+  }
+  const std::vector<std::string> models = {"LeiShen_16", "RoboSense_16",
+      "Velodyne_16", "Velodyne_32", "Velodyne_64", "Ouster_128_os1",
+      "Livox_Mid_360", "Livox_Avia", "Hesai", "None"};
+  if (std::find(models.begin(), models.end(), lidar.sensor_type) == models.end()) {
+    Reject("lidar.sensor_type", "is not a supported localization lidar model");
+  }
+  ValidateRange(lidar.min_range, lidar.max_range);
+  RequirePositive(lidar.point_time_scale, "lidar.point_time_scale");
+  // All supported matchers consume planar/ordered clouds, not projected LOAM
+  // corner features. Do not require unused corner/angle/LOAM tuning values.
+  RequireVoxelLeaf(frontend.feature.planar_voxel_filter_size,
+                   "frontend.feature.planar_voxel_filter_size");
+  RequirePositive(registration.optimization_iter_num,
+                  "frontend.registration.optimization_iter_num");
+  RequirePositive(registration.position_converge_thres,
+                  "frontend.registration.position_converge_thres");
+  RequirePositive(registration.rotation_converge_thres,
+                  "frontend.registration.rotation_converge_thres");
+  if (ivox || kdtree) {
+    RequirePositive(registration.point_to_planar_thres,
+                    "frontend.registration.point_to_planar_thres");
+  }
+  if (icp || kdtree) {
+    RequireVoxelLeaf(registration.local_map_cloud_filter_size,
+                     "frontend.registration.local_map_cloud_filter_size");
+    // local_map_size and keyframe thresholds are constructor arguments but
+    // only used in mapping branches; CreateMatcher always passes localization=true.
+  }
+  if (icp || ndt) {
+    RequireVoxelLeaf(registration.source_cloud_filter_size,
+                     "frontend.registration.source_cloud_filter_size");
+  }
+  if (icp) RequirePositive(registration.point_search_thres,
+                           "frontend.registration.point_search_thres");
+  if (ndt) {
+    RequirePositive(registration.ndt_voxel_size, "frontend.registration.ndt_voxel_size");
+    RequireFinite(1.0 / registration.ndt_voxel_size, "frontend.registration.ndt_voxel_size");
+    RequirePositive(registration.ndt_outlier_threshold, "frontend.registration.ndt_outlier_threshold");
+    RequirePositive(registration.ndt_min_points_in_voxel, "frontend.registration.ndt_min_points_in_voxel");
+    RequirePositive(registration.ndt_max_points_in_voxel, "frontend.registration.ndt_max_points_in_voxel");
+    RequirePositive(registration.ndt_min_effective_pts, "frontend.registration.ndt_min_effective_pts");
+    RequirePositive(registration.ndt_capacity, "frontend.registration.ndt_capacity");
+    if (registration.ndt_max_points_in_voxel <= registration.ndt_min_points_in_voxel) {
+      Reject("frontend.registration.ndt_max_points_in_voxel",
+             "must exceed frontend.registration.ndt_min_points_in_voxel");
+    }
+  }
+  if (frontend.fusion_method != "LooseCoupling" &&
+      frontend.fusion_method != "TightCouplingKF" &&
+      frontend.fusion_method != "TightCouplingOptimization") {
+    Reject("frontend.fusion_method", "must be LooseCoupling, TightCouplingKF, or TightCouplingOptimization");
+  }
+  if (frontend.fusion_method == "TightCouplingOptimization") {
+    RequirePositive(frontend.fusion_opti_iters, "frontend.fusion_opti_iters");
+  }
+  if (imu.data_searcher_buffer_size < 2) {
+    Reject("imu.data_searcher_buffer_size", "must retain at least two IMU samples");
+  }
+  RequireFinite(imu.init_acc_bias, "imu.init_acc_bias");
+  RequireFinite(imu.init_gyro_bias, "imu.init_gyro_bias");
+  RequireNoise(imu.acc_noise_std, "imu.acc_noise_std");
+  RequireNoise(imu.gyro_noise_std, "imu.gyro_noise_std");
+  RequireNoise(imu.acc_bias_rw_noise_std, "imu.acc_bias_rw_noise_std");
+  RequireNoise(imu.gyro_bias_rw_noise_std, "imu.gyro_bias_rw_noise_std");
+  RequireNoise(lidar.rotation_noise_std, "lidar.rotation_noise_std");
+  RequireNoise(lidar.position_noise_std, "lidar.position_noise_std");
+}
+
 template <typename T>
 T ReadParam(rclcpp::Node& node, const std::string& canonical,
             const std::optional<std::string>& legacy, const T& default_value,
             LegacyWarningSet& warnings) {
   return DeclareRead<T>(node, canonical, legacy, default_value, warnings);
+}
+
+template <typename T>
+T ReadParam(rclcpp::Node& node, const std::string& canonical,
+            const std::vector<std::string>& aliases, const T& default_value,
+            LegacyWarningSet& warnings) {
+  return DeclareRead<T>(node, canonical, aliases, default_value, warnings);
 }
 
 // Reads a canonical key whose legacy counterpart is a derived value rather
@@ -197,9 +314,9 @@ void LoadCommonTopics(rclcpp::Node& node, SlamMode mode, SlamConfig& config,
 
   const std::string default_odometry =
       mapping ? "odometry/imu" : "lio_sam/localization/odometry";
-  const std::optional<std::string> odometry_legacy =
-      mapping ? std::optional<std::string>("sensor_topic.odom_topic")
-              : std::optional<std::string>("output_topic.mapping_odom_topic");
+  const std::vector<std::string> odometry_legacy =
+      mapping ? std::vector<std::string>{"odomTopic", "sensor_topic.odom_topic"}
+              : std::vector<std::string>{"output_topic.mapping_odom_topic"};
   outputs.odometry = ReadParam<std::string>(
       node, "output_topic.odometry", odometry_legacy, default_odometry,
       warnings);
@@ -207,18 +324,21 @@ void LoadCommonTopics(rclcpp::Node& node, SlamMode mode, SlamConfig& config,
   const std::string default_incremental =
       mapping ? "odometry/imu_incremental" : std::string();
   std::optional<std::string> legacy_incremental;
+  std::optional<std::string> incremental_legacy_key;
   if (mapping) {
-    const std::optional<std::string> legacy_prefix =
-        ReadOverride<std::string>(node, "sensor_topic.odom_topic",
-                                  std::string());
-    if (legacy_prefix.has_value()) {
-      legacy_incremental = legacy_prefix.value() + "_incremental";
+    // The peer aliases were checked together above. Derive the suffix from
+    // either explicitly configured legacy prefix, never from declared defaults.
+    for (const auto& alias : odometry_legacy) {
+      const auto legacy_prefix = ReadOverride<std::string>(node, alias, std::string());
+      if (legacy_prefix) {
+        legacy_incremental = *legacy_prefix + "_incremental";
+        incremental_legacy_key = alias;
+      }
     }
   }
   pipeline.imu_odometry_incremental = ReadDerivedLegacy(
       node, "pipeline_topic.imu_odometry_incremental",
-      mapping ? std::optional<std::string>("sensor_topic.odom_topic")
-              : std::nullopt,
+      incremental_legacy_key,
       legacy_incremental, default_incremental, warnings);
 
   const std::string empty;
@@ -271,7 +391,7 @@ void LoadCommonTopics(rclcpp::Node& node, SlamMode mode, SlamConfig& config,
       warnings);
   outputs.non_ground_cloud = ReadParam<std::string>(
       node, "output_topic.non_ground_cloud_topic",
-      std::string("sensor_topic.non_ground_cloud_topic"),
+      std::vector<std::string>{"nonGroundCloudTopic", "sensor_topic.non_ground_cloud_topic"},
       mapping ? std::string("lio_sam/deskew/cloud_nonground") : empty,
       warnings);
   outputs.diagnostics = ReadParam<std::string>(
@@ -626,8 +746,27 @@ void LoadMappingConfig(rclcpp::Node& node, SlamConfig& config,
   RequirePositive(lidar.scan_lines, "lidar.scan_lines");
   RequirePositive(lidar.horizon_scan, "lidar.horizon_scan");
   RequirePositive(lidar.downsample_rate, "lidar.downsample_rate");
+  if (lidar.sensor_type != "velodyne" && lidar.sensor_type != "ouster" &&
+      lidar.sensor_type != "livox" && lidar.sensor_type != "HESAI" &&
+      lidar.sensor_type != "Hesai" && lidar.sensor_type != "LSLIDAR") {
+    Reject("lidar.sensor_type", "is not a supported mapping lidar model");
+  }
+  ValidateRange(lidar.min_range, lidar.max_range);
+  RequireNoise(imu.acc_noise_std, "imu.acc_noise_std");
+  RequireNoise(imu.gyro_noise_std, "imu.gyro_noise_std");
+  RequireNoise(imu.acc_bias_rw_noise_std, "imu.acc_bias_rw_noise_std");
+  RequireNoise(imu.gyro_bias_rw_noise_std, "imu.gyro_bias_rw_noise_std");
+  RequireVoxelLeaf(voxel.odometry_surface_leaf_size, "voxel_filter.odometry_surface_leaf_size");
+  RequireVoxelLeaf(voxel.mapping_corner_leaf_size, "voxel_filter.mapping_corner_leaf_size");
+  RequireVoxelLeaf(voxel.mapping_surface_leaf_size, "voxel_filter.mapping_surface_leaf_size");
+  RequireVoxelLeaf(local_map.keyframe_density, "local_map.keyframe_density");
+  RequirePositive(local_map.search_radius, "local_map.search_radius");
   RequirePositive(system.number_of_cores, "system.number_of_cores");
-  RequirePositive(system.mapping_process_interval,
+  
+  RequirePositive(map_save.tiled_map.tile_size_m,
+
+                  "map_save.tiled_map.tile_size_m");
+RequirePositive(system.mapping_process_interval,
                   "system.mapping_process_interval");
   RequirePositive(imu.gravity, "imu.gravity");
   RequireNonNegative(map_save.tiled_map.tile_size_m,
@@ -783,29 +922,29 @@ void LoadLocalizationConfig(rclcpp::Node& node, SlamConfig& config,
 
   LocalizationLidarConfig& lidar = localization.lidar;
   lidar.sensor_type = ReadParam<std::string>(
-      node, "lidar.sensor_type", std::string("lidar.lidar_sensor_type"),
+      node, "lidar.sensor_type", std::vector<std::string>{"sensor", "lidar.lidar_sensor_type"},
       lidar.sensor_type, warnings);
   lidar.point_jump_span = ReadParam<int>(
       node, "lidar.point_jump_span", std::string("lidar.lidar_point_jump_span"),
       lidar.point_jump_span, warnings);
   lidar.scan_lines = ReadParam<int>(node, "lidar.scan_lines",
-                                    std::string("lidar.lidar_scan"),
+                                    std::vector<std::string>{"N_SCAN", "lidar.lidar_scan"},
                                     lidar.scan_lines, warnings);
   lidar.lower_angle_deg = ReadParam<double>(
       node, "lidar.lower_angle_deg", std::string("lidar.lidar_lower_angle"),
       lidar.lower_angle_deg, warnings);
   lidar.horizon_scan = ReadParam<int>(
-      node, "lidar.horizon_scan", std::string("lidar.lidar_horizon_scan"),
+      node, "lidar.horizon_scan", std::vector<std::string>{"Horizon_SCAN", "lidar.lidar_horizon_scan"},
       lidar.horizon_scan, warnings);
   lidar.vertical_resolution_deg = ReadParam<double>(
       node, "lidar.vertical_resolution_deg",
       std::string("lidar.lidar_vertical_resolution"),
       lidar.vertical_resolution_deg, warnings);
   lidar.min_range = ReadParam<double>(
-      node, "lidar.min_range", std::string("lidar.lidar_use_min_distance"),
+      node, "lidar.min_range", std::vector<std::string>{"lidarMinRange", "lidar.lidar_use_min_distance"},
       lidar.min_range, warnings);
   lidar.max_range = ReadParam<double>(
-      node, "lidar.max_range", std::string("lidar.lidar_use_max_distance"),
+      node, "lidar.max_range", std::vector<std::string>{"lidarMaxRange", "lidar.lidar_use_max_distance"},
       lidar.max_range, warnings);
   lidar.point_time_scale = ReadParam<double>(
       node, "lidar.point_time_scale", std::string("lidar.lidar_point_time_scale"),
@@ -828,20 +967,20 @@ void LoadLocalizationConfig(rclcpp::Node& node, SlamConfig& config,
   imu.init_gyro_bias = ReadParam<double>(
       node, "imu.init_gyro_bias", std::nullopt, imu.init_gyro_bias, warnings);
   imu.acc_noise_std = ReadParam<double>(node, "imu.acc_noise_std",
-                                        std::nullopt, imu.acc_noise_std,
+                                        std::string("imuAccNoise"), imu.acc_noise_std,
                                         warnings);
-  imu.gyro_noise_std = ReadParam<double>(node, "imu.gyro_noise_std", std::nullopt,
+  imu.gyro_noise_std = ReadParam<double>(node, "imu.gyro_noise_std", std::string("imuGyrNoise"),
                                          imu.gyro_noise_std, warnings);
   imu.acc_bias_rw_noise_std = ReadParam<double>(
-      node, "imu.acc_bias_rw_noise_std", std::string("imu.acc_rw_noise_std"),
+      node, "imu.acc_bias_rw_noise_std", std::vector<std::string>{"imuAccBiasN", "imu.acc_rw_noise_std"},
       imu.acc_bias_rw_noise_std, warnings);
   imu.gyro_bias_rw_noise_std = ReadParam<double>(
-      node, "imu.gyro_bias_rw_noise_std", std::string("imu.gyro_rw_noise_std"),
+      node, "imu.gyro_bias_rw_noise_std", std::vector<std::string>{"imuGyrBiasN", "imu.gyro_rw_noise_std"},
       imu.gyro_bias_rw_noise_std, warnings);
   imu.data_searcher_buffer_size = ReadParam<int>(
       node, "imu.data_searcher_buffer_size", std::nullopt,
       imu.data_searcher_buffer_size, warnings);
-  imu.gravity = ReadParam<double>(node, "imu.gravity", std::string("gravity"),
+  imu.gravity = ReadParam<double>(node, "imu.gravity", std::vector<std::string>{"imuGravity", "gravity"},
                                   imu.gravity, warnings);
 
   LocalizationFrontendConfig& frontend = localization.frontend;
@@ -946,7 +1085,7 @@ void LoadLocalizationConfig(rclcpp::Node& node, SlamConfig& config,
 
   LocalizationLoopClosureConfig& loop = localization.loop_closure;
   loop.enable = ReadParam<bool>(node, "loop_closure.enable",
-                                std::string("system.enable_loopclosure"),
+                                std::vector<std::string>{"loopClosureEnableFlag", "system.enable_loopclosure"},
                                 loop.enable, warnings);
   loop.registration_converge_threshold = ReadParam<double>(
       node, "loop_closure.registration_converge_threshold",
@@ -980,6 +1119,7 @@ void LoadLocalizationConfig(rclcpp::Node& node, SlamConfig& config,
   LoadGroundSegmentation(node, localization.ground_segmentation, warnings);
 
   // --- validation ---
+  ValidateLocalizationRuntime(localization);
   if (map.map_mode != "auto" && map.map_mode != "global" &&
       map.map_mode != "tiled") {
     Reject("localization.map_mode", "must be auto, global, or tiled");

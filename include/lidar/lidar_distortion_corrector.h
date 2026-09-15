@@ -4,10 +4,11 @@
 
 #include "common/data_type.h"
 #include "common/data_searcher.h"
+#include "common/rigid_transform.h"
 
 class LidarDistortionCorrector {
 public:
-    explicit LidarDistortionCorrector(const Mat4d &lidar_T_imu);
+    explicit LidarDistortionCorrector(const ImuTLidar &imu_T_lidar);
 
     void SetDataSearcher(std::shared_ptr<DataSearcher<IMUData>> imu_data_searcher);
 
@@ -38,7 +39,8 @@ private:
 
     Vec3d reference_t_;
     Eigen::Quaterniond q_ref_inv_;
-    Mat4d lidar_T_imu_ = Mat4d::Identity();
+    // Output points are expressed in the reference IMU frame.
+    ImuTLidar imu_T_lidar_{ImuTLidar::Identity()};
 
     std::shared_ptr<DataSearcher<IMUData>> imu_data_searcher_ = nullptr;
 };

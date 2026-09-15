@@ -89,6 +89,7 @@ class RigidTransform3d {
 };
 
 using MapTLidar = RigidTransform3d<MapFrame, LidarFrame>;
+using MapTImu = RigidTransform3d<MapFrame, ImuFrame>;
 using MapTBase = RigidTransform3d<MapFrame, BaseFrame>;
 using OdomTLidar = RigidTransform3d<OdomFrame, LidarFrame>;
 using OdomTBase = RigidTransform3d<OdomFrame, BaseFrame>;

@@ -20,7 +20,7 @@ PreProcessing::PreProcessing(System* system_ptr,
       config_(std::move(config)),
       frame_processing_watchdog_(system_ptr->FrameProcessingTimeoutUs()) {
   lidar_distortion_corrector_ptr_ = std::make_shared<LidarDistortionCorrector>(
-      config_->calibration.lidar_T_imu.Matrix());
+      config_->calibration.imu_T_lidar);
 
   if (config_->localization.frontend.registration_and_searcher_mode ==
       kLoamFull_KdTree) {

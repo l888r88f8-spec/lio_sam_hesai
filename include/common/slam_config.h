@@ -5,8 +5,13 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include <cstdint>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <optional>
 #include <set>
 #include <string>
+#include <vector>
 
 #include "common/parameter_alias.h"
 #include "common/rigid_transform.h"
@@ -420,6 +425,20 @@ using LegacyWarningSet = std::set<std::string>;
 
 namespace slam_config_detail {
 
+// Keep warning state on node lifetime, not loader-call lifetime. Weak owners
+// avoid retaining nodes (or confusing a newly allocated node with an old one).
+inline bool FirstLegacyWarning(rclcpp::Node& node, const std::string& key) {
+  static std::mutex mutex;
+  using Owner = std::weak_ptr<rclcpp::node_interfaces::NodeBaseInterface>;
+  static std::map<Owner, LegacyWarningSet, std::owner_less<Owner>> per_node;
+  std::lock_guard<std::mutex> lock(mutex);
+  for (auto it = per_node.begin(); it != per_node.end();) {
+    if (it->first.expired()) it = per_node.erase(it);
+    else ++it;
+  }
+  return per_node[node.get_node_base_interface()].insert(key).second;
+}
+
 // A parameter counts as explicitly set only when it appears in the node's
 // override map. Reading the declared value alone cannot tell a user-supplied
 // value apart from the default. Declaring is idempotent so callers may read the
@@ -466,7 +485,7 @@ T ResolveAndWarn(rclcpp::Node& node, const std::string& canonical,
   }
 
   if (result.used_legacy && legacy_key.has_value() &&
-      warnings.insert(*legacy_key).second) {
+      warnings.insert(*legacy_key).second && FirstLegacyWarning(node, *legacy_key)) {
     RCLCPP_WARN(node.get_logger(),
                 "Parameter '%s' is deprecated; use '%s' instead. The legacy "
                 "alias remains supported for the P2.2 release.",
@@ -477,6 +496,34 @@ T ResolveAndWarn(rclcpp::Node& node, const std::string& canonical,
 
 }  // namespace slam_config_detail
 
+// All aliases are peers: reject legacy-vs-legacy conflicts as well as conflicts
+// with the canonical override, before emitting any deprecation warnings.
+template <typename T>
+T DeclareRead(rclcpp::Node& node, const std::string& canonical,
+              const std::vector<std::string>& aliases, const T& default_value,
+              LegacyWarningSet& warnings) {
+  const auto canonical_value =
+      slam_config_detail::ReadOverride<T>(node, canonical, default_value);
+  std::optional<T> resolved = canonical_value;
+  std::string resolved_key = canonical;
+  std::vector<std::pair<std::string, std::optional<T>>> values;
+  for (const auto& alias : aliases) {
+    if (alias.empty() || alias == canonical) continue;
+    const auto value = slam_config_detail::ReadOverride<T>(node, alias, default_value);
+    if (resolved && value && !(*resolved == *value)) {
+      throw ParameterAliasConflict("conflicting parameter values for '" + canonical +
+          "': '" + resolved_key + "' and deprecated '" + alias + "'; set only one of them");
+    }
+    if (!resolved && value) { resolved = value; resolved_key = alias; }
+    values.emplace_back(alias, value);
+  }
+  for (const auto& value : values) {
+    slam_config_detail::ResolveAndWarn<T>(node, canonical, value.first,
+        canonical_value, value.second, default_value, warnings);
+  }
+  return resolved.value_or(default_value);
+}
+
 // Reads one canonical/legacy key pair. Canonical wins; legacy-only works and
 // warns once; equal dual values warn once; unequal dual values throw
 // ParameterAliasConflict naming both keys.
@@ -484,18 +531,9 @@ template <typename T>
 T DeclareRead(rclcpp::Node& node, const std::string& canonical,
               const std::optional<std::string>& legacy, const T& default_value,
               LegacyWarningSet& warnings) {
-  const std::optional<T> canonical_value =
-      slam_config_detail::ReadOverride<T>(node, canonical, default_value);
-
-  std::optional<T> legacy_value;
-  if (legacy.has_value() && !legacy->empty() && *legacy != canonical) {
-    legacy_value =
-        slam_config_detail::ReadOverride<T>(node, *legacy, default_value);
-  }
-
-  return slam_config_detail::ResolveAndWarn<T>(
-      node, canonical, legacy, canonical_value, legacy_value, default_value,
-      warnings);
+  return DeclareRead<T>(node, canonical,
+      legacy ? std::vector<std::string>{*legacy} : std::vector<std::string>{},
+      default_value, warnings);
 }
 
 #endif  // LIO_SAM_HESAI_COMMON_SLAM_CONFIG_H

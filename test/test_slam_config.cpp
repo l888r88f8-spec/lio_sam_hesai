@@ -4,6 +4,8 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include <memory>
+#include <algorithm>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -24,13 +26,290 @@ SlamConfig LoadMapping(const std::vector<rclcpp::Parameter>& overrides = {}) {
 }
 
 SlamConfig LoadLocalization(
-    const std::vector<rclcpp::Parameter>& overrides = {}) {
+    const std::vector<rclcpp::Parameter>& overrides = {},
+    const std::string& omit_fixture_key = "") {
+  // Explicit minimum runtime fixture; topic defaults must not make an empty
+  // algorithm configuration accidentally valid.
+  std::vector<rclcpp::Parameter> parameters = {
+      {"lidar.sensor_type", "Hesai"}, {"lidar.max_range", 60.0},
+      {"lidar.rotation_noise_std", 0.01}, {"lidar.position_noise_std", 0.02},
+      {"imu.acc_noise_std", 0.1}, {"imu.gyro_noise_std", 0.01},
+      {"imu.acc_bias_rw_noise_std", 1e-5}, {"imu.gyro_bias_rw_noise_std", 1e-5},
+      {"imu.data_searcher_buffer_size", 2},
+      {"frontend.registration_and_searcher_mode", "PointToPlane_IVOX"},
+      {"frontend.feature.planar_voxel_filter_size", 0.25},
+      {"frontend.registration.optimization_iter_num", 10},
+      {"frontend.registration.point_to_planar_thres", 0.1},
+      {"frontend.registration.position_converge_thres", 0.01},
+      {"frontend.registration.rotation_converge_thres", 0.01},
+      {"frontend.fusion_method", "TightCouplingOptimization"},
+      {"frontend.fusion_opti_iters", 30}};
+  parameters.erase(std::remove_if(parameters.begin(), parameters.end(),
+      [&](const auto& value) { return value.get_name() == omit_fixture_key; }),
+      parameters.end());
+  for (const auto& override : overrides) {
+    parameters.erase(std::remove_if(parameters.begin(), parameters.end(),
+        [&](const auto& value) { return value.get_name() == override.get_name(); }),
+        parameters.end());
+    parameters.push_back(override);
+  }
   auto node = std::make_shared<rclcpp::Node>(
-      "test_slam_config_localization", OptionsWith(overrides));
+      "test_slam_config_localization", OptionsWith(parameters));
   return LoadSlamConfig(*node, SlamMode::kLocalization);
 }
 
 }  // namespace
+
+TEST(SlamConfig, RejectsRawEmptyLocalizationConfiguration) {
+  auto node = std::make_shared<rclcpp::Node>("empty_localization");
+  EXPECT_THROW(LoadSlamConfig(*node, SlamMode::kLocalization), std::invalid_argument);
+}
+
+TEST(SlamConfig, RejectsInvalidRuntimeValuesWithCanonicalKey) {
+  const std::vector<rclcpp::Parameter> invalid = {
+      {"frontend.registration.optimization_iter_num", 0},
+      {"frontend.registration.optimization_iter_num", -1},
+      {"frontend.fusion_opti_iters", 0}, {"frontend.fusion_opti_iters", -1},
+      {"imu.data_searcher_buffer_size", 1}, {"imu.data_searcher_buffer_size", -1},
+      {"lidar.sensor_type", "unknown"}, {"lidar.min_range", -0.1},
+      {"lidar.max_range", 0.0}, {"lidar.point_time_scale", 0.0},
+      {"frontend.registration_and_searcher_mode", "LoamFull_KdTree"},
+      {"frontend.fusion_method", "unknown"},
+      {"frontend.feature.planar_voxel_filter_size", 0.0},
+      {"frontend.registration.point_to_planar_thres", -1.0},
+      {"frontend.registration.position_converge_thres", 0.0},
+      {"frontend.registration.rotation_converge_thres", 0.0}};
+  for (const auto& parameter : invalid) {
+    SCOPED_TRACE(parameter.get_name());
+    try { LoadLocalization({parameter}); FAIL() << "accepted invalid runtime value"; }
+    catch (const std::invalid_argument& error) {
+      EXPECT_NE(std::string(error.what()).find(parameter.get_name()), std::string::npos);
+    }
+  }
+}
+
+TEST(SlamConfig, RejectsInvalidNoiseAndNonFiniteBias) {
+  for (const std::string key : {"imu.acc_noise_std", "imu.gyro_noise_std",
+      "imu.acc_bias_rw_noise_std", "imu.gyro_bias_rw_noise_std",
+      "lidar.rotation_noise_std", "lidar.position_noise_std"}) {
+    for (double value : {0.0, -0.1, std::numeric_limits<double>::infinity(),
+        std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::denorm_min()}) {
+      SCOPED_TRACE(key);
+      EXPECT_THROW(LoadLocalization({{key, value}}), std::invalid_argument);
+    }
+  }
+  for (const std::string key : {"imu.init_acc_bias", "imu.init_gyro_bias"}) {
+    EXPECT_THROW(LoadLocalization({{key, std::numeric_limits<double>::infinity()}}),
+        std::invalid_argument);
+  }
+}
+
+TEST(SlamConfig, RejectsInvalidRpyRotation) {
+  for (const std::vector<double>& rpy : std::vector<std::vector<double>>{
+      {2,0,0,0,1,0,0,0,1}, {-1,0,0,0,1,0,0,0,1},
+      {1,0,0,0,1,0,0,0,std::numeric_limits<double>::quiet_NaN()}}) {
+    EXPECT_THROW(LoadMapping({{"calibration.rpy", rpy}}), std::invalid_argument);
+  }
+}
+
+TEST(SlamConfig, MappingFlatTopicAliasesAndLegacyConflicts) {
+  const auto config = LoadMapping({{"odomTopic", "flat/odom"},
+      {"nonGroundCloudTopic", "flat/nonground"}});
+  EXPECT_EQ(config.outputs.odometry, "flat/odom");
+  EXPECT_EQ(config.pipeline_topics.imu_odometry_incremental, "flat/odom_incremental");
+  EXPECT_EQ(config.outputs.non_ground_cloud, "flat/nonground");
+  EXPECT_NO_THROW(LoadMapping({{"odomTopic", "same"}, {"sensor_topic.odom_topic", "same"},
+      {"output_topic.odometry", "same"}}));
+  EXPECT_THROW(LoadMapping({{"odomTopic", "a"}, {"sensor_topic.odom_topic", "b"}}), ParameterAliasConflict);
+  EXPECT_THROW(LoadMapping({{"odomTopic", "a"}, {"output_topic.odometry", "b"}}), ParameterAliasConflict);
+  EXPECT_THROW(LoadMapping({{"odomTopic", "a"}, {"pipeline_topic.imu_odometry_incremental", "b"}}), ParameterAliasConflict);
+  EXPECT_THROW(LoadMapping({{"nonGroundCloudTopic", "a"}, {"sensor_topic.non_ground_cloud_topic", "b"}}), ParameterAliasConflict);
+}
+
+TEST(SlamConfig, AcceptsOnlySelectedBackendAndFusionParameters) {
+  // IVOX never consumes local map/NDT/corner parameters.
+  EXPECT_NO_THROW(LoadLocalization({{"frontend.registration.ndt_capacity", -1},
+      {"frontend.registration.local_map_size", -1},
+      {"frontend.feature.corner_voxel_filter_size", -1.0}}));
+  for (const std::string fusion : {"LooseCoupling", "TightCouplingKF"}) {
+    EXPECT_NO_THROW(LoadLocalization({{"frontend.fusion_method", fusion},
+        {"frontend.fusion_opti_iters", 0}}));
+  }
+}
+
+TEST(SlamConfig, RejectsMissingRequiredRuntimeParameters) {
+  for (const std::string key : {"frontend.registration.optimization_iter_num",
+      "frontend.fusion_opti_iters", "imu.data_searcher_buffer_size",
+      "lidar.sensor_type", "lidar.max_range", "imu.acc_noise_std",
+      "frontend.feature.planar_voxel_filter_size"}) {
+    SCOPED_TRACE(key);
+    EXPECT_THROW(LoadLocalization({}, key), std::invalid_argument);
+  }
+}
+
+TEST(SlamConfig, LocalizationSharedAliasesResolveAndRejectConflicts) {
+  const auto sensor = LoadLocalization({{"sensor", "Velodyne_16"}}, "lidar.sensor_type");
+  EXPECT_EQ(sensor.localization.lidar.sensor_type, "Velodyne_16");
+  EXPECT_THROW(LoadLocalization({{"sensor", "Velodyne_16"}}), ParameterAliasConflict);
+  EXPECT_THROW(LoadLocalization({{"sensor", "Velodyne_16"},
+      {"lidar.lidar_sensor_type", "Hesai"}}, "lidar.sensor_type"), ParameterAliasConflict);
+  for (const auto& keys : std::vector<std::pair<std::string, std::string>>{
+      {"N_SCAN", "lidar.scan_lines"}, {"Horizon_SCAN", "lidar.horizon_scan"}}) {
+    const auto legacy = LoadLocalization({{keys.first, 32}});
+    EXPECT_EQ(keys.first == "N_SCAN" ? legacy.localization.lidar.scan_lines :
+        legacy.localization.lidar.horizon_scan, 32);
+    EXPECT_NO_THROW(LoadLocalization({{keys.first, 32}, {keys.second, 32}}));
+    EXPECT_THROW(LoadLocalization({{keys.first, 32}, {keys.second, 64}}), ParameterAliasConflict);
+  }
+  const std::vector<std::pair<std::string, std::string>> aliases = {
+      {"lidarMinRange", "lidar.min_range"}, {"lidarMaxRange", "lidar.max_range"},
+      {"imuAccNoise", "imu.acc_noise_std"}, {"imuGyrNoise", "imu.gyro_noise_std"},
+      {"imuAccBiasN", "imu.acc_bias_rw_noise_std"},
+      {"imuGyrBiasN", "imu.gyro_bias_rw_noise_std"}, {"imuGravity", "imu.gravity"}};
+  for (const auto& keys : aliases) {
+    SCOPED_TRACE(keys.first);
+    EXPECT_NO_THROW(LoadLocalization({{keys.first, 0.2}}, keys.second));
+    EXPECT_NO_THROW(LoadLocalization({{keys.first, 0.2}, {keys.second, 0.2}}));
+    EXPECT_THROW(LoadLocalization({{keys.first, 0.2}, {keys.second, 0.3}}), ParameterAliasConflict);
+  }
+  EXPECT_THROW(LoadLocalization({{"imuAccBiasN", 0.2},
+      {"imu.acc_rw_noise_std", 0.3}}, "imu.acc_bias_rw_noise_std"), ParameterAliasConflict);
+  EXPECT_THROW(LoadLocalization({{"imuGravity", 9.8}, {"gravity", 9.7}}), ParameterAliasConflict);
+}
+
+TEST(SlamConfig, RepositoryCanonicalYamlConfigurationsAreValid) {
+  for (const auto mode : {SlamMode::kMapping, SlamMode::kLocalization}) {
+    rclcpp::NodeOptions options;
+    options.arguments({"--ros-args", "--params-file", std::string(PROJECT_SOURCE_DIR) +
+        (mode == SlamMode::kMapping ? "/config/mapping.yaml" : "/config/relocalization.yaml")});
+    auto node = std::make_shared<rclcpp::Node>("canonical_yaml", options);
+    EXPECT_NO_THROW(LoadSlamConfig(*node, mode));
+  }
+}
+
+TEST(SlamConfig, BackendSpecificRequirementsAreValidated) {
+  for (const std::string backend : {"IcpOptimized", "IncrementalNDT", "PointToPlane_KdTree"}) {
+    const std::vector<rclcpp::Parameter> valid = {
+        {"frontend.registration_and_searcher_mode", backend},
+        {"frontend.registration.local_map_cloud_filter_size", 0.3},
+        {"frontend.registration.source_cloud_filter_size", 0.3},
+        {"frontend.registration.point_search_thres", 1.0},
+        {"frontend.registration.ndt_voxel_size", 1.0},
+        {"frontend.registration.ndt_outlier_threshold", 20.0},
+        {"frontend.registration.ndt_min_points_in_voxel", 3},
+        {"frontend.registration.ndt_max_points_in_voxel", 50},
+        {"frontend.registration.ndt_min_effective_pts", 10},
+        {"frontend.registration.ndt_capacity", 1000}};
+    EXPECT_NO_THROW(LoadLocalization(valid));
+    const std::vector<std::string> required = backend == "IncrementalNDT" ?
+        std::vector<std::string>{"source_cloud_filter_size", "ndt_voxel_size", "ndt_outlier_threshold"} :
+        (backend == "IcpOptimized" ? std::vector<std::string>{"local_map_cloud_filter_size",
+            "source_cloud_filter_size", "point_search_thres"} :
+            std::vector<std::string>{"local_map_cloud_filter_size"});
+    for (const auto& leaf : required) {
+      auto invalid = valid;
+      const std::string key = "frontend.registration." + leaf;
+      invalid.erase(std::remove_if(invalid.begin(), invalid.end(),
+          [&](const auto& p) { return p.get_name() == key; }), invalid.end());
+      SCOPED_TRACE(backend + " " + key);
+      EXPECT_THROW(LoadLocalization(invalid), std::invalid_argument);
+      for (const double value : {0.0, -1.0, std::numeric_limits<double>::infinity()}) {
+        invalid.push_back({key, value});
+        EXPECT_THROW(LoadLocalization(invalid), std::invalid_argument);
+        invalid.pop_back();
+      }
+    }
+    if (backend == "IncrementalNDT") {
+      for (const std::string leaf : {"ndt_min_points_in_voxel", "ndt_max_points_in_voxel",
+          "ndt_min_effective_pts", "ndt_capacity"}) {
+        auto invalid = valid;
+        const std::string key = "frontend.registration." + leaf;
+        invalid.erase(std::remove_if(invalid.begin(), invalid.end(),
+            [&](const auto& p) { return p.get_name() == key; }), invalid.end());
+        EXPECT_THROW(LoadLocalization(invalid), std::invalid_argument);
+        for (const int value : {0, -1}) {
+          invalid.push_back({key, value});
+          EXPECT_THROW(LoadLocalization(invalid), std::invalid_argument);
+          invalid.pop_back();
+        }
+      }
+      auto inconsistent = valid;
+      inconsistent.push_back({"frontend.registration.ndt_min_points_in_voxel", 50});
+      EXPECT_THROW(LoadLocalization(inconsistent), std::invalid_argument);
+    }
+  }
+}
+
+TEST(SlamConfig, WarnsOnceForEachLegacyAliasPerNodeAcrossRepeatedReads) {
+  auto node = std::make_shared<rclcpp::Node>("warning_capture", OptionsWith({
+      {"output_topic.odometry", "same"}, {"odomTopic", "same"},
+      {"sensor_topic.odom_topic", "same"},
+      {"nonGroundCloudTopic", "cloud"}, {"sensor_topic.non_ground_cloud_topic", "cloud"}}));
+  ::testing::internal::CaptureStderr();
+  const auto first = LoadSlamConfig(*node, SlamMode::kMapping);
+  const auto second = LoadSlamConfig(*node, SlamMode::kMapping);
+  const std::string logs = ::testing::internal::GetCapturedStderr();
+  EXPECT_EQ(first.outputs.odometry, second.outputs.odometry);
+  EXPECT_EQ(second.pipeline_topics.imu_odometry_incremental, "same_incremental");
+  for (const std::string key : {"odomTopic", "sensor_topic.odom_topic",
+      "nonGroundCloudTopic", "sensor_topic.non_ground_cloud_topic"}) {
+    const std::string warning = "Parameter '" + key + "' is deprecated";
+    const auto position = logs.find(warning);
+    ASSERT_NE(position, std::string::npos) << key;
+    EXPECT_EQ(logs.find(warning, position + warning.size()), std::string::npos) << key;
+  }
+}
+
+TEST(SlamConfig, MappingRejectsInvalidConsumedRuntimeParameters) {
+  for (const auto& parameter : std::vector<rclcpp::Parameter>{
+      {"lidar.sensor_type", "unknown"}, {"lidar.min_range", -1.0},
+      {"lidar.max_range", 0.0}, {"imu.acc_noise_std", 0.0},
+      {"imu.gyro_noise_std", -1.0}, {"imu.acc_bias_rw_noise_std", 0.0},
+      {"imu.gyro_bias_rw_noise_std", std::numeric_limits<double>::infinity()},
+      {"voxel_filter.odometry_surface_leaf_size", 0.0},
+      {"voxel_filter.mapping_corner_leaf_size", 0.0},
+      {"voxel_filter.mapping_surface_leaf_size", 0.0},
+      {"local_map.keyframe_density", 0.0}, {"local_map.search_radius", 0.0}}) {
+    SCOPED_TRACE(parameter.get_name());
+    EXPECT_THROW(LoadMapping({parameter}), std::invalid_argument);
+  }
+  EXPECT_NO_THROW(LoadMapping({{"ground_segmentation.leaf_size", 0.0},
+      {"local_map.keyframe_distance_threshold", 0.0},
+      {"local_map.keyframe_angle_threshold", 0.0}}));
+}
+
+TEST(SlamConfig, LocalizationMultiAliasesEachWarnOnceWithCanonicalYaml) {
+  const std::vector<rclcpp::Parameter> aliases = {
+      {"sensor", "Hesai"}, {"lidar.lidar_sensor_type", "Hesai"},
+      {"N_SCAN", 16}, {"lidar.lidar_scan", 16},
+      {"Horizon_SCAN", 1000}, {"lidar.lidar_horizon_scan", 1000},
+      {"lidarMinRange", 0.5}, {"lidar.lidar_use_min_distance", 0.5},
+      {"lidarMaxRange", 60.0}, {"lidar.lidar_use_max_distance", 60.0},
+      {"imuAccNoise", 0.1}, {"imuGyrNoise", 0.01},
+      {"imuAccBiasN", 1e-5}, {"imu.acc_rw_noise_std", 1e-5},
+      {"imuGyrBiasN", 1e-5}, {"imu.gyro_rw_noise_std", 1e-5},
+      {"imuGravity", 9.805}, {"gravity", 9.805},
+      {"loopClosureEnableFlag", false}, {"system.enable_loopclosure", false}};
+  // Two distinct nodes must each report every supplied alias, despite having
+  // identical names. Repeated full loads of either node remain idempotent.
+  for (int i = 0; i < 2; ++i) {
+    auto options = OptionsWith(aliases);
+    options.arguments({"--ros-args", "--params-file", std::string(PROJECT_SOURCE_DIR) +
+        "/config/relocalization.yaml"});
+    auto node = std::make_shared<rclcpp::Node>("localization_alias_capture", options);
+    ::testing::internal::CaptureStderr();
+    LoadSlamConfig(*node, SlamMode::kLocalization);
+    LoadSlamConfig(*node, SlamMode::kLocalization);
+    const std::string logs = ::testing::internal::GetCapturedStderr();
+    for (const auto& alias : aliases) {
+      const std::string warning = "Parameter '" + alias.get_name() + "' is deprecated";
+      const auto position = logs.find(warning);
+      ASSERT_NE(position, std::string::npos) << alias.get_name();
+      EXPECT_EQ(logs.find(warning, position + warning.size()), std::string::npos)
+          << alias.get_name();
+    }
+  }
+}
 
 TEST(SlamConfig, MappingDefaultsMatchPreP22TopicStrings) {
   const SlamConfig config = LoadMapping();

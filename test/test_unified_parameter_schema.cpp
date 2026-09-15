@@ -114,8 +114,6 @@ const std::vector<ParameterContract> kParameterContracts = {
   {"extrinsicTrans", "calibration.translation", kSharedSurfaces},
   {"extrinsicRot", "calibration.rotation", kSharedSurfaces},
   {"extrinsicRPY", "calibration.rpy", kSharedSurfaces},
-  {"calibration.lidar_to_imu", "calibration.translation",
-    kRelocalizationSurfaces},
   {"savePCD", "map_save.enabled", kMappingSurfaces},
   {"generateScDb", "map_save.generate_scan_context_db", kMappingSurfaces},
   {"savePCDDirectory", "map_save.directory", kMappingSurfaces},
