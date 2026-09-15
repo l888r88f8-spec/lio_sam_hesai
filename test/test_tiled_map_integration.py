@@ -346,7 +346,6 @@ class TiledMapIntegrationTest(unittest.TestCase):
             with self.subTest(mode=mode):
                 self.assertIn(mode, script)
 
-
     def test_fault_fixture_refuses_paths_that_climb_out(self):
         # A ".." element is what let a symlinked source directory, which absorbs
         # one level, turn into a destination outside the fixture.
@@ -399,8 +398,6 @@ class TiledMapIntegrationTest(unittest.TestCase):
             prepared.inject()
 
         self.assertEqual((quarantine / "1_0.pcd").read_bytes(), b"already here")
-
-
 
     def test_injection_refuses_a_directory_that_is_not_a_fixture(self):
         # A --tiled-dir pointed at a real map must not be able to move live
