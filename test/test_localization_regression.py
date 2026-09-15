@@ -357,6 +357,45 @@ class ObserverQosTest(unittest.TestCase):
         self.assertIs(qos_by_topic["/diagnostics"], reliable_qos)
 
 
+class ObserverPublishGateTest(unittest.TestCase):
+    class _FakePublisher:
+        def __init__(self, subscription_count):
+            self.subscription_count = subscription_count
+            self.published = []
+
+        def get_subscription_count(self):
+            return self.subscription_count
+
+        def publish(self, message):
+            self.published.append(message)
+
+    def test_defers_without_a_matched_subscriber(self):
+        publisher = self._FakePublisher(0)
+        built = []
+
+        def build_message():
+            built.append(1)
+            return "pose"
+
+        self.assertFalse(
+            localization_regression._publish_if_subscribed(
+                publisher, build_message)
+        )
+        self.assertEqual(publisher.published, [])
+        # Nothing is even constructed: an unmatched publish is dropped by the
+        # middleware, so the caller retries from the next tick.
+        self.assertEqual(built, [])
+
+    def test_publishes_exactly_once_when_a_subscriber_is_matched(self):
+        publisher = self._FakePublisher(1)
+
+        self.assertTrue(
+            localization_regression._publish_if_subscribed(
+                publisher, lambda: "pose")
+        )
+        self.assertEqual(publisher.published, ["pose"])
+
+
 class LocalizationRegressionCliTest(unittest.TestCase):
     def setUp(self):
         self.temporary_directory = TemporaryDirectory()
@@ -432,19 +471,88 @@ class LocalizationRegressionCliTest(unittest.TestCase):
         self.assertEqual(observed["dataset"]["message_count"], 46875)
         self.assertEqual(observed["metrics"], self.metrics)
 
+    def test_normal_tiled_mode_keeps_both_metric_gates(self):
+        # 64224f4 made --record-reference skip the gates for a capture run. A
+        # plain --tiled-dir run is still the formal tiled-quick gate: both the
+        # quick comparison and the tiled checks must run, and a violation from
+        # either one must fail the run.
+        runtime_parameters = self.output_dir / "relocalization.runtime.yaml"
+        for name, quick_violations, tiled_violations in (
+                ("quick violation", ["min_health_score too low"], []),
+                ("tiled violation", [], ["first_ok_seconds too late"]),
+        ):
+            with self.subTest(name=name):
+                baseline = copy.deepcopy(BASELINE)
+                with (
+                    patch.object(
+                        localization_regression,
+                        "validate_dataset",
+                        return_value=self.identity,
+                    ),
+                    patch.object(
+                        localization_regression,
+                        "write_runtime_parameters",
+                        return_value=runtime_parameters,
+                    ),
+                    patch.object(
+                        localization_regression,
+                        "load_baseline",
+                        return_value=baseline,
+                    ),
+                    patch.object(
+                        localization_regression,
+                        "_run_replay",
+                        return_value=self.metrics,
+                    ),
+                    patch.object(
+                        localization_regression,
+                        "compare_quick_metrics",
+                        return_value=list(quick_violations),
+                    ) as compare,
+                    patch.object(
+                        localization_regression,
+                        "tiled_metric_violations",
+                        return_value=list(tiled_violations),
+                    ) as tiled_compare,
+                ):
+                    with redirect_stderr(StringIO()):
+                        exit_code = localization_regression.main(
+                            self._arguments(
+                                "--baseline",
+                                str(self.root / "baseline.yaml"),
+                                "--tiled-dir",
+                                str(self.root / "tiled"),
+                            )
+                        )
+
+                self.assertEqual(exit_code, 1)
+                compare.assert_called_once_with(baseline, self.metrics)
+                tiled_compare.assert_called_once_with(
+                    self.metrics, baseline["quick"]["ok_deadline_seconds"])
+
     def test_record_reference_mode_skips_metric_comparison(self):
         baseline = copy.deepcopy(BASELINE)
         runtime_parameters = self.output_dir / "relocalization.runtime.yaml"
         with (
-            patch.object(localization_regression, "validate_dataset", return_value=self.identity),
+            patch.object(
+                localization_regression,
+                "validate_dataset",
+                return_value=self.identity,
+            ),
             patch.object(
                 localization_regression,
                 "write_runtime_parameters",
                 return_value=runtime_parameters,
             ),
-            patch.object(localization_regression, "load_baseline", return_value=baseline),
             patch.object(
-                localization_regression, "_run_replay", return_value=self.metrics
+                localization_regression,
+                "load_baseline",
+                return_value=baseline,
+            ),
+            patch.object(
+                localization_regression,
+                "_run_replay",
+                return_value=self.metrics,
             ) as run_replay,
             patch.object(
                 localization_regression,
@@ -1142,6 +1250,7 @@ class TiledFaultReferenceTest(unittest.TestCase):
             "bag_seconds string": {"bag_seconds": "1.0"},
             "offset_seconds negative": {"offset_seconds": -1.0},
             "offset_seconds NaN": {"offset_seconds": math.nan},
+            "offset_seconds None": {"offset_seconds": None},
             "offset_seconds beyond bag": {"offset_seconds": 2.0},
             "warmup_seconds zero": {"warmup_seconds": 0.0},
             "warmup_seconds negative": {"warmup_seconds": -1.0},
@@ -1149,9 +1258,11 @@ class TiledFaultReferenceTest(unittest.TestCase):
             "warmup_seconds string": {"warmup_seconds": "10.0"},
         }
         with TemporaryDirectory() as directory:
-            for name, overrides in invalid.items():
+            for index, (name, overrides) in enumerate(invalid.items()):
                 with self.subTest(name=name):
-                    path = Path(directory) / "reference.json"
+                    # One path per case: a save that wrongly succeeds must not
+                    # leave a file behind that masks the next case.
+                    path = Path(directory) / f"reference-{index}.json"
                     with self.assertRaises(DatasetError):
                         save_tiled_fault_reference(
                             path, self._reference(**overrides))
@@ -1179,6 +1290,42 @@ class TiledFaultReferenceTest(unittest.TestCase):
             self.assertEqual(
                 loaded.map_T_base,
                 tuple(tuple(row) for row in _TILED_FAULT_IDENTITY_POSE))
+
+    def test_explicit_null_offset_fails_closed_instead_of_being_derived(self):
+        # Only make() may derive the offset from the warm-up window, and only
+        # when it was not given one. A hand-built reference carrying None, or a
+        # JSON null, is an explicit invalid value that must not silently
+        # reappear as max(0, bag_seconds - warmup_seconds).
+        with TemporaryDirectory() as directory:
+            path = self._valid_reference(Path(directory) / "reference.json")
+            original = path.read_bytes()
+            with self.subTest(stage="save does not write"):
+                missing = Path(directory) / "missing.json"
+                with self.assertRaises(DatasetError):
+                    save_tiled_fault_reference(
+                        missing, self._reference(offset_seconds=None))
+                self.assertFalse(missing.exists())
+            with self.subTest(stage="save does not clobber"):
+                with self.assertRaises(DatasetError):
+                    save_tiled_fault_reference(
+                        path, self._reference(offset_seconds=None))
+                self.assertEqual(path.read_bytes(), original)
+            with self.subTest(stage="load rejects null"):
+                self._rewrite_reference(path, offset_seconds=None)
+                with self.assertRaises(DatasetError):
+                    load_tiled_fault_reference(path, self._identity())
+
+    def test_a_missing_offset_still_defaults_to_zero(self):
+        # schema_version stays 1: references written before the offset existed
+        # have no key at all, and that absence keeps its documented default.
+        with TemporaryDirectory() as directory:
+            path = self._valid_reference(Path(directory) / "reference.json")
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            del payload["offset_seconds"]
+            path.write_text(json.dumps(payload), encoding="utf-8")
+
+            loaded = load_tiled_fault_reference(path, self._identity())
+            self.assertEqual(loaded.offset_seconds, 0.0)
 
     def test_huge_integer_times_surface_as_dataset_errors(self):
         # float(10**400) raises OverflowError; make, load and save must all

@@ -194,6 +194,17 @@ class TiledMapIntegrationTest(unittest.TestCase):
                 self.tiled, self.root / "fault-bool", "missing-neighbor",
                 center_index=((True, 0)))
 
+    def test_fault_fixture_rejects_a_non_iterable_center(self):
+        # A bare int used to escape tuple()'s iteration as a TypeError; every
+        # malformed center must fail closed as DatasetError before anything is
+        # written, exactly like None or an undeclared tile.
+        self._write_small_tiled_map()
+        with self.assertRaises(DatasetError):
+            prepare_tiled_fault_case(
+                self.tiled, self.root / "fault-int", "missing-neighbor",
+                center_index=5)
+        self.assertFalse((self.root / "fault-int").exists())
+
     def test_corrupt_manifest_requires_a_center(self):
         # A None center used to reach the tuple() below and raise TypeError
         # instead of the documented DatasetError.
@@ -298,7 +309,7 @@ class TiledMapIntegrationTest(unittest.TestCase):
             "map_tile_events": [
                 ["ready", "0", ""],
                 ["ready", "1", "global file validation failed for tile "
-                                "[-1,-1] path=global_-1_-1.pcd"],
+                               "[-1,-1] path=global_-1_-1.pcd"],
             ],
             "first_ok_seconds": None,
             "valid_odom_ratio": 0.0,
@@ -306,19 +317,22 @@ class TiledMapIntegrationTest(unittest.TestCase):
         for expected in ("[-1, -1]", "[\t-1,  -1]", "[ -1,\n-1 ]"):
             with self.subTest(expected=expected):
                 self.assertEqual(
-                    tiled_fault_violations(failure, "missing-center", expected), [])
+                    tiled_fault_violations(
+                        failure, "missing-center", expected),
+                    [])
         # Whitespace on the diagnostic side is normalized the same way.
         spaced = dict(failure, map_tile_events=[
             ["ready", "0", ""],
             ["ready", "1", "global file validation failed for tile "
-                            "[ -1,\t-1 ] path=global_-1_-1.pcd"],
+                           "[ -1,\t-1 ] path=global_-1_-1.pcd"],
         ])
         self.assertEqual(
             tiled_fault_violations(spaced, "missing-center", "[-1,-1]"), [])
         # A different index must still be reported: only whitespace is ignored.
         self.assertEqual(
             tiled_fault_violations(failure, "missing-center", "[-1, 0]"),
-            ["missing-center never named [-1, 0] while the map was being requested"])
+            ["missing-center never named [-1, 0] while the map was being "
+             "requested"])
 
     def test_missing_neighbor_requires_output_and_a_named_failure(self):
         passing = {

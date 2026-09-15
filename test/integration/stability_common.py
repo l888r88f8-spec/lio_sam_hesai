@@ -462,7 +462,15 @@ def prepare_tiled_fault_case(source, destination, fault_case, center_index,
     if not global_tiles:
         raise DatasetError("Tiled manifest has no global tiles")
 
-    center = tuple(_fault_index(value, "fault center index") for value in center_index)
+    try:
+        center = tuple(_fault_index(value, "fault center index")
+                       for value in center_index)
+    except TypeError as error:
+        # A non-iterable center (e.g. a bare int) used to escape tuple()'s
+        # iteration as a TypeError; it is a malformed argument like any other.
+        raise DatasetError(
+            "Tiled fault center index must be an iterable of two integers"
+        ) from error
     if len(center) != 2:
         raise DatasetError("Tiled fault center index must contain two integers")
     declared = {_tile_index(entry, "global"): entry for entry in global_tiles}
@@ -899,15 +907,23 @@ class TiledFaultReference:
     warmup_seconds: float
 
 
+# Sentinel for "make() did not choose an offset, derive it from the warm-up
+# window". ``None`` is a value save and load can receive (a hand-built
+# reference, or a JSON null), and it must fail closed instead of silently
+# being re-derived.
+_DERIVE_OFFSET_SECONDS = object()
+
+
 def _require_reference_fields(map_T_base, bag_seconds, warmup_seconds,
-                              offset_seconds=None):
+                              offset_seconds=_DERIVE_OFFSET_SECONDS):
     """
     Validate the pose and timing shared by make, save and load.
 
-    ``offset_seconds`` is derived from the warm-up window by make(); save and
-    load pass the value they intend to persist or accept. Validation happens
-    before the derivation, so an out-of-range integer surfaces as a
-    DatasetError instead of an OverflowError from ``float()``.
+    ``offset_seconds`` is derived from the warm-up window only when make() did
+    not supply one: save and load pass the value they intend to persist or
+    accept, so an explicit ``None`` is rejected instead of being re-derived.
+    Validation happens before the derivation, so an out-of-range integer
+    surfaces as a DatasetError instead of an OverflowError from ``float()``.
     """
     rows = _require_rigid_matrix4(map_T_base, "map_T_base")
     bag_seconds = _require_finite_number(
@@ -915,7 +931,7 @@ def _require_reference_fields(map_T_base, bag_seconds, warmup_seconds,
     warmup_seconds = _require_finite_number(
         warmup_seconds, "reference warmup_seconds", minimum=0.0,
         exclusive_minimum=True)
-    if offset_seconds is None:
+    if offset_seconds is _DERIVE_OFFSET_SECONDS:
         offset_seconds = max(0.0, bag_seconds - warmup_seconds)
     else:
         offset_seconds = _require_finite_number(
@@ -984,6 +1000,8 @@ def load_tiled_fault_reference(path, identity):
         _require_reference_fields(
             payload.get("map_T_base"), payload.get("bag_seconds"),
             payload.get("warmup_seconds", 10.0),
+            # Only an absent key takes the schema-1 default of 0.0; an explicit
+            # JSON null is passed through and rejected by the validator.
             payload.get("offset_seconds", 0.0)))
     return TiledFaultReference(
         dataset=recorded,

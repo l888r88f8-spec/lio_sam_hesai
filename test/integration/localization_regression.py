@@ -87,6 +87,23 @@ def _observer_subscription_qos(sensor_data_qos, reliable_qos):
     }
 
 
+def _publish_if_subscribed(publisher, build_message):
+    """
+    Publish one message, but only when a subscriber is already matched.
+
+    ``get_subscription_count()`` is a local, non-blocking query: without a
+    matched subscriber the middleware drops the message silently, so the
+    caller defers to a later tick instead of blocking the executor with a
+    sleep or ``wait_for_all_acked()``. ``build_message`` runs only when the
+    publish will actually happen. Deliberately free of ROS types so the gate
+    is testable without a middleware.
+    """
+    if publisher.get_subscription_count() <= 0:
+        return False
+    publisher.publish(build_message())
+    return True
+
+
 class MetricCollector:
     """Pure, callback-friendly localization metric accumulator."""
 
@@ -359,7 +376,9 @@ def tiled_fault_violations(metrics, fault_case, expected_missing_index=None):
             f"{fault_case} never recorded a tile load failure, so the injected "
             "payload was never missed")
     if expected_missing_index and not any(
-            _index_is_named(entry[2], expected_missing_index) for entry in events):
+        _index_is_named(entry[2], expected_missing_index)
+        for entry in events
+    ):
         violations.append(
             f"{fault_case} never named {expected_missing_index} while the map "
             "was being requested")
@@ -385,7 +404,8 @@ def tiled_fault_violations(metrics, fault_case, expected_missing_index=None):
         # load failure only says the payload was missed.
         degraded_snapshot = any(
             str(entry[0]) == "ready" and "missing tiles:" in str(entry[2]) and
-            expected_missing_index and _index_is_named(entry[2], expected_missing_index)
+            expected_missing_index and
+            _index_is_named(entry[2], expected_missing_index)
             for entry in events)
         if not degraded_snapshot:
             violations.append(
@@ -584,8 +604,8 @@ def main(argv=None):
                     print(f"fault violation: {violation}", file=sys.stderr)
         else:
             # A reference capture is not a performance gate: the replay exists
-            # to observe a stable tracking pose, so a slow machine must not fail
-            # the capture before the fault cases can use its reference.
+            # to observe a stable tracking pose, so a slow machine must not
+            # fail the capture before the fault cases can use its reference.
             if arguments.record_reference is None:
                 violations = compare_quick_metrics(baseline, metrics)
                 if arguments.tiled_dir is not None:
@@ -597,7 +617,8 @@ def main(argv=None):
                 if violations:
                     exit_code = 1
                     for violation in violations:
-                        print(f"metric violation: {violation}", file=sys.stderr)
+                        print(
+                            f"metric violation: {violation}", file=sys.stderr)
     except KeyboardInterrupt:
         exit_code = 130
         error_message = "interrupted"
@@ -852,14 +873,10 @@ def _run_replay(arguments, runtime_parameters, quick, launch_log, player_log,
             clock_origin = [None]
 
             def publish_reference_pose():
-                # get_subscription_count() is a local, non-blocking query:
-                # without a matched subscriber the middleware drops the
-                # message, so defer to the next tick.
-                if initial_pose_publisher.get_subscription_count() <= 0:
-                    return False
-                initial_pose_publisher.publish(
-                    _initial_pose_message(node, fault))
-                return True
+                return _publish_if_subscribed(
+                    initial_pose_publisher,
+                    lambda: _initial_pose_message(node, fault),
+                )
 
             def fault_tick(clock_seconds):
                 if clock_seconds is None:
