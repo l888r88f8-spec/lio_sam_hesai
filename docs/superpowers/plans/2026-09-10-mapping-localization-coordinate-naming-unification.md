@@ -627,7 +627,7 @@ git commit -m "docs(config): publish P2.2 naming migration"
 ### Task 9: Full Verification and Handoff
 
 **Files:**
-- Modify: `docs/HANDOFF.md`
+- Modify: `docs/PROJECT_STATUS.md`
 
 - [ ] **Step 1: Run static checks**
 
@@ -675,7 +675,7 @@ Mark P2.2 complete, link the spec and this plan, and record exact build, CTest, 
 - [ ] **Step 6: Commit handoff evidence**
 
 ```bash
-git add docs/HANDOFF.md
+git add docs/PROJECT_STATUS.md
 git commit -m "docs(p2): record coordinate and naming verification"
 ```
 

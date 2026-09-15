@@ -24,7 +24,7 @@
 4. 地图身份从字节数升级为具名 artifact 的 SHA-256（含引用时间/矩阵校验收紧）。
 5. `/initialpose` 发布前的 matched subscriber 闸门（发布回调返回 `bool`，不阻塞 executor）。
 6. 全部单测、串行干净构建、44 项约定 CTest、`tiled-faults` 重新验收。
-7. 本轮新增 flake8 E303 清零；`docs/HANDOFF.md` 更新为"本地 `main` 已合并、修复重新验收"。
+7. 本轮新增 flake8 E303 清零；`docs/PROJECT_STATUS.md` 更新为"本地 `main` 已合并、修复重新验收"。
 
 ### 2.2 不包含
 

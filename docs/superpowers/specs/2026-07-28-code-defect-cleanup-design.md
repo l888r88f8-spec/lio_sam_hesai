@@ -9,7 +9,7 @@
 ## 1. 目标
 
 在不改变对外 ROS 接口、参数、话题或正常算法行为的前提下，清理
-`docs/HANDOFF.md` 指定的三个已知缺陷：
+`docs/PROJECT_STATUS.md` 指定的三个已知缺陷：
 
 1. 修复 `IVoxMap::AddPoints(world_points, nearest_points)` 遇到单个无需降采样点时
    提前终止整批处理的问题。

@@ -18,7 +18,7 @@
 - Branch `fix/p22-postmerge-hardening`, base `740dab9` (local `main` is the same commit).
 - `docs/` and `test/` are listed in `.gitignore`, but both documents referenced here are already tracked and this round only edits tracked files, so no `git add -f` is needed.
 - Build tree: `/tmp/p22_hardening` (its own `--build-base`/`--install-base`). It needs about 4.4 GB and `/tmp` has 7.7 GB. A from-scratch serial build takes about 28 minutes; incremental `cmake --build` runs take seconds to a couple of minutes.
-- Do not touch the copyright job, the pre-existing repo-wide lint baseline (`E501`, `E402`, `E203`), P2.3, disk artifact names, or `docs/HANDOFF.md` before Task 8.
+- Do not touch the copyright job, the pre-existing repo-wide lint baseline (`E501`, `E402`, `E203`), P2.3, disk artifact names, or `docs/PROJECT_STATUS.md` before Task 8.
 - `source /opt/ros/humble/setup.bash` before every build/CTest/replay command.
 
 ### Coverage of the approved order
@@ -44,7 +44,7 @@
 - `test/test_localization_regression.py` — tracking gate tests (Task 3); identity/fail-closed tests (Task 4); reference validation tests (Task 5); subscriber-gate tests (Task 6).
 - `test/test_localization_stability_common.py` — artifact identity tests (Task 4).
 - `test/test_localization_stability_baseline.py` — `DatasetIdentity` construction (Task 4).
-- `docs/HANDOFF.md` — merged status + §9.9 re-acceptance record (Task 8).
+- `docs/PROJECT_STATUS.md` — merged status + §9.9 re-acceptance record (Task 8).
 
 ---
 
@@ -1347,7 +1347,7 @@ This task only produces evidence; nothing changes in the tree.
 
 **Files:**
 - Modify: `test/test_tiled_map_integration.py:339-340` and `:392-395`
-- Modify: `docs/HANDOFF.md:250` and append §9.9
+- Modify: `docs/PROJECT_STATUS.md:250` and append §9.9
 
 - [ ] **Step 1: Remove the extra blank lines**
 
@@ -1380,7 +1380,7 @@ Expected: `100% tests passed, 0 tests failed out of 44`. CTest runs the Python t
 
 - [ ] **Step 4: Update the merged status in HANDOFF**
 
-In `docs/HANDOFF.md` line 250, replace:
+In `docs/PROJECT_STATUS.md` line 250, replace:
 
 ```markdown
 按 `docs/P2.2_fix.md` 执行。本轮修复的是第 8 节记录的四类问题：launch 参数方向、相对地图路径、分块覆盖语义与故障回放、以及独立参数复核。**分支仍未合并到 `main`。**
@@ -1394,7 +1394,7 @@ with:
 
 - [ ] **Step 5: Append §9.9**
 
-Append to the end of `docs/HANDOFF.md`, filling every `<...>` from Task 7's actual output (no `<...>` may remain):
+Append to the end of `docs/PROJECT_STATUS.md`, filling every `<...>` from Task 7's actual output (no `<...>` may remain):
 
 ```markdown
 ### 9.9 合并后加固轮（2026-09-15）
@@ -1456,7 +1456,7 @@ P2.2 修复轮与复核轮已并入本地 `main`（`740dab9`）；本轮从该�
 ```bash
 git add test/test_tiled_map_integration.py
 git commit -m "chore(lint): drop the new tiled fixture E303"
-git add docs/HANDOFF.md
+git add docs/PROJECT_STATUS.md
 git commit -m "docs(p2): record the post-merge hardening round"
 ```
 

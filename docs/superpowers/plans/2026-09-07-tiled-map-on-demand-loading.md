@@ -47,7 +47,7 @@ Modified integration points:
 - `include/slam/system.h`, `src/slam/system.cpp`: map diagnostics and overview/local-map publication.
 - `test/integration/stability_common.py`, `test/integration/localization_regression.py`, `scripts/run_localization_stability.sh`: tiled runtime parameters and supported replay mode.
 - `CMakeLists.txt`, `package.xml`: yaml-cpp, production sources, CLI, tests and install rules.
-- `docs/HANDOFF.md`: final commands, measurements and behavior.
+- `docs/PROJECT_STATUS.md`: final commands, measurements and behavior.
 
 ## Task 1: Shared tile index and configuration contract
 
@@ -1319,7 +1319,7 @@ git commit -m "test(map): add tiled localization replay coverage"
 ## Task 10: Real data acceptance, measurements and handoff
 
 **Files:**
-- Modify: `docs/HANDOFF.md`
+- Modify: `docs/PROJECT_STATUS.md`
 - Modify: `test/integration/baselines/hesai_sim.yaml` only if a separately
   reviewed tiled metric requires a new explicit key; do not relax existing
   global thresholds.
@@ -1398,7 +1398,7 @@ unqualified statement.
 
 Document mode selection, directory layout, conversion command, rollback to
 `map_mode: global`, diagnostic keys, measured results and known operational
-limits in `docs/HANDOFF.md`.
+limits in `docs/PROJECT_STATUS.md`.
 
 Run:
 
@@ -1414,7 +1414,7 @@ this task remain.
 - [ ] **Step 7: Commit final evidence**
 
 ```bash
-git add -f docs/HANDOFF.md
+git add -f docs/PROJECT_STATUS.md
 git add test/integration/baselines/hesai_sim.yaml
 git commit -m "docs(map): record tiled localization verification"
 ```

@@ -1,17 +1,18 @@
-# 交接文档 — lio_sam_hesai 定位稳定化
+# 项目状态文档 — lio_sam_hesai 定位稳定化
 
-更新日期：2026-09-12
-当前分支：`p2.2-coordinate-naming-unification`（P2.2 坐标与命名收敛，未合入 `main`）
-基线提交：`7e0d1da docs(p2): record Task 8 progress and handoff notes`
-工作区：交接时无未提交改动。
+更新日期：2026-09-15
+当前分支：`main`
+当前提交：`db15459 docs(p2): record post-merge hardening evidence`
+远端状态：本地 `main` 相对 `origin/main` ahead 183，尚未 push。
+工作区：更新本文档前已有一项用户改动——`docs/P2_2_MIGRATION.md` 被删除；本轮不处理、不恢复该删除。
 
 ## 一、当前结论
 
-**P2.2（建图/重定位坐标与命名收敛）已按计划实现到 Task 8，但尚未签收。** 代码、配置、launch、文档与全部单元/契约测试均已完成并通过；阻塞点是两条分块回放检查（`tiled-quick`、`tiled-faults`）失败。已用 `main` 做 A/B 对照，两者在未改动的 `main` 上以完全相同的数值/信息失败，因此**不是 P2.2 引入的回归**，而是既有的分块基线缺口。按计划 Task 9 Step 5 的要求，检查未全部通过时 P2.2 保持未完成并记录阻塞项。详见第 8 节。
+**P2.2（建图/重定位坐标与命名收敛）及其修复、复核和合并后加固均已完成，并已进入本地 `main`。** 第 8 节记录的是 2026-09-12 的阶段性未签收状态；第 9 节随后修复了 launch 参数方向、相对地图路径、分块覆盖语义和回放判据等问题。原先阻塞签收的 `tiled-quick`、`tiled-faults` 已在修复轮与复核轮通过，不再是当前阻塞项。代码加固止于 `bbfd47d`；其后的 `db15459` 只修改本文档与本轮计划文档，验证与未重跑范围见 9.9。
 
 原定的稳定化子项目均已合入 `main`：健康可观测性、低风险缺陷清理、外参统一、回放与 RSS 验证框架、LOST 自恢复、启动就绪握手、实时资源治理，以及定位 TF 连续性收尾。当前没有已批准但尚未开始的 P0/P1 子项目。
 
-最后一轮完整验证记录于 2026-08-04：串行构建和安装成功；排除仓库既有的六项 lint/外部 schema 检查后，28 个已启用 CTest 全部通过；`hesai_sim` 的 quick 回放和 TF 故障注入回放均以退出码 0 完成。详见第 3 节。
+稳定化基线的历史完整验证记录于 2026-08-04；P2.2 修复轮、独立复核轮与合并后加固轮的最新证据记录于 2026-09-15。9.9 当轮记录的约定 CTest 门禁为 44/44、Python 测试为 173/173，并完整重跑了 `tiled-faults`；相关临时构建与结果目录现已不存在，本次文档更新没有在 `db15459` 上重跑这些检查。`quick`、`tf-continuity`、`tiled-quick` 的最近一次真实全绿回放仍来自 9.8，不能表述为已在 `bbfd47d` 上重跑。详见第 3 节与 9.8-9.9。
 
 ## 二、已完成的功能与对应资料
 
@@ -25,7 +26,7 @@
 | E：故障自恢复闭环 | 已完成 | 每次进入 `LOST` 立即自动重定位一次；仅在数据流从异常恢复为健康时再尝试一次；手动 `/initialpose` 可打破自动等待。|
 | D1：启动就绪握手 | 已完成 | 在订阅和工作线程启动前同步加载地图、地面图、kd-tree 与可选 Scan Context；失败直接拒绝启动；诊断暴露准备耗时。|
 | D2：实时化与资源治理 | 已完成 | 预处理/定位线程默认请求 FIFO 与 CPU 亲和，权限或 cpuset 不满足时降级运行并上报；500 ms 单帧处理看门狗在安全检查点丢弃超期帧并恢复状态。|
-| P2-2：坐标与命名收敛 | 已实现，未签收 | 新增公共契约层：有方向约束的 `RigidTransform3d`（`parent_T_child` 编译期语义）、`RosPoseAdapter`、不可变 `SlamConfig` + legacy 键兼容解析、`MapArtifactLayout`。重定位迁移到注入式配置并删除 `ConfigParameters` 单例；建图 `ParamServer` 收敛为纯配置持有者，全部话题改为 `pipeline_topic`/`command_topic`/`output_topic` 分组。TF 拓扑、话题字符串、磁盘文件名与算法行为均保持不变。阻塞：分块回放基线（见第 8 节）。|
+| P2-2：坐标与命名收敛 | 已完成，已进入本地 `main` | 新增公共契约层：有方向约束的 `RigidTransform3d`（`parent_T_child` 编译期语义）、`RosPoseAdapter`、不可变 `SlamConfig` + legacy 键兼容解析、`MapArtifactLayout`。重定位迁移到注入式配置并删除 `ConfigParameters` 单例；建图 `ParamServer` 收敛为纯配置持有者，全部话题改为 `pipeline_topic`/`command_topic`/`output_topic` 分组。修复轮与加固轮补齐 launch 参数、相对地图路径、分块覆盖、地图身份绑定、初始位姿订阅握手及回放判据；原分块回放阻塞已解除（见第 9 节）。|
 | P2-1：大场景分块地图按需加载 | 已完成 | 新增 `localization_map` 模块：共享 tile 索引、带路径校验的 v1 manifest、原子分片生成器 + CLI、有界 LRU 缓存、`GlobalMapProvider`/`TiledMapProvider` 统一接口、单 worker 异步加载。支持冷启动 Scan Context 重定位与跟踪，内存受活动范围与缓存预算约束；旧全图路径不变。|
 
 主要设计与实施记录：
@@ -96,12 +97,14 @@ LIO_SAM_KEEP_RESULTS=1 scripts/run_localization_stability.sh memory
 
 ## 五、后续工作
 
-**P2.2 尚未签收**，签收前需要先解决第 8 节记录的阻塞项。P2-1 大场景分块地图已完成（见第 7 节）。剩余 P2 顺序，下一项需在开始前重新确认范围并建立新的 spec：
+P2-1 与 P2.2 均已完成并进入本地 `main`；第 8 节的分块回放阻塞已由第 9 节修复，不再列为后续工作。**P2.3 当前暂缓，不是待立即执行的下一项；未经用户明确恢复并重新确认范围，不开始设计、实现或验证。** 其余条目也需在开始前确认范围并建立新的 spec：
 
-1. **修分块回放基线**：`tiled-quick` / `tiled-faults` 目前即使在没有 P2.2 的 `main` 上也失败（见第 8 节）。需要决定是重新标定分块模式的 `max_non_ok_gap_seconds` 基线，还是修 `missing-neighbor` 诊断的缺失索引。
-2. **地图产物版本化与兼容校验**：为 PCD、`sc_db.bin` 和参数快照建立版本戳、元数据与加载期校验（本项目只定义分块加载所需的最小 manifest 版本与一致性检查）。
+1. **P2.3 地图产物版本化与兼容校验（暂缓）**：原计划为 PCD、`sc_db.bin` 和参数快照建立版本戳、元数据与加载期校验（当前只定义了分块加载所需的最小 manifest 版本与一致性检查）；保留为已知方向，暂不推进。
+2. **退出自动保存产物收敛**：Ctrl+C 路径仍写无人回读的 `cloud*.pcd`，且不写 `sc_db.bin`；需要统一为定位和分块生成器可消费的产物契约。
+3. **`TightCouplingKF` 产品决策**：配置校验器接受该模式，但运行期仍 `LOG(FATAL)`；需决定实现、隐藏还是在配置期明确拒绝。
+4. **历史 lint 基线治理**：`flake8`、`lint_cmake`、`uncrustify`、`xmllint` 仍未全绿，应独立立项，不与功能回归混淆。
 
-`docs/ARCHITECTURE.md` 是 7 月的静态风险评估，仍含“未完成”及旧文件存在等历史描述；开始新工作前应以当前源码、提交历史和本交接文档为准，再单独更新该架构文档。
+`docs/ARCHITECTURE.md` 是 7 月的静态风险评估，仍含“未完成”及旧文件存在等历史描述；开始新工作前应以当前源码、提交历史和本状态文档为准，再单独更新该架构文档。
 
 ## 六、环境、约定与入口
 
@@ -109,7 +112,7 @@ LIO_SAM_KEEP_RESULTS=1 scripts/run_localization_stability.sh memory
 - 工作区：`/home/robot/slam_ws`；包：`/home/robot/slam_ws/src/lio_sam_hesai`。
 - 外置验收数据：`/home/robot/rosbag2/hesai_sim` 与 `/home/robot/map/hesai_sim2`；可用 `LIO_SAM_TESTDATA_ROOT`、`LIO_SAM_WORKSPACE` 覆盖。
 - 构建入口：`colcon build --symlink-install --packages-select lio_sam_hesai` 或已有 CMake 构建目录的 `cmake --build`。
-- `docs/` 与 `test/` 受 `.gitignore` 影响。需要提交其中的文档时，使用 `git add -f <path>`；正常代码和配置不应依赖强制添加。
+- `docs/` 与 `test/` 受 `.gitignore` 影响：已跟踪文件修改后使用普通 `git add`，只有新增且仍被忽略的文件才需要 `git add -f <path>`；正常代码和配置不应依赖强制添加。
 - 当前已直接在 `main` 开发。后续是否继续直接提交 `main`，应以当次用户/团队指令为准。
 
 关键入口：
@@ -181,6 +184,8 @@ lio_sam_hesai_generate_tiled_map /home/robot/map/hesai_sim2 \
 
 ## 八、P2.2 坐标与命名收敛（2026-09-12）
 
+> 本节保留 2026-09-12 的阶段性历史记录；其中“未合入”“未签收”和分块回放阻塞均已被第 9 节的修复、复核与合并后加固取代，不代表当前状态。
+
 设计：[spec](superpowers/specs/2026-09-10-mapping-localization-coordinate-naming-unification-design.md) / 计划：[plan](superpowers/plans/2026-09-10-mapping-localization-coordinate-naming-unification.md)
 
 分支 `p2.2-coordinate-naming-unification`，从 `main` 的 `30d6e88` 分出，共 14 个提交（`a0fd37f` … `7e0d1da`）。**未合入 `main`**，用户要求显式批准后才合并。
@@ -239,15 +244,15 @@ OdomTLidar::FromMatrix(trans2Affine3f(transformTobeMapped).matrix().cast<double>
 
 ### 遗留与注意事项
 
-- 分块回放的阻塞项见第五节第 1 条。
+- 分块回放的阶段性阻塞已在第 9 节修复；本节只保留 2026-09-12 的历史记录。
 - 退出自动保存仍写 `cloudCorner.pcd` / `cloudSurf.pcd` / `cloudGlobal.pcd` / `cloudGround.pcd`，而服务保存写 `CornerMap.pcd` / `SurfMap.pcd` / `GlobalMap.pcd` / `GroundMap.pcd`。P2.2 不重命名磁盘文件，因此四个历史名字已收敛到 `MapArtifactLayout` 的 `Saved*Cloud()` 访问器。**这看起来是真实缺陷**：没有任何代码回读 `cloud*.pcd`，只靠 Ctrl+C 保存的地图无法被定位或分块生成器加载（它们找 `GlobalMap.pcd`）。
 - 空的 `localization.map_path` 默认值从 `<package>/data/map.pcd` 改为 `<package>/data/GlobalMap.pcd`（计划要求删除 `kGlobalMapFileName`）。`data/` 下从未存在 `map.pcd`，因此旧默认值是死代码；任何显式配置的路径不受影响。
-- `docs/P2_2_MIGRATION.md` 已在 `.gitignore` 的 `docs/` 下但被跟踪，新克隆后需要 `git add -f`。
+- `docs/P2_2_MIGRATION.md` 受 `.gitignore` 的 `docs/` 规则影响但已被跟踪，修改后普通 `git add` 即可；当前工作区已将该文件删除且未暂存，本轮不决定其去留。
 - 迁移文档中的 legacy→canonical 键表由 `test_unified_parameter_schema.cpp` 的 `kParameterContracts` 生成，改动该表后应重新生成。
 
 ## 九、P2.2 修复轮（2026-09-15）
 
-按 `docs/P2.2_fix.md` 执行。本轮修复的是第 8 节记录的四类问题：launch 参数方向、相对地图路径、分块覆盖语义与故障回放、以及独立参数复核。**分支仍未合并到 `main`。**（现状补充：该分支随后已并入本地 `main`（`740dab9`），合并后的加固轮见 9.9；本句是当时的状态记录。）
+按当时的本地 `docs/P2.2_fix.md` 执行；该文件未被 Git 跟踪且当前已不存在，本轮记录以 9.1-9.8 为准。本轮修复的是第 8 节记录的四类问题：launch 参数方向、相对地图路径、分块覆盖语义与故障回放、以及独立参数复核。该分支当时尚未合并，随后已并入本地 `main`（`740dab9`）；合并后的加固轮见 9.9。
 
 ### 9.1 状态区分
 
@@ -361,9 +366,11 @@ LIO_SAM_WORKSPACE=/tmp/p22_clean LIO_SAM_KEEP_RESULTS=1 \
 `fix/p22-postmerge-hardening`，修复一并遗留的验收判据/校验缺口后重新验收。计划与设计见
 `docs/superpowers/plans/2026-09-15-p22-postmerge-hardening.md` 与
 `docs/superpowers/specs/2026-09-15-p22-postmerge-hardening-design.md`。
+计划文件中的复选框未在实施后回填，仅作过程说明；完成状态与证据以本节为准。
 
-**分支状态**：`fix/p22-postmerge-hardening` 的代码修复止于 `bbfd47d`（基于 `740dab9`）；
-**尚未合并、尚未 push**，集成方式待用户选择。
+**历史分支状态**：`fix/p22-postmerge-hardening` 的代码修复止于 `bbfd47d`（基于 `740dab9`）。
+**当前集成状态**：`9ddbe69` 至 `bbfd47d` 以及证据提交 `db15459` 均已进入本地 `main`；
+当前 HEAD 为 `db15459`。本地 `main` 尚未 push，相对 `origin/main` ahead 183。
 
 **修复内容**（提交 `9ddbe69` → `bbfd47d`）
 
@@ -386,7 +393,7 @@ LIO_SAM_WORKSPACE=/tmp/p22_clean LIO_SAM_KEEP_RESULTS=1 \
    center 不再泄漏 `TypeError`；提取等价 subscriber helper，并补齐生产查询、
    `tiled-quick` 接线和回放边界测试。仅动 Python，无 C++ 改动。
 
-**最终验证（HEAD `bbfd47d`）**
+**最终验证（在 `bbfd47d` 上执行；其代码与当前 HEAD `db15459` 相同）**
 
 - 干净 C++ 构建：成功、退出码 0。colcon 前端在配置阶段后挂起，改用同一生成树
   `cmake --build ... --parallel 1` 完成编译、`cmake --install` 完成安装；`ae9226d` 之后
@@ -404,8 +411,8 @@ LIO_SAM_WORKSPACE=/tmp/p22_clean LIO_SAM_KEEP_RESULTS=1 \
   `missing-neighbor` `first_ok_seconds: 8.19`、`valid_odom_ratio: 1.0`、
   `map_tile_load_failures: 3`。`bd87434 → bbfd47d` 只改 Python 验证边界并提取等价
   helper，最终 44/173 全绿即该脚本判据的复验。
-- 证据在 `.p22_build/tiled-faults-e2e-results/` 与 `.p22_build/final-verification/`，
-  **两目录均未跟踪，清理 worktree 会丢失**。
+- 证据原在 `.p22_build/tiled-faults-e2e-results/` 与 `.p22_build/final-verification/`；
+  截至本次更新，两目录、临时 worktree 与当轮 `/tmp` 构建树均已不存在，因此这些历史数值当前无法从本机产物复核。
 
 **本轮未做**：未 push；未做版权头或全仓 lint 治理（仅保证新增行 0 违规、既有基线不恶化）；
 `tiled-quick`/`quick`/`tf-continuity` 的真实回放本轮**未重跑**（完整 `tiled-faults` 已跑），
