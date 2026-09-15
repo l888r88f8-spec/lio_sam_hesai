@@ -31,14 +31,6 @@ class MapArtifactLayout {
   static constexpr const char* kManifestName = "manifest.yaml";
   static constexpr const char* kDefaultTileSubdirectory = "tiled";
 
-  // Written only by the shutdown auto-save. Nothing reads these back, but P2.2
-  // does not rename on-disk artifacts, so they keep their historical names and
-  // still come from here instead of being concatenated at the call site.
-  static constexpr const char* kSavedCornerCloudName = "cloudCorner.pcd";
-  static constexpr const char* kSavedSurfaceCloudName = "cloudSurf.pcd";
-  static constexpr const char* kSavedGlobalCloudName = "cloudGlobal.pcd";
-  static constexpr const char* kSavedGroundCloudName = "cloudGround.pcd";
-
   // Stores a normalized root. Throws std::invalid_argument for an empty root
   // or an empty tile subdirectory, before any I/O happens.
   explicit MapArtifactLayout(
@@ -74,10 +66,6 @@ class MapArtifactLayout {
   [[nodiscard]] std::filesystem::path SurfaceMap() const;
   [[nodiscard]] std::filesystem::path TiledRoot() const;
   [[nodiscard]] std::filesystem::path TiledManifest() const;
-  [[nodiscard]] std::filesystem::path SavedCornerCloud() const;
-  [[nodiscard]] std::filesystem::path SavedSurfaceCloud() const;
-  [[nodiscard]] std::filesystem::path SavedGlobalCloud() const;
-  [[nodiscard]] std::filesystem::path SavedGroundCloud() const;
 
  private:
   std::filesystem::path root_;

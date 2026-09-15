@@ -111,19 +111,3 @@ std::filesystem::path MapArtifactLayout::TiledRoot() const {
 std::filesystem::path MapArtifactLayout::TiledManifest() const {
   return TiledRoot() / kManifestName;
 }
-
-std::filesystem::path MapArtifactLayout::SavedCornerCloud() const {
-  return root_ / kSavedCornerCloudName;
-}
-
-std::filesystem::path MapArtifactLayout::SavedSurfaceCloud() const {
-  return root_ / kSavedSurfaceCloudName;
-}
-
-std::filesystem::path MapArtifactLayout::SavedGlobalCloud() const {
-  return root_ / kSavedGlobalCloudName;
-}
-
-std::filesystem::path MapArtifactLayout::SavedGroundCloud() const {
-  return root_ / kSavedGroundCloudName;
-}

@@ -255,9 +255,9 @@ public:
 
     float transformTobeMapped[6];
 
-    // Runtime overrides of two configured flags: see the constructor.
+    // Runtime override of the configured loop-closure flag: the node turns it
+    // off for itself when it is not running in mapping mode.
     bool loop_closure_enabled_ = false;
-    bool save_map_enabled_ = false;
 
     std::mutex mtx;
     std::mutex mtxLoopInfo;
@@ -294,16 +294,14 @@ public:
         parameters.relinearizeSkip = 1;
         isam = new ISAM2(parameters);
 
-        // Runtime overrides rather than configuration: the node turns these
-        // off for itself when it is not running in mapping mode, so they live
-        // here instead of in the immutable config_.
+        // Runtime override rather than configuration: the node turns this off
+        // for itself when it is not running in mapping mode, so it lives here
+        // instead of in the immutable config_.
         loop_closure_enabled_ = config_.mapping.loop_closure.enable;
-        save_map_enabled_ = config_.mapping.map_save.enabled;
         if (!config_.mapping.system.mapping_mode)
         {
             loop_closure_enabled_ = false;
-            save_map_enabled_ = false;
-            RCLCPP_WARN(get_logger(), "mappingMode=false: disable loop closure and map saving");
+            RCLCPP_WARN(get_logger(), "mappingMode=false: disable loop closure");
         }
 
         pubKeyPoses = create_publisher<sensor_msgs::msg::PointCloud2>(config_.outputs.trajectory, 1);
@@ -955,72 +953,6 @@ public:
             publishGlobalMap();
             publishGlobalGroundMap();
         }
-        if (save_map_enabled_ == false)
-            return;
-        std::cout << "****************************************************" << std::endl;
-        std::cout << "Saving map to pcd files ..." << std::endl;
-
-        // Resolve the configured directory against $HOME for this run only;
-        // the shared configuration itself stays immutable.
-        const std::string save_directory =
-            std::getenv("HOME") + config_.mapping.map_save.directory;
-        const MapArtifactLayout shutdown_layout(save_directory);
-        int unused = system((std::string("exec rm -r ") + save_directory).c_str());
-        unused = system((std::string("mkdir ") + save_directory).c_str());
-
-        pcl::io::savePCDFileASCII(shutdown_layout.Trajectory().string(), *cloudKeyPoses3D);
-        pcl::io::savePCDFileASCII(shutdown_layout.Transformations().string(), *cloudKeyPoses6D);
-
-        pcl::PointCloud<PointType>::Ptr globalCornerCloud(new pcl::PointCloud<PointType>());
-        pcl::PointCloud<PointType>::Ptr globalCornerCloudDS(new pcl::PointCloud<PointType>());
-        pcl::PointCloud<PointType>::Ptr globalSurfCloud(new pcl::PointCloud<PointType>());
-        pcl::PointCloud<PointType>::Ptr globalSurfCloudDS(new pcl::PointCloud<PointType>());
-        pcl::PointCloud<PointType>::Ptr globalMapCloud(new pcl::PointCloud<PointType>());
-
-        for (int i = 1; i < (int)cloudKeyPoses3D->size() - 1; i++) 
-        {
-            *globalCornerCloud += *transformPointCloud(cornerCloudKeyFrames[i], &cloudKeyPoses6D->points[i]);
-            *globalSurfCloud   += *transformPointCloud(surfCloudKeyFrames[i],   &cloudKeyPoses6D->points[i]);
-
-            std::cout << "\r" << std::flush << "Processing frame " << i << " of " << cloudKeyPoses3D->size() << " ..." << std::endl;;
-        }
-        shiftSavedMapCloudZ(globalCornerCloud);
-        shiftSavedMapCloudZ(globalSurfCloud);
-        if (config_.mapping.map_save.align_ground_to_zero)
-        {
-            std::cout << "Saved map Z offset: " << config_.mapping.map_save.ground_z_offset
-                 << " m (align ground to map z=0)" << std::endl;
-        }
-
-        if (config_.mapping.map_save.resolution > 0.0f)
-        {
-            downSizeFilterCorner.setLeafSize(config_.mapping.map_save.resolution, config_.mapping.map_save.resolution, config_.mapping.map_save.resolution);
-            downSizeFilterCorner.setInputCloud(globalCornerCloud);
-            downSizeFilterCorner.filter(*globalCornerCloudDS);
-
-            downSizeFilterSurf.setLeafSize(config_.mapping.map_save.resolution, config_.mapping.map_save.resolution, config_.mapping.map_save.resolution);
-            downSizeFilterSurf.setInputCloud(globalSurfCloud);
-            downSizeFilterSurf.filter(*globalSurfCloudDS);
-
-            *globalMapCloud += *globalCornerCloudDS;
-            *globalMapCloud += *globalSurfCloudDS;
-        }
-        else
-        {
-            *globalCornerCloudDS = *globalCornerCloud;
-            *globalSurfCloudDS = *globalSurfCloud;
-            *globalMapCloud += *globalCornerCloud;
-            *globalMapCloud += *globalSurfCloud;
-        }
-
-        pcl::io::savePCDFileASCII(shutdown_layout.SavedCornerCloud().string(), *globalCornerCloudDS);
-        pcl::io::savePCDFileASCII(shutdown_layout.SavedSurfaceCloud().string(), *globalSurfCloudDS);
-        pcl::io::savePCDFileASCII(shutdown_layout.SavedGlobalCloud().string(), *globalMapCloud);
-        saveGlobalGroundMap(shutdown_layout.SavedGroundCloud().string(), config_.mapping.map_save.ground_resolution, false);
-        downSizeFilterCorner.setLeafSize(config_.mapping.voxel_filter.mapping_corner_leaf_size, config_.mapping.voxel_filter.mapping_corner_leaf_size, config_.mapping.voxel_filter.mapping_corner_leaf_size);
-        downSizeFilterSurf.setLeafSize(config_.mapping.voxel_filter.mapping_surface_leaf_size, config_.mapping.voxel_filter.mapping_surface_leaf_size, config_.mapping.voxel_filter.mapping_surface_leaf_size);
-        std::cout << "****************************************************" << std::endl;
-        std::cout << "Saving map to pcd files completed" << std::endl;
     }
 
     // 保存地图时可整体平移Z，使导出的PCD地面落到map.z=0。

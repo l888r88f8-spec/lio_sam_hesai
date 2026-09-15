@@ -809,3 +809,38 @@ TEST(UnifiedParameterSchema, YamlScannerStopsOutsideRosParameters) {
     surface.raw_keys.find("pointCloudTopic") ==
     surface.raw_keys.end());
 }
+
+TEST(UnifiedParameterSchema, ShutdownAutoSaveImplementationIsAbsent) {
+  const std::vector<std::pair<std::string, std::string>> forbidden = {
+    {"src/mapOptimization.cpp", "save_map_enabled_"},
+    {"src/mapOptimization.cpp", "SavedCornerCloud"},
+    {"src/mapOptimization.cpp", "SavedSurfaceCloud"},
+    {"src/mapOptimization.cpp", "SavedGlobalCloud"},
+    {"src/mapOptimization.cpp", "SavedGroundCloud"},
+    {"include/common/map_artifact_layout.h", "kSavedCornerCloudName"},
+    {"include/common/map_artifact_layout.h", "kSavedSurfaceCloudName"},
+    {"include/common/map_artifact_layout.h", "kSavedGlobalCloudName"},
+    {"include/common/map_artifact_layout.h", "kSavedGroundCloudName"},
+    {"include/common/map_artifact_layout.h", "SavedCornerCloud"},
+    {"include/common/map_artifact_layout.h", "SavedSurfaceCloud"},
+    {"include/common/map_artifact_layout.h", "SavedGlobalCloud"},
+    {"include/common/map_artifact_layout.h", "SavedGroundCloud"},
+    {"include/common/map_artifact_layout.h", "\"cloudCorner.pcd\""},
+    {"include/common/map_artifact_layout.h", "\"cloudSurf.pcd\""},
+    {"include/common/map_artifact_layout.h", "\"cloudGlobal.pcd\""},
+    {"include/common/map_artifact_layout.h", "\"cloudGround.pcd\""},
+    {"src/common/map_artifact_layout.cpp",
+     "MapArtifactLayout::SavedCornerCloud"},
+    {"src/common/map_artifact_layout.cpp",
+     "MapArtifactLayout::SavedSurfaceCloud"},
+    {"src/common/map_artifact_layout.cpp",
+     "MapArtifactLayout::SavedGlobalCloud"},
+    {"src/common/map_artifact_layout.cpp",
+     "MapArtifactLayout::SavedGroundCloud"},
+  };
+
+  for (const auto & [file, token] : forbidden) {
+    SCOPED_TRACE(file + ": " + token);
+    EXPECT_EQ(ReadProjectFile(file).find(token), std::string::npos);
+  }
+}
