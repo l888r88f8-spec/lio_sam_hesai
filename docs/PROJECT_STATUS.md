@@ -100,9 +100,8 @@ LIO_SAM_KEEP_RESULTS=1 scripts/run_localization_stability.sh memory
 P2-1 与 P2.2 均已完成并进入本地 `main`；第 8 节的分块回放阻塞已由第 9 节修复，不再列为后续工作。**P2.3 当前暂缓，不是待立即执行的下一项；未经用户明确恢复并重新确认范围，不开始设计、实现或验证。** 其余条目也需在开始前确认范围并建立新的 spec：
 
 1. **P2.3 地图产物版本化与兼容校验（暂缓）**：原计划为 PCD、`sc_db.bin` 和参数快照建立版本戳、元数据与加载期校验（当前只定义了分块加载所需的最小 manifest 版本与一致性检查）；保留为已知方向，暂不推进。
-2. **退出自动保存产物收敛**：Ctrl+C 路径仍写无人回读的 `cloud*.pcd`，且不写 `sc_db.bin`；需要统一为定位和分块生成器可消费的产物契约。
-3. **`TightCouplingKF` 产品决策**：配置校验器接受该模式，但运行期仍 `LOG(FATAL)`；需决定实现、隐藏还是在配置期明确拒绝。
-4. **历史 lint 基线治理**：`flake8`、`lint_cmake`、`uncrustify`、`xmllint` 仍未全绿，应独立立项，不与功能回归混淆。
+2. **`TightCouplingKF` 产品决策**：配置校验器接受该模式，但运行期仍 `LOG(FATAL)`；需决定实现、隐藏还是在配置期明确拒绝。
+3. **历史 lint 基线治理**：`flake8`、`lint_cmake`、`uncrustify`、`xmllint` 仍未全绿，应独立立项，不与功能回归混淆。
 
 `docs/ARCHITECTURE.md` 是 7 月的静态风险评估，仍含“未完成”及旧文件存在等历史描述；开始新工作前应以当前源码、提交历史和本状态文档为准，再单独更新该架构文档。
 
@@ -245,7 +244,7 @@ OdomTLidar::FromMatrix(trans2Affine3f(transformTobeMapped).matrix().cast<double>
 ### 遗留与注意事项
 
 - 分块回放的阶段性阻塞已在第 9 节修复；本节只保留 2026-09-12 的历史记录。
-- 退出自动保存仍写 `cloudCorner.pcd` / `cloudSurf.pcd` / `cloudGlobal.pcd` / `cloudGround.pcd`，而服务保存写 `CornerMap.pcd` / `SurfMap.pcd` / `GlobalMap.pcd` / `GroundMap.pcd`。P2.2 不重命名磁盘文件，因此四个历史名字已收敛到 `MapArtifactLayout` 的 `Saved*Cloud()` 访问器。**这看起来是真实缺陷**：没有任何代码回读 `cloud*.pcd`，只靠 Ctrl+C 保存的地图无法被定位或分块生成器加载（它们找 `GlobalMap.pcd`）。
+- ~~退出自动保存仍写 `cloudCorner.pcd` / `cloudSurf.pcd` / `cloudGlobal.pcd` / `cloudGround.pcd`，而服务保存写 `CornerMap.pcd` / `SurfMap.pcd` / `GlobalMap.pcd` / `GroundMap.pcd`……只靠 Ctrl+C 保存的地图无法被定位或分块生成器加载（它们找 `GlobalMap.pcd`）。~~ **该缺陷已于 2026-09-15 按“删除而非重命名”解决**：Ctrl+C 路径、`map_save.enabled` / `savePCD` 参数和 `MapArtifactLayout::Saved*Cloud()` 全部删除，`/lio_sam/save_map` 成为唯一导出入口。当时选择不重命名磁盘文件，因此 `CornerMap.pcd` / `SurfMap.pcd` / `GlobalMap.pcd` / `GroundMap.pcd` 的名字保持不变。
 - 空的 `localization.map_path` 默认值从 `<package>/data/map.pcd` 改为 `<package>/data/GlobalMap.pcd`（计划要求删除 `kGlobalMapFileName`）。`data/` 下从未存在 `map.pcd`，因此旧默认值是死代码；任何显式配置的路径不受影响。
 - `docs/P2_2_MIGRATION.md` 受 `.gitignore` 的 `docs/` 规则影响但已被跟踪，修改后普通 `git add` 即可；当前工作区已将该文件删除且未暂存，本轮不决定其去留。
 - 迁移文档中的 legacy→canonical 键表由 `test_unified_parameter_schema.cpp` 的 `kParameterContracts` 生成，改动该表后应重新生成。
@@ -329,7 +328,7 @@ LIO_SAM_WORKSPACE=/tmp/p22_clean LIO_SAM_KEEP_RESULTS=1 \
 
 ### 9.7 范围外遗留（未处理）
 
-- **退出自动保存的产物无人消费**：`map_save.enabled` 只控制这一条路径，写出的 `cloudCorner/cloudSurf/cloudGlobal/cloudGround.pcd` 没有任何回读方，且不写 `sc_db.bin`；只靠 Ctrl+C 保存的地图无法被定位或分块生成器加载。修它需要重命名磁盘文件，超出 P2.2 范围。
+- ~~**退出自动保存的产物无人消费**：`map_save.enabled` 只控制这一条路径，写出的 `cloudCorner/cloudSurf/cloudGlobal/cloudGround.pcd` 没有任何回读方，且不写 `sc_db.bin`。~~ **已于 2026-09-15 关闭**：不采用“重命名磁盘文件”的方案，而是直接删除该路径；`map_save.enabled` 与 `savePCD` 现在在启动期 fail-closed 拒绝并提示改用 `/lio_sam/save_map`。验收证据见第 10 节。
 - **`TightCouplingKF` 被校验器接受但运行期 `LOG(FATAL)`**：`ValidateLocalizationRuntime` 的报错信息把它列为合法值，`test_slam_config.cpp` 也断言它被接受，但 `localization.cpp` 对该模式走 `LOG(FATAL) << "Kalman filter support will be coming soon!"`。这是有意保留的未实现桩，属产品决策，本轮未改动。
 - **四项 lint 基线**（`flake8`、`lint_cmake`、`uncrustify`、`xmllint`）在 `main` 上就失败，本轮保持不恶化。
 
@@ -418,5 +417,36 @@ LIO_SAM_WORKSPACE=/tmp/p22_clean LIO_SAM_KEEP_RESULTS=1 \
 `tiled-quick`/`quick`/`tf-continuity` 的真实回放本轮**未重跑**（完整 `tiled-faults` 已跑），
 其最近一次全绿记录仍属 9.8 轮。
 
-**仍存的非本轮项**：P2.3，以及 9.7 的退出自动保存磁盘产物、`TightCouplingKF` 运行期
-`LOG(FATAL)` 桩、四项 lint 基线——本轮未清零，也不宣称清零。
+**仍存的非本轮项**：P2.3、`TightCouplingKF` 运行期 `LOG(FATAL)` 桩、四项 lint 基线——
+本轮未清零，也不宣称清零。9.7 的退出自动保存磁盘产物已按第 10 节关闭，不再属于遗留项。
+
+## 十、退出自动保存删除（2026-09-15）
+
+按 [计划](superpowers/plans/2026-09-15-remove-shutdown-auto-save.md) 执行，代码基线 `c9aa44a`（计划提交 `docs: plan shutdown auto-save removal` 与计划修订提交 `docs: revise shutdown auto-save removal plan` 都只改本计划文件，不含实现改动）。目标：Ctrl+C 不再写任何地图文件、不改动导出目录，`/lio_sam/save_map` 成为唯一导出入口，删除的参数在启动期 fail-closed 拒绝。
+
+### 10.1 改动
+
+- 删除 `src/mapOptimization.cpp` 的 `save_map_enabled_` 成员、构造赋值，以及 `visualizeGlobalMapThread()` 退出后的整段导出代码（`rm -r` / `mkdir` / `trajectory`、`transformations`、`cloudCorner`、`cloudSurf`、`cloudGlobal`、`cloudGround` 共 6 个 PCD 写入与 Z 偏移导出）。
+- 删除仅供该路径使用的 `MapArtifactLayout::kSaved*CloudName` 常量与 `Saved*Cloud()` 访问器（`include/common/map_artifact_layout.h`、`src/common/map_artifact_layout.cpp`）。
+- 删除 `MapSaveConfig::enabled`、`map_save.enabled` 读取（`savePCD` 别名随之失效）、`config/mapping.yaml` 的 `enabled` leaf，以及 `test_unified_parameter_schema.cpp` 的 `{"savePCD", "map_save.enabled", ...}` 契约行。
+- 新增 `RejectRemovedMappingParameters()`：在 `LoadSlamConfig` 的任何 `Load*` 之前读取原始 override map，命中 `map_save.enabled` 或 `savePCD` 时抛出 `was removed with Ctrl+C automatic map saving; use /lio_sam/save_map instead`。
+- 新增契约测试：`SlamConfig.RejectsRemovedShutdownAutoSaveParameters`、`UnifiedParameterSchema.ShutdownAutoSaveImplementationIsAbsent`、`UnifiedParameterSchema.ShutdownAutoSaveContract`（YAML/launch 反向契约 + guard 字面量精确计数）。
+- 独立 code review 后的测试加固：`UnifiedParameterSchema.ProjectSurfaceRejectsLegacyExternalNames` 把这两个已删除参数并入 `kRemovedExternalNames`，在全部 8 个生产表面（`include/lio_sam/utility.hpp`、`src/imageProjection.cpp`、`src/slam/system.cpp`、`config/mapping.yaml`、`config/relocalization.yaml` 与三个 launch 文件）做反向扫描；`SlamConfig.RejectsRemovedShutdownAutoSaveParameters` 对 `false` 与 `true` 两种取值都要求拒绝，并点名 `/lio_sam/save_map`。
+- 未新增脚本；生产路径零匹配与 guard 文件两处字面量各恰好 1 次由上述静态契约测试与 Task C 的一次性 `rg` allowlist 扫描加注入自检验证。
+
+### 10.2 验证证据
+
+- 基线构建与改动后全量构建：`cmake --build /home/robot/slam_ws/build/lio_sam_hesai -- -j1`，两次均退出码 0。
+- 约定 CTest 门禁（排除 `copyright`/`cpplint`/`flake8`/`lint_cmake`/`uncrustify`/`xmllint`）：基线 44/44 通过，改动后 44/44 通过；完整输出见 `run/baseline-ctest.txt` 与 `run/final-ctest.txt`。
+- 旧行为关闭路径基线：`/home/robot/shutdown_auto_save_evidence/old/` 的 `c9aa44a` 二进制配 `enabled: true`，在与新版完全相同的 fixture/等待/SIGINT harness 下：节点在信号前存活（`node_alive_before_signal=0`），日志含恰一次 `Map Optimization Started.` 与 `signal_handler(SIGINT/SIGTERM)`、恰一次 `Saving map to pcd files ...`，随后第一次空点云写入抛 `pcl::IOException`（`Input point cloud has no data`）并打印 `[ros2run]: Aborted`，wrapper **非零退出**（`old_exit` 本次观测值为 `250`，不作为契约；`wrapper_still_running=0`）；`/home/robot/shutdown_auto_save_smoke` 被 `mkdir` 创建但为空，`trajectory`/`transformations`/`cloudCorner`/`cloudSurf`/`cloudGlobal`/`cloudGround` 六个 PCD 全部不存在，日志无 `Saving map to pcd files completed`；该空目录归档为 `old-export/`（`old_export_is_dir=0`、`old_export_empty=0`，**不是** `cloudGlobal.pcd`）。
+- 新二进制正向 smoke：与旧版相同的 fixture/等待/SIGINT harness（`final-mapping.yaml`），`smoke_dir_absent_before_signal=0`、`node_alive_before_signal=0`、`wrapper_still_running=0`，日志含恰一次 `Map Optimization Started.` 与 `signal_handler(SIGINT/SIGTERM)`，`new_exit=0`（`new_exit_zero=0`），导出目录在信号前与退出后始终不存在（`smoke_dir_absent_after_exit=0`），`Saving map to pcd files`、`pcl::IOException`、`Input point cloud has no data`、`[ros2run]: Aborted` 计数均为 0。
+- 新二进制 fail-closed smoke：`enabled: true` 的 `legacy-enabled.yaml` 启动后 8 秒内自行退出（`still_running=0`），**退出码非零**（`fail_closed_exit` 本次观测值为 `250`，不作为契约），日志含 `map_save.enabled was removed with Ctrl+C automatic map saving; use /lio_sam/save_map instead`，零写入（导出目录不存在）。
+- `/lio_sam/save_map` 服务接口 smoke：普通 `ros2 service list` / `ros2 service type` 所依赖的 daemon XML-RPC socket 被沙箱以 `PermissionError` 阻断（该路 `ros2 service list` 输出为空）；随后用无 daemon 的 typed list `ros2 service list --no-daemon --spin-time 5 -t` 成功发现 `/lio_sam/save_map [lio_sam_hesai/srv/SaveMap]`，节点收到 SIGINT 后退出码 0（`service_exit_zero=0`）。**该 smoke 只通过无 daemon typed list 验证了服务名称与类型**，未单独跑通 `ros2 service type`，也未调用服务导出。
+- 静态 allowlist 扫描（Task C 的一次性 `rg`，非脚本）：生产路径 `include/ src/ config/ launch/` 的三路扫描 A/B/C 均无匹配（`exit_A=1`、`exit_B=1`、`exit_C=1`）；guard 文件 `src/common/slam_config.cpp` 的 `map_save.enabled` 与 `savePCD` 各恰好 1 次（`run/guard-literals.txt` 仅 1 行，`rg -o | sort | uniq -c` 两行计数均为 1）；注入自检在证据副本上恰好命中 2 行（`injected_scan_exit=0`），仓库 `config/mapping.yaml` 扫描无匹配（`repository_scan_exit=1`）且与备份逐字节相同（`repository_cmp_exit=0`）。
+- 证据文件位置：`/home/robot/shutdown_auto_save_evidence/`（`old/`、`new/`、`run/`、`old-export/`）；smoke 目标目录 `/home/robot/shutdown_auto_save_smoke` 在全部 smoke 结束后不存在。
+
+### 10.3 未做
+
+- 未 push。
+- 未做全量 lint 治理，四项既有 lint 基线（`flake8`、`lint_cmake`、`uncrustify`、`xmllint`）未清零。
+- 未做真实 bag 导出：`/lio_sam/save_map` 只做了服务接口 smoke（注册与类型），没有在真实 bag 回放中调用服务导出地图。
