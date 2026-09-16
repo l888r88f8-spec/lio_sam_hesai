@@ -17,6 +17,7 @@ import math
 import os
 from pathlib import Path
 import signal
+import statistics
 import subprocess
 import sys
 import time
@@ -33,6 +34,18 @@ _LOCALIZATION_ODOM_TOPIC = "/lio_sam/localization/odometry"
 _LOCALIZATION_PATH_TOPIC = "/lio_sam/localization/path"
 _MAX_ACTIVE_TF_SPACING_SECONDS = 0.10
 _EXTRAPOLATION_DEADLINE_SECONDS = 0.5
+# Forward-driving window that precedes the first injected outage.  The spatial
+# contract below only applies here, and only when this window is itself
+# measured to be forward-driving, so genuine reverse travel is never rejected.
+_FORWARD_WINDOW_START_SECONDS = 10.0
+_FORWARD_WINDOW_MIN_MEASURED_EDGES = 3
+# A measured TF and its localization odometry are published from the same
+# callback, so a result can only claim a TF that arrives within this window
+# before it.  The window absorbs replay clock granularity and delivery jitter;
+# callback timing alone cannot prove the publication source in every ordering.
+_MEASURED_TF_ODOM_MATCH_SECONDS = 0.02
+_SPATIAL_BACKWARD_MEDIAN_LIMIT_METERS = -0.01
+_SPATIAL_BACKWARD_EDGE_LIMIT_METERS = 0.05
 _STARTUP_TIMEOUT_SECONDS = 10.0
 _PROCESS_STOP_TIMEOUT_SECONDS = 10.0
 _PLAYBACK_TIMEOUT_ALLOWANCE_SECONDS = 45.0
@@ -183,7 +196,7 @@ class TfContinuityCollector:
         if timestamp is None or replay_time is None:
             self._errors.append("TF observation has a non-finite timestamp")
             return
-        del mode, hold_reason
+        del hold_reason
         if self._last_tf_timestamp is not None:
             spacing = timestamp - self._last_tf_timestamp
             if spacing < 0.0:
@@ -202,6 +215,7 @@ class TfContinuityCollector:
             {
                 "replay_seconds": replay_time,
                 "stamp_seconds": timestamp,
+                "mode": _normalized_mode(mode),
                 "translation": _finite_vector(translation),
                 "rotation": _finite_vector(rotation),
             }
@@ -406,6 +420,7 @@ class TfContinuityCollector:
                     "auto_relocalization_trigger=stream_recovered must occur "
                     f"once in recovery window {window} (observed {observed_count})"
                 )
+        errors.extend(self._spatial_contract_violations())
         return errors
 
     def report(self, violations):
@@ -421,6 +436,7 @@ class TfContinuityCollector:
             "stream_recovery_auto_trigger_replay_seconds": (
                 self._stream_recovery_auto_trigger_replay_seconds
             ),
+            "spatial_contract": self._spatial_contract_report(),
             "violations": list(violations),
         }
 
@@ -454,6 +470,162 @@ class TfContinuityCollector:
             and all(event["values"].get(key) == value for key, value in expected_values.items())
         ]
 
+    def _spatial_contract(self):
+        """Return the forward-window longitudinal edges, or None when not evaluable.
+
+        A TF event counts as a new measurement when it carries an explicit
+        ``measured`` mode or, as in the replay, when it is the TF published with
+        an adjacent localization odometry message.  The window is only enforced
+        when its measured-only trajectory is itself forward-driving, so a
+        genuine reverse maneuver is never rejected by a generic no-backward
+        rule.
+        """
+        start = _FORWARD_WINDOW_START_SECONDS
+        end = self.schedule.lidar_outage[0]
+        if end <= start:
+            return None
+        measured_flags = self._measured_tf_flags()
+        events = [
+            (event, measured_flags[index])
+            for index, event in enumerate(self.tf_events)
+            if start <= event["replay_seconds"] < end
+        ]
+        if len(events) < 2:
+            return None
+        measured_edges = []
+        measured_events = [
+            event for event, measured in events if _is_measured_tf(event, measured)
+        ]
+        for previous, current in zip(measured_events, measured_events[1:]):
+            delta_meters = _body_x_delta(previous, current)
+            if delta_meters is not None:
+                measured_edges.append(
+                    {
+                        "replay_seconds": current["replay_seconds"],
+                        "delta_meters": delta_meters,
+                    }
+                )
+        fallback_edges = []
+        for (previous, previous_measured), (current, current_measured) in zip(
+            events, events[1:]
+        ):
+            if not _is_measured_tf(current, current_measured):
+                continue
+            if _is_measured_tf(previous, previous_measured):
+                continue
+            delta_meters = _body_x_delta(previous, current)
+            if delta_meters is not None:
+                fallback_edges.append(
+                    {
+                        "replay_seconds": current["replay_seconds"],
+                        "delta_meters": delta_meters,
+                    }
+                )
+        if len(measured_edges) < _FORWARD_WINDOW_MIN_MEASURED_EDGES:
+            return None
+        if statistics.median(edge["delta_meters"] for edge in measured_edges) <= 0.0:
+            return None
+        return {
+            "forward_window_seconds": [start, end],
+            "measured_edges": measured_edges,
+            "fallback_to_measured_edges": fallback_edges,
+        }
+
+    def _measured_tf_flags(self):
+        """Mark the TF published with each adjacent localization odometry event.
+
+        ``System::ProcessLocalizationResultCache`` publishes the measured TF
+        immediately before its localization odometry, so a result can only
+        claim a TF observed at or before its odometry arrival.  Candidates are
+        claimed closest-first and one-to-one: a TF already claimed by another
+        result, or one that only arrives after the result, is never promoted
+        to a measurement.
+
+        Callback timing alone cannot prove the publication source in every
+        ordering, so this stays conservative instead of overclaiming.  The
+        residual ambiguity is irreducible from the recorded events: when a
+        result's own measured TF never arrives, a fallback TF observed within
+        ``_MEASURED_TF_ODOM_MATCH_SECONDS`` before that result is
+        indistinguishable from its measurement.  Such a fallback can still be
+        claimed once, but it can never cover a later TF, can never serve two
+        results, and an unmatched result stays unclaimed; under-reporting a
+        measurement is preferable to masking a fallback snap-back in the
+        spatial contract below.
+        """
+        flags = [False] * len(self.tf_events)
+        candidates = []
+        for odometry_index, odometry in enumerate(self.odom_events):
+            received = odometry["received_replay_seconds"]
+            for tf_index, event in enumerate(self.tf_events):
+                gap = received - event["replay_seconds"]
+                if 0.0 <= gap <= _MEASURED_TF_ODOM_MATCH_SECONDS:
+                    candidates.append((gap, odometry_index, tf_index))
+        claimed_tf = set()
+        claimed_odometry = set()
+        for _, odometry_index, tf_index in sorted(candidates):
+            if tf_index in claimed_tf or odometry_index in claimed_odometry:
+                continue
+            claimed_tf.add(tf_index)
+            claimed_odometry.add(odometry_index)
+            flags[tf_index] = True
+        return flags
+
+    def _spatial_contract_violations(self):
+        spatial = self._spatial_contract()
+        if spatial is None:
+            return []
+        fallback_edges = spatial["fallback_to_measured_edges"]
+        if not fallback_edges:
+            return []
+        deltas = [edge["delta_meters"] for edge in fallback_edges]
+        median_delta = statistics.median(deltas)
+        worst_edge = min(fallback_edges, key=lambda edge: edge["delta_meters"])
+        backward_count = sum(delta < 0.0 for delta in deltas)
+        window_start, window_end = spatial["forward_window_seconds"]
+        window = f"{window_start:.1f}-{window_end:.1f}s"
+        violations = []
+        if median_delta < _SPATIAL_BACKWARD_MEDIAN_LIMIT_METERS:
+            violations.append(
+                "spatial systematic backward map->base_link snap-back in the "
+                f"forward window {window}: {backward_count}/{len(fallback_edges)} "
+                f"fallback->measured edges moved backward (median {median_delta:.5f}m)"
+            )
+        if worst_edge["delta_meters"] < -_SPATIAL_BACKWARD_EDGE_LIMIT_METERS:
+            violations.append(
+                "spatial backward map->base_link snap-back of "
+                f"{-worst_edge['delta_meters']:.5f}m at "
+                f"{worst_edge['replay_seconds']:.3f}s exceeds the "
+                f"{_SPATIAL_BACKWARD_EDGE_LIMIT_METERS:.5f}m single-edge limit "
+                f"in the forward window {window}"
+            )
+        return violations
+
+    def _spatial_contract_report(self):
+        start = _FORWARD_WINDOW_START_SECONDS
+        end = self.schedule.lidar_outage[0]
+        spatial = self._spatial_contract()
+        if spatial is None:
+            return {
+                "forward_window_seconds": [start, end],
+                "evaluated": False,
+            }
+        measured_deltas = [edge["delta_meters"] for edge in spatial["measured_edges"]]
+        fallback_deltas = [
+            edge["delta_meters"] for edge in spatial["fallback_to_measured_edges"]
+        ]
+        report = {
+            "forward_window_seconds": spatial["forward_window_seconds"],
+            "evaluated": True,
+            "measured_edges": len(measured_deltas),
+            "measured_median_delta_meters": statistics.median(measured_deltas),
+            "fallback_to_measured_edges": len(fallback_deltas),
+            "backward_fallback_edges": sum(delta < 0.0 for delta in fallback_deltas),
+        }
+        if fallback_deltas:
+            report["fallback_median_delta_meters"] = statistics.median(fallback_deltas)
+            report["fallback_worst_delta_meters"] = min(fallback_deltas)
+        return report
+
 
 def _finite_vector(values):
     if values is None:
@@ -463,6 +635,40 @@ def _finite_vector(values):
     except TypeError:
         return None
     return list(vector) if all(value is not None for value in vector) else None
+
+
+def _normalized_mode(value):
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().lower()
+    return normalized or None
+
+
+def _is_measured_tf(event, matched_to_odometry):
+    if event["mode"] is not None:
+        return event["mode"] == "measured"
+    return matched_to_odometry
+
+
+def _body_x_delta(previous, current):
+    """Project the TF translation delta onto the previous body X axis."""
+    previous_translation = previous["translation"]
+    current_translation = current["translation"]
+    rotation = previous["rotation"]
+    if (
+        previous_translation is None
+        or current_translation is None
+        or rotation is None
+        or len(previous_translation) < 2
+        or len(current_translation) < 2
+        or len(rotation) != 4
+    ):
+        return None
+    x, y, z, w = rotation
+    yaw = math.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
+    delta_x = current_translation[0] - previous_translation[0]
+    delta_y = current_translation[1] - previous_translation[1]
+    return delta_x * math.cos(yaw) + delta_y * math.sin(yaw)
 
 
 class ReplayError(RuntimeError):

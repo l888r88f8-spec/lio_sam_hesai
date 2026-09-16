@@ -185,6 +185,222 @@ class TfContinuityCollectorTest(unittest.TestCase):
         )
 
 
+class SpatialForwardWindowContractTest(unittest.TestCase):
+    """The known forward-driving 10-30s window must not snap backward.
+
+    A new measured TF arrives adjacent to its localization odometry result; the
+    fallback TFs in between have no adjacent odometry.  Every fallback->measured
+    transition is projected onto the previous body X axis, so a genuine reverse
+    maneuver (which only ever shows backward measured edges) must not be
+    mistaken for the sawtooth caused by publishing a stale measurement.
+    """
+
+    _WINDOW_START_SECONDS = 10.0
+    _WINDOW_END_SECONDS = 30.0
+    _SAMPLE_INTERVAL_SECONDS = 0.2
+    _SENSOR_CLOCK_OFFSET_SECONDS = 60.0
+    _EXTRAPOLATION_OVERSHOOT_METERS = 0.11
+    _MEASUREMENT_SNAP_BACK_METERS = 0.075
+
+    def _spatial_violations(self, collector):
+        return [error for error in collector.assert_contracts() if "spatial" in error]
+
+    def _forward_window_evaluated(self, collector):
+        return collector.report([])["spatial_contract"]["evaluated"]
+
+    def _backward_fallback_steps(self, collector):
+        """Backward fallback->measured steps a generic no-backward rule would flag."""
+        odometry_times = [
+            event["received_replay_seconds"] for event in collector.odom_events
+        ]
+
+        def measured(event):
+            return any(
+                abs(received - event["replay_seconds"]) <= 0.02
+                for received in odometry_times
+            )
+
+        return [
+            current
+            for previous, current in zip(collector.tf_events, collector.tf_events[1:])
+            if measured(current)
+            and not measured(previous)
+            and current["translation"][0] - previous["translation"][0] < -0.05
+        ]
+
+    def _record_measured_tf(self, collector, replay_seconds, x_meters):
+        sensor_timestamp = replay_seconds + self._SENSOR_CLOCK_OFFSET_SECONDS
+        collector.lidar_source(sensor_timestamp, replay_seconds)
+        # System::ProcessLocalizationResultCache publishes the measured TF
+        # immediately before its localization odometry, so record it first.
+        collector.tf(
+            replay_seconds + 0.001,
+            translation=(x_meters, 0.0, 0.0),
+            rotation=(0.0, 0.0, 0.0, 1.0),
+        )
+        collector.odom(replay_seconds + 0.002, source_timestamp_seconds=sensor_timestamp)
+
+    def _record_fallback_tf(self, collector, replay_seconds, x_meters):
+        collector.tf(
+            replay_seconds,
+            translation=(x_meters, 0.0, 0.0),
+            rotation=(0.0, 0.0, 0.0, 1.0),
+        )
+
+    def test_measured_only_forward_drive_reports_no_spatial_violation(self):
+        collector = TfContinuityCollector(20.0)
+        for index in range(100):
+            self._record_measured_tf(
+                collector,
+                self._WINDOW_START_SECONDS + index * self._SAMPLE_INTERVAL_SECONDS,
+                index * 0.1,
+            )
+
+        self.assertEqual(self._spatial_violations(collector), [])
+        self.assertTrue(self._forward_window_evaluated(collector))
+
+    def test_forward_drive_with_small_prediction_error_reports_no_spatial_violation(self):
+        collector = TfContinuityCollector(20.0)
+        position = 0.0
+        for index in range(100):
+            replay_seconds = (
+                self._WINDOW_START_SECONDS + index * self._SAMPLE_INTERVAL_SECONDS
+            )
+            self._record_measured_tf(collector, replay_seconds, position)
+            self._record_fallback_tf(
+                collector, replay_seconds + 0.1, position + 0.105
+            )
+            position += 0.1
+
+        self.assertEqual(self._spatial_violations(collector), [])
+        self.assertTrue(self._forward_window_evaluated(collector))
+
+    def test_extrapolation_overshoot_before_a_new_measurement_is_a_spatial_violation(self):
+        collector = TfContinuityCollector(20.0)
+        position = 0.0
+        index = 0
+        while (
+            self._WINDOW_START_SECONDS
+            + (index + 1) * self._SAMPLE_INTERVAL_SECONDS
+            <= self._WINDOW_END_SECONDS
+        ):
+            replay_seconds = (
+                self._WINDOW_START_SECONDS + index * self._SAMPLE_INTERVAL_SECONDS
+            )
+            self._record_measured_tf(collector, replay_seconds, position)
+            self._record_fallback_tf(
+                collector,
+                replay_seconds + self._SAMPLE_INTERVAL_SECONDS / 2.0,
+                position + self._EXTRAPOLATION_OVERSHOOT_METERS,
+            )
+            position += (
+                self._EXTRAPOLATION_OVERSHOOT_METERS
+                - self._MEASUREMENT_SNAP_BACK_METERS
+            )
+            index += 1
+
+        violations = self._spatial_violations(collector)
+
+        self.assertTrue(
+            violations, "expected the periodic +0.11m/-0.075m sawtooth to fail"
+        )
+        self.assertTrue(
+            any("snap-back" in violation for violation in violations), violations
+        )
+
+    def test_single_large_backward_edge_is_a_spatial_violation(self):
+        collector = TfContinuityCollector(20.0)
+        position = 0.0
+        for index in range(100):
+            replay_seconds = (
+                self._WINDOW_START_SECONDS + index * self._SAMPLE_INTERVAL_SECONDS
+            )
+            self._record_measured_tf(collector, replay_seconds, position)
+            overshoot = 0.3 if index in (40, 60, 80) else 0.105
+            self._record_fallback_tf(collector, replay_seconds + 0.1, position + overshoot)
+            position += 0.1
+
+        violations = self._spatial_violations(collector)
+
+        self.assertTrue(violations)
+        self.assertTrue(
+            any(
+                "single-edge limit" in violation and "0.20000m" in violation
+                for violation in violations
+            ),
+            violations,
+        )
+
+    def test_reverse_measured_travel_is_not_rejected_by_a_no_backward_rule(self):
+        collector = TfContinuityCollector(20.0)
+        position = 20.0
+        for index in range(100):
+            replay_seconds = (
+                self._WINDOW_START_SECONDS + index * self._SAMPLE_INTERVAL_SECONDS
+            )
+            self._record_measured_tf(collector, replay_seconds, position)
+            if index < 99:
+                self._record_fallback_tf(
+                    collector,
+                    replay_seconds + self._SAMPLE_INTERVAL_SECONDS / 2.0,
+                    position,
+                )
+            position -= 0.1
+
+        self.assertEqual(self._spatial_violations(collector), [])
+        # This recording does contain backward fallback->measured steps; the
+        # window is skipped because its measured travel itself is backward.
+        self.assertTrue(self._backward_fallback_steps(collector))
+        self.assertFalse(self._forward_window_evaluated(collector))
+
+
+class MeasuredTfOdomMatchingContractTest(unittest.TestCase):
+    """A localization odometry result owns exactly one adjacent measured TF.
+
+    ``System::ProcessLocalizationResultCache`` calls ``PublishTF`` immediately
+    before it publishes the localization odometry, so a result may only claim a
+    TF observed at or before the odometry arrival, and no TF may be claimed by
+    two results.  Callback timing cannot prove the publication source in every
+    ordering, so the matcher must stay conservative instead of promoting a
+    fallback TF that merely happens to be nearby.
+    """
+
+    _SENSOR_CLOCK_OFFSET_SECONDS = 60.0
+
+    def _record_odometry(self, collector, received_replay_seconds):
+        sensor_timestamp = received_replay_seconds + self._SENSOR_CLOCK_OFFSET_SECONDS
+        collector.lidar_source(sensor_timestamp, received_replay_seconds)
+        collector.odom(received_replay_seconds, source_timestamp_seconds=sensor_timestamp)
+
+    def _record_tf(self, collector, replay_seconds):
+        collector.tf(
+            replay_seconds,
+            translation=(0.0, 0.0, 0.0),
+            rotation=(0.0, 0.0, 0.0, 1.0),
+        )
+
+    def test_one_tf_is_not_claimed_by_two_odometry_results(self):
+        collector = TfContinuityCollector(20.0)
+        # Ground truth: TF 0 and TF 1 each belong to one of the two results.
+        self._record_tf(collector, 11.995)
+        self._record_tf(collector, 12.000)
+        self._record_odometry(collector, 12.0005)
+        self._record_odometry(collector, 12.0010)
+
+        # The old matcher lets both results claim TF 1, so TF 0 is silently
+        # demoted to a fallback.
+        self.assertEqual(collector._measured_tf_flags(), [True, True])
+
+    def test_tf_after_the_odometry_is_not_claimed_as_its_measurement(self):
+        collector = TfContinuityCollector(20.0)
+        self._record_odometry(collector, 12.000)
+        # Published after the result, so under the C++ publication order this
+        # can only be a fallback even though it falls inside the match window.
+        self._record_tf(collector, 12.010)
+
+        self.assertEqual(collector._measured_tf_flags(), [False])
+
+
 class OutputSourceTimeContractTest(unittest.TestCase):
     def test_output_source_time_uses_the_exact_raw_lidar_replay_mapping(self):
         collector = TfContinuityCollector(20.0)
