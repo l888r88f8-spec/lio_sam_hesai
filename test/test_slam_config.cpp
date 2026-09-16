@@ -75,6 +75,7 @@ TEST(SlamConfig, RejectsInvalidRuntimeValuesWithCanonicalKey) {
       {"lidar.max_range", 0.0}, {"lidar.point_time_scale", 0.0},
       {"frontend.registration_and_searcher_mode", "LoamFull_KdTree"},
       {"frontend.fusion_method", "unknown"},
+      {"frontend.fusion_method", "TightCouplingKF"},
       {"frontend.feature.planar_voxel_filter_size", 0.0},
       {"frontend.registration.point_to_planar_thres", -1.0},
       {"frontend.registration.position_converge_thres", 0.0},
@@ -131,9 +132,22 @@ TEST(SlamConfig, AcceptsOnlySelectedBackendAndFusionParameters) {
   EXPECT_NO_THROW(LoadLocalization({{"frontend.registration.ndt_capacity", -1},
       {"frontend.registration.local_map_size", -1},
       {"frontend.feature.corner_voxel_filter_size", -1.0}}));
-  for (const std::string fusion : {"LooseCoupling", "TightCouplingKF"}) {
-    EXPECT_NO_THROW(LoadLocalization({{"frontend.fusion_method", fusion},
-        {"frontend.fusion_opti_iters", 0}}));
+  // LooseCoupling does not consume fusion_opti_iters; TightCouplingOptimization
+  // does, so its guard stays covered by RejectsInvalidRuntimeValuesWithCanonicalKey.
+  EXPECT_NO_THROW(LoadLocalization({{"frontend.fusion_method", "LooseCoupling"},
+      {"frontend.fusion_opti_iters", 0}}));
+}
+
+TEST(SlamConfig, RejectsRemovedTightCouplingKfFusionMethod) {
+  try {
+    LoadLocalization({{"frontend.fusion_method", "TightCouplingKF"}});
+    FAIL() << "accepted removed TightCouplingKF fusion method";
+  } catch (const std::invalid_argument& error) {
+    const std::string message = error.what();
+    EXPECT_NE(message.find("frontend.fusion_method"), std::string::npos);
+    EXPECT_NE(message.find("LooseCoupling"), std::string::npos);
+    EXPECT_NE(message.find("TightCouplingOptimization"), std::string::npos);
+    EXPECT_EQ(message.find("TightCouplingKF"), std::string::npos);
   }
 }
 
@@ -183,7 +197,11 @@ TEST(SlamConfig, RepositoryCanonicalYamlConfigurationsAreValid) {
     options.arguments({"--ros-args", "--params-file", std::string(PROJECT_SOURCE_DIR) +
         (mode == SlamMode::kMapping ? "/config/mapping.yaml" : "/config/relocalization.yaml")});
     auto node = std::make_shared<rclcpp::Node>("canonical_yaml", options);
-    EXPECT_NO_THROW(LoadSlamConfig(*node, mode));
+    const auto config = LoadSlamConfig(*node, mode);
+    if (mode == SlamMode::kLocalization) {
+      EXPECT_EQ(config.localization.frontend.fusion_method,
+                "TightCouplingOptimization");
+    }
   }
 }
 

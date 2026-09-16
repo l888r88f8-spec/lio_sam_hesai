@@ -100,8 +100,7 @@ LIO_SAM_KEEP_RESULTS=1 scripts/run_localization_stability.sh memory
 P2-1 与 P2.2 均已完成并进入本地 `main`；第 8 节的分块回放阻塞已由第 9 节修复，不再列为后续工作。**P2.3 当前暂缓，不是待立即执行的下一项；未经用户明确恢复并重新确认范围，不开始设计、实现或验证。** 其余条目也需在开始前确认范围并建立新的 spec：
 
 1. **P2.3 地图产物版本化与兼容校验（暂缓）**：原计划为 PCD、`sc_db.bin` 和参数快照建立版本戳、元数据与加载期校验（当前只定义了分块加载所需的最小 manifest 版本与一致性检查）；保留为已知方向，暂不推进。
-2. **`TightCouplingKF` 产品决策**：配置校验器接受该模式，但运行期仍 `LOG(FATAL)`；需决定实现、隐藏还是在配置期明确拒绝。
-3. **历史 lint 基线治理**：`flake8`、`lint_cmake`、`uncrustify`、`xmllint` 仍未全绿，应独立立项，不与功能回归混淆。
+2. **历史 lint 基线治理**：`flake8`、`lint_cmake`、`uncrustify`、`xmllint` 仍未全绿，应独立立项，不与功能回归混淆。
 
 `docs/ARCHITECTURE.md` 是 7 月的静态风险评估，仍含“未完成”及旧文件存在等历史描述；开始新工作前应以当前源码、提交历史和本状态文档为准，再单独更新该架构文档。
 
@@ -329,7 +328,7 @@ LIO_SAM_WORKSPACE=/tmp/p22_clean LIO_SAM_KEEP_RESULTS=1 \
 ### 9.7 范围外遗留（未处理）
 
 - ~~**退出自动保存的产物无人消费**：`map_save.enabled` 只控制这一条路径，写出的 `cloudCorner/cloudSurf/cloudGlobal/cloudGround.pcd` 没有任何回读方，且不写 `sc_db.bin`。~~ **已于 2026-09-15 关闭**：不采用“重命名磁盘文件”的方案，而是直接删除该路径；`map_save.enabled` 与 `savePCD` 现在在启动期 fail-closed 拒绝并提示改用 `/lio_sam/save_map`。验收证据见第 10 节。
-- **`TightCouplingKF` 被校验器接受但运行期 `LOG(FATAL)`**：`ValidateLocalizationRuntime` 的报错信息把它列为合法值，`test_slam_config.cpp` 也断言它被接受，但 `localization.cpp` 对该模式走 `LOG(FATAL) << "Kalman filter support will be coming soon!"`。这是有意保留的未实现桩，属产品决策，本轮未改动。
+- ~~**`TightCouplingKF` 被校验器接受但运行期 `LOG(FATAL)`**：`ValidateLocalizationRuntime` 的报错信息把它列为合法值，`test_slam_config.cpp` 也断言它被接受，但 `localization.cpp` 对该模式走 `LOG(FATAL) << "Kalman filter support will be coming soon!"`。这是有意保留的未实现桩，属产品决策，本轮未改动。~~ **已于 2026-09-16 关闭**：不采用“实现或隐藏”的方案，而是把该模式从仓库中彻底删除；合法融合模式只剩 `LooseCoupling` 与 `TightCouplingOptimization`，`TightCouplingKF` 在配置加载期 fail-closed 拒绝。验收证据见第 11 节。
 - **四项 lint 基线**（`flake8`、`lint_cmake`、`uncrustify`、`xmllint`）在 `main` 上就失败，本轮保持不恶化。
 
 ### 9.8 复核轮修复（2026-09-15）
@@ -417,8 +416,9 @@ LIO_SAM_WORKSPACE=/tmp/p22_clean LIO_SAM_KEEP_RESULTS=1 \
 `tiled-quick`/`quick`/`tf-continuity` 的真实回放本轮**未重跑**（完整 `tiled-faults` 已跑），
 其最近一次全绿记录仍属 9.8 轮。
 
-**仍存的非本轮项**：P2.3、`TightCouplingKF` 运行期 `LOG(FATAL)` 桩、四项 lint 基线——
-本轮未清零，也不宣称清零。9.7 的退出自动保存磁盘产物已按第 10 节关闭，不再属于遗留项。
+**仍存的非本轮项**：P2.3 与四项 lint 基线——本轮未清零，也不宣称清零。9.7 的退出自动
+保存磁盘产物已按第 10 节关闭，`TightCouplingKF` 未实现桩已按第 11 节关闭，两者都不再
+属于遗留项。
 
 ## 十、退出自动保存删除（2026-09-15）
 
@@ -450,3 +450,37 @@ LIO_SAM_WORKSPACE=/tmp/p22_clean LIO_SAM_KEEP_RESULTS=1 \
 - 未 push。
 - 未做全量 lint 治理，四项既有 lint 基线（`flake8`、`lint_cmake`、`uncrustify`、`xmllint`）未清零。
 - 未做真实 bag 导出：`/lio_sam/save_map` 只做了服务接口 smoke（注册与类型），没有在真实 bag 回放中调用服务导出地图。
+
+## 十一、`TightCouplingKF` 移除（2026-09-16）
+
+按产品决策彻底删除未实现的 `TightCouplingKF` 模式，不新增替代实现，也不改变默认的
+`TightCouplingOptimization`。配置期现在只接受 `LooseCoupling` 与
+`TightCouplingOptimization`；旧配置使用已删除模式时会 fail-closed 抛出参数错误，不再进入
+运行期 `LOG(FATAL)` 桩。
+
+### 11.1 改动
+
+- 删除 `kFusionTightCouplingKF` 常量和 `Localization::Run()` 中对应的运行期致命分支。
+- 收紧 `ValidateLocalizationRuntime()` 的合法值集合与错误信息，只列出两个已实现模式。
+- `test_slam_config.cpp` 新增具名拒绝测试，验证旧模式在配置加载期失败，且错误信息只提示
+  两个保留模式；规范 YAML 测试同时锁定定位默认值仍为 `TightCouplingOptimization`，
+  `LooseCoupling` 的零优化迭代兼容行为保持不变。
+- 删除后续工作、范围外遗留和未清零清单中的该项；P2.3 暂缓状态与历史 lint 基线不变。
+
+### 11.2 验证证据
+
+- TDD 红灯：只改测试后构建 `test_slam_config` 成功，运行结果为 32 项中 30 通过、2 失败；
+  失败项均因旧校验器仍接受 `TightCouplingKF`，符合预期。
+- TDD 绿灯：生产代码移除后同一测试 32/32 通过；最终通过 CTest 复跑
+  `test_slam_config`，1/1 通过。
+- 完整 CMake 构建：`cmake --build .dsh-verify-build --parallel 1`，退出码 0。
+- 约定 CTest 门禁（排除 `copyright`/`cpplint`/`flake8`/`lint_cmake`/`uncrustify`/
+  `xmllint`）：44/44 通过。
+- 静态扫描：生产路径 `include/`、`src/`、`config/` 不再包含 `TightCouplingKF`、
+  `kFusionTightCouplingKF` 或旧的 Kalman filter 占位报错；测试中的模式字符串仅用于验证拒绝。
+
+### 11.3 未做
+
+- 未实现新的 Kalman filter 融合算法，未改变另外两个融合模式及默认配置。
+- 未恢复或推进 P2.3，未治理四项历史 lint 基线，未做真实 bag 回放。
+- 未 push。

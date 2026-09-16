@@ -23,7 +23,6 @@ static const std::string kIcpOptimized = "IcpOptimized";
 static const std::string kIncrementalNDT = "IncrementalNDT";
 
 static const std::string kFusionLooseCoupling = "LooseCoupling";
-static const std::string kFusionTightCouplingKF = "TightCouplingKF";
 static const std::string kFusionTightCouplingOptimization = "TightCouplingOptimization";
 
 static const std::string kLoopClosureByDistance = "LoopClosureByDistance";

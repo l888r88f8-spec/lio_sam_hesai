@@ -762,9 +762,6 @@ void Localization::Run() {
       predict_nav_state.SetPose(last_pose_ * odom_delta);
       predict_nav_state.V_ = predict_local_state.V_;
       predict_nav_state.timestamp_ = curr_time_us_;
-    } else if (config_->localization.frontend.fusion_method ==
-               kFusionTightCouplingKF) {
-      LOG(FATAL) << "Kalman filter support will be coming soon!";
     } else {
       LOG(FATAL) << "Fusion method doesn't support: "
                  << config_->localization.frontend.fusion_method;

@@ -165,9 +165,9 @@ void ValidateLocalizationRuntime(const LocalizationConfig& config) {
     }
   }
   if (frontend.fusion_method != "LooseCoupling" &&
-      frontend.fusion_method != "TightCouplingKF" &&
       frontend.fusion_method != "TightCouplingOptimization") {
-    Reject("frontend.fusion_method", "must be LooseCoupling, TightCouplingKF, or TightCouplingOptimization");
+    Reject("frontend.fusion_method",
+           "must be LooseCoupling or TightCouplingOptimization");
   }
   if (frontend.fusion_method == "TightCouplingOptimization") {
     RequirePositive(frontend.fusion_opti_iters, "frontend.fusion_opti_iters");
