@@ -417,6 +417,11 @@ if(BUILD_TESTING)
   target_include_directories(test_tf_continuity_controller PRIVATE
     include ${PCL_INCLUDE_DIRS})
   target_link_libraries(test_tf_continuity_controller ${LIO_SAM_EIGEN_TARGET})
+  ament_add_gtest(test_tf_prediction_anchor
+    test/test_tf_prediction_anchor.cpp)
+  target_include_directories(test_tf_prediction_anchor PRIVATE
+    include ${PCL_INCLUDE_DIRS})
+  target_link_libraries(test_tf_prediction_anchor ${LIO_SAM_EIGEN_TARGET})
   ament_add_gtest(test_recovery_attempt_gate
     test/test_recovery_attempt_gate.cpp
     src/localization_health/recovery_attempt_gate.cpp

@@ -31,6 +31,7 @@
 #include "localization_health/data_stream_watchdog.h"
 #include "localization_health/localization_recovery_coordinator.h"
 #include "localization_health/tf_continuity_controller.h"
+#include "localization_health/tf_prediction_anchor.h"
 #include "runtime/thread_runtime_controller.h"
 
 class PreProcessing;
@@ -87,6 +88,18 @@ class System : public rclcpp::Node {
       diagnostic_msgs::msg::DiagnosticStatus& status) const;
   void ResetTfContinuityOnTimeJump(TimeStampUs now_us);
   void PublishTfFallback();
+
+  // The one conversion/prediction path shared by the measured update and the
+  // no-new-result fallback. It extrapolates the committed anchor named by
+  // `request` onto the newest valid IMU sensor time and returns it as
+  // map_T_base, including the lidar-to-base and ground height handling.
+  struct TfHorizonProjection {
+    std::optional<TimeStampUs> sensor_now_us;
+    std::optional<localization_health::TfPoseSample> sample;
+  };
+  [[nodiscard]] TfHorizonProjection ProjectTfPoseToLatestImu(
+      const localization_health::TfPredictionRequestKey& request);
+
   void PublishTF(const MapTBase& map_T_base, TimeStampUs timestamp);
 
   void LidarMsgCallBack(

@@ -133,14 +133,29 @@ Mat4d Localization::MapImuPoseToMapLidarPose(
 
 std::optional<Localization::MapLidarPrediction>
 Localization::PredictMapLidarPose(
-    const std::vector<IMUData>& imu_segment) const {
+    const std::vector<IMUData>& imu_segment,
+    const localization_health::TfPredictionRequestKey& request) const {
   std::optional<TfPredictionAnchor> anchor;
   {
     std::lock_guard<std::mutex> lock(mutex_tf_prediction_anchor_);
     anchor = tf_prediction_anchor_;
   }
 
-  if (!anchor.has_value() || imu_segment.size() < 2) {
+  if (!anchor.has_value()) {
+    return std::nullopt;
+  }
+
+  // A prediction may only use the anchor committed by the exact result being
+  // processed. Queue merging or a localization frame committing while System
+  // still holds an older result would otherwise project the wrong frame.
+  const localization_health::TfPredictionAnchorKey anchor_key{
+      anchor->timestamp, anchor->tf_continuity_epoch, true};
+  if (localization_health::MatchTfPredictionAnchor(anchor_key, request) !=
+      localization_health::TfPredictionAnchorMatch::kMatched) {
+    return std::nullopt;
+  }
+
+  if (imu_segment.size() < 2) {
     return std::nullopt;
   }
 
@@ -311,12 +326,14 @@ void Localization::InitPreintegration() {
   local_pre_integration_ptr_ = std::make_shared<PreIntegration>(config_para);
 }
 
-void Localization::UpdateTfPredictionAnchor(const NavStateData& nav_state) {
+void Localization::UpdateTfPredictionAnchor(
+    const NavStateData& nav_state, std::uint64_t tf_continuity_epoch) {
   TfPredictionAnchor anchor;
   anchor.nav_state = nav_state;
   anchor.map_T_lidar =
       MapTLidar::FromMatrix(MapImuPoseToMapLidarPose(nav_state.Pose()));
   anchor.timestamp = nav_state.timestamp_;
+  anchor.tf_continuity_epoch = tf_continuity_epoch;
 
   std::lock_guard<std::mutex> lock(mutex_tf_prediction_anchor_);
   tf_prediction_anchor_ = std::move(anchor);
@@ -506,7 +523,7 @@ Localization::InitializationResult Localization::Init(
   }
   frame_processing_watchdog_.Complete(initialization_commit_now_us, false);
   UpdateActiveMapSnapshot(initial_map.snapshot);
-  UpdateTfPredictionAnchor(initialized_nav_state);
+  UpdateTfPredictionAnchor(initialized_nav_state, tf_continuity_epoch);
   curr_pose_ = init_pose;
   last_nav_state_ = initialized_nav_state;
   delta_pose_ = Mat4d::Identity();
@@ -840,7 +857,7 @@ void Localization::Run() {
       continue;
     }
     frame_processing_watchdog_.Complete(tracking_commit_now_us, false);
-    UpdateTfPredictionAnchor(curr_nav_state);
+    UpdateTfPredictionAnchor(curr_nav_state, tf_continuity_epoch);
     CacheResultToSystem(result, tf_continuity_epoch);
     UpdateCurrentLidarCloud(*current_lidar_cloud);
 

@@ -135,7 +135,12 @@ HealthReport LocalizationStateMachine::Update(const HealthInputs& input) {
   if (state_ == LocalizationState::kRelocalizing) {
     report.health_score = std::min(report.health_score, report.s_consistency);
   }
-  if (state_ == LocalizationState::kLost) {
+  // A TF pose that stopped tracking the vehicle is a hard safety fault: no
+  // reported health may remain and consumers must inflate uncertainty now.
+  if (input.tf_pose_stale) {
+    report.health_score = 0.0;
+  }
+  if (state_ == LocalizationState::kLost || input.tf_pose_stale) {
     report.covariance_scale = config_.max_covariance_scale;
   } else if (state_ == LocalizationState::kTracking) {
     report.covariance_scale = 1.0;
@@ -209,7 +214,7 @@ bool LocalizationStateMachine::IsStreamWarn(
 
 bool LocalizationStateMachine::IsHardFailure(
     const HealthInputs& input) const {
-  return input.stream.lidar_stalled ||
+  return input.stream.lidar_stalled || input.tf_pose_stale ||
          input.last_result_age_us > config_.result_timeout_us;
 }
 

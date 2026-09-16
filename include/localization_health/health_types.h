@@ -41,6 +41,9 @@ struct HealthInputs {
   // Only new observations advance frame-based hysteresis counters.
   bool has_new_result = false;
   bool has_new_stream_observation = false;
+  // Sustained held TF beyond the extrapolation bound, or tracking without any
+  // emitted TF pose: the published transform no longer tracks the vehicle.
+  bool tf_pose_stale = false;
   float reg_fitness = 0.0f;
   int consistency_hit = 0;
   int consistency_required = 0;

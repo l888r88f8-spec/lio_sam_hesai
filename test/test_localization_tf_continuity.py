@@ -121,6 +121,30 @@ class TfContinuityCollectorTest(unittest.TestCase):
 
         self.assertEqual(collector.assert_contracts(), [])
 
+    def test_collector_retains_tf_staleness_and_prediction_age(self):
+        collector = TfContinuityCollector(20.0)
+        collector.diagnostic(
+            31.0,
+            {
+                "tf_mode": "held",
+                "tf_pose_stale": "true",
+                "tf_extrapolation_age_ms": "0.000000",
+                "covariance_scale": "100.000000",
+            },
+            health_state="LOST",
+            level=2,
+        )
+
+        self.assertEqual(
+            collector.diagnostic_events[0]["values"],
+            {
+                "tf_mode": "held",
+                "tf_pose_stale": "true",
+                "tf_extrapolation_age_ms": "0.000000",
+                "covariance_scale": "100.000000",
+            },
+        )
+
     def test_collector_reports_tf_timestamp_regression(self):
         collector = TfContinuityCollector(20.0)
         collector.tf(29.0)

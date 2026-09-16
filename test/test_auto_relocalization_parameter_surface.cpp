@@ -392,6 +392,10 @@ TEST(TfContinuitySurface, ConfiguresAndPublishesTfOnlyFallback) {
     "publication_timestamp_us");
   ExpectToken("include/localization_health/tf_continuity_controller.h",
     "anchor_sensor_timestamp_us");
+  ExpectToken("include/localization_health/tf_continuity_controller.h",
+    "last_emitted_sensor_timestamp_us");
+  ExpectToken("include/localization_health/tf_continuity_controller.h",
+    "IsPoseStale");
   ExpectToken("CMakeLists.txt",
     "src/localization_health/tf_continuity_controller.cpp");
 
@@ -400,13 +404,25 @@ TEST(TfContinuitySurface, ConfiguresAndPublishesTfOnlyFallback) {
   ExpectTextToken(controller_source, "sensor_now_us");
   ExpectTextToken(controller_source, "publication_now_us");
   ExpectNoTextToken(controller_source, "last_emitted_timestamp_us_");
+  const std::string packed_controller_source = RemoveWhitespace(controller_source);
+  ExpectTextToken(controller_source, "last_emitted_pose_");
+  ExpectTextToken(controller_source, "IsCurrentHorizonSample");
+  ExpectTextToken(controller_source, "IsPoseStale");
+  ExpectTextToken(packed_controller_source, "anchor_=measured;");
+  ExpectTextToken(packed_controller_source, "last_emitted_pose_=projected;");
+  ExpectTextToken(packed_controller_source, "last_emitted_pose_=extrapolated;");
+  ExpectTextToken(packed_controller_source,
+    "returnTfPublicationDecision{mode_,hold_reason_,last_emitted_pose_.value(),");
+  ExpectTextToken(packed_controller_source,
+    "projected.has_value()?TfHoldReason::kExtrapolationLimit");
 
   const std::string system_source = ReadProjectFile("src/slam/system.cpp");
-  const std::array<std::string, 4> diagnostics_tokens = {
+  const std::array<std::string, 5> diagnostics_tokens = {
     "tf_mode",
     "tf_anchor_age_ms",
     "tf_extrapolation_age_ms",
     "tf_hold_reason",
+    "tf_pose_stale",
   };
   for (const auto & token : diagnostics_tokens) {
     ExpectTextToken(system_source, token);
@@ -572,24 +588,46 @@ TEST(TfContinuitySurface, ConfiguresAndPublishesTfOnlyFallback) {
     "queued_result.tf_continuity_epoch_ = tf_continuity_epoch");
   ExpectNoTextToken(cache_result_body, "tf_continuity_epoch_.load");
 
+  // One shared projection path converts a committed anchor to the newest IMU
+  // sensor horizon; the measured update and the fallback must not fork.
+  const std::string projection_body = ReadFunctionBody(
+    "src/slam/system.cpp",
+    "System::TfHorizonProjection System::ProjectTfPoseToLatestImu(");
+  ExpectTextToken(projection_body, "IsImuStalled(SteadyNowMicroseconds())");
+  ExpectTextToken(projection_body, "LatestData()");
+  ExpectTextToken(projection_body, "GetDataSegment(");
+  ExpectTextToken(projection_body, "PredictMapLidarPose(");
+  ExpectTextToken(projection_body, "GetLidarTBase()");
+  ExpectTextToken(projection_body, "last_localization_z_offset_");
+  const std::size_t imu_stall_gate = projection_body.find(
+    "IsImuStalled(SteadyNowMicroseconds())");
+  const std::size_t latest_imu = projection_body.find("LatestData()");
+  const std::size_t predict_pose = projection_body.find("PredictMapLidarPose(");
+  ASSERT_NE(imu_stall_gate, std::string::npos);
+  ASSERT_NE(latest_imu, std::string::npos);
+  ASSERT_NE(predict_pose, std::string::npos);
+  EXPECT_LT(imu_stall_gate, latest_imu);
+  EXPECT_LT(latest_imu, predict_pose);
+  // ReadFunctionBody starts after the signature, so the request-key parameter
+  // type is pinned on the translation unit rather than inside the body.
+  ExpectTextToken(RemoveWhitespace(system_source),
+    "System::TfHorizonProjectionSystem::ProjectTfPoseToLatestImu("
+    "constlocalization_health::TfPredictionRequestKey&request)");
+
   const std::string fallback_body = ReadFunctionBody(
     "src/slam/system.cpp", "void System::PublishTfFallback()");
   ExpectTextToken(fallback_body, "PublishTF");
   ExpectTextToken(fallback_body, "Select(");
-  ExpectTextToken(fallback_body, "PredictMapLidarPose");
+  ExpectTextToken(fallback_body, "ProjectTfPoseToLatestImu(");
   ExpectTextToken(fallback_body, "sensor_now_us");
   ExpectTextToken(fallback_body, "publication_now_us");
-  ExpectTextToken(fallback_body, "IsImuStalled(SteadyNowMicroseconds())");
   ExpectTextToken(RemoveWhitespace(fallback_body),
     "Select(publication_now_us,sensor_now_us,extrapolated)");
   ExpectTextToken(fallback_body,
     "decision->publication_timestamp_us");
-  const std::size_t imu_stall_gate = fallback_body.find(
-    "IsImuStalled(SteadyNowMicroseconds())");
-  const std::size_t latest_imu = fallback_body.find("LatestData()");
-  ASSERT_NE(imu_stall_gate, std::string::npos);
-  ASSERT_NE(latest_imu, std::string::npos);
-  EXPECT_LT(imu_stall_gate, latest_imu);
+  ExpectTextToken(RemoveWhitespace(fallback_body),
+    "ProjectTfPoseToLatestImu({anchor_sensor_timestamp_us.value(),"
+    "tf_continuity_expected_epoch_})");
   ExpectNoTextToken(fallback_body, "PublishRosCloud");
   ExpectNoTextToken(fallback_body, "localization_current_lidar_cloud_pub_");
   ExpectNoTextToken(fallback_body, "localization_global_cloud_map_pub_");
@@ -631,7 +669,28 @@ TEST(TfContinuitySurface, ConfiguresAndPublishesTfOnlyFallback) {
   ExpectTextToken(cache_body,
     "RosTimeToMicroseconds(get_clock()->now())");
   ExpectTextToken(cache_body,
-    "measured_decision.publication_timestamp_us");
+    "measured_decision->publication_timestamp_us");
+  // The new result is projected onto the current sensor horizon with the same
+  // helper the fallback uses, and the raw measured pose stays on the sensor
+  // clock for odometry and path.
+  ExpectTextToken(RemoveWhitespace(cache_body),
+    "ProjectTfPoseToLatestImu({result.timestamp_,"
+    "result.tf_continuity_epoch_})");
+  ExpectTextToken(RemoveWhitespace(cache_body),
+    "RecordMeasured(localization_health::TfPoseSample{sampled_map_T_base,"
+    "result.timestamp_},");
+  ExpectTextToken(RemoveWhitespace(cache_body),
+    "RosPoseAdapter::ToPose(sampled_map_T_base)");
+  ExpectTextToken(RemoveWhitespace(cache_body),
+    "RosPoseAdapter::ToOdometry(sampled_map_T_base,");
+  ExpectTextToken(RemoveWhitespace(cache_body),
+    "PublishTF(measured_decision->sample.map_T_base,");
+  // A stale held TF pose must inflate the odometry covariance on the cycle
+  // that observed it, never from the previous health cycle's scale.
+  ExpectTextToken(RemoveWhitespace(cache_body), "IsPoseStale(");
+  ExpectTextToken(RemoveWhitespace(cache_body),
+    "tf_pose_stale?config_->localization.health.max_covariance_scale"
+    ":current_health_covariance_scale_");
   const std::size_t filter_pre_jump_results = cache_body.find("std::remove_if(");
   const std::size_t erase_pre_jump_results = cache_body.find(
     "localization_results.erase(", filter_pre_jump_results);
@@ -1326,7 +1385,8 @@ TEST(LocalizationTfPredictionSurface, UsesReadOnlyPredictionSnapshot) {
   ExpectTextToken(
     header,
     "std::optional<MapLidarPrediction>PredictMapLidarPose("
-    "conststd::vector<IMUData>&imu_segment)const;");
+    "conststd::vector<IMUData>&imu_segment,"
+    "constlocalization_health::TfPredictionRequestKey&request)const;");
 
   const std::string prediction_anchor = RemoveWhitespace(ReadFunctionBody(
     "include/slam/localization.h", "struct TfPredictionAnchor"));
@@ -1334,9 +1394,13 @@ TEST(LocalizationTfPredictionSurface, UsesReadOnlyPredictionSnapshot) {
   ExpectTextToken(
     prediction_anchor, "MapTLidarmap_T_lidar{MapTLidar::Identity()};");
   ExpectTextToken(prediction_anchor, "TimeStampUstimestamp{0U};");
+  ExpectTextToken(prediction_anchor, "std::uint64_ttf_continuity_epoch{0U};");
   ExpectTextToken(header, "mutablestd::mutexmutex_tf_prediction_anchor_;");
   ExpectTextToken(header, "std::optional<TfPredictionAnchor>tf_prediction_anchor_;");
-  ExpectTextToken(header, "voidUpdateTfPredictionAnchor(constNavStateData&nav_state);");
+  ExpectTextToken(
+    header,
+    "voidUpdateTfPredictionAnchor(constNavStateData&nav_state,"
+    "std::uint64_ttf_continuity_epoch);");
   ExpectTextToken(
     header,
     "[[nodiscard]]PreIntegration::ConfigParaMakePreIntegrationConfig()const;");
@@ -1351,7 +1415,7 @@ TEST(LocalizationTfPredictionSurface, UsesReadOnlyPredictionSnapshot) {
   const std::size_t initialization_complete = init_body.find(
     "frame_processing_watchdog_.Complete(initialization_commit_now_us, false);");
   const std::size_t initialization_anchor = init_body.find(
-    "UpdateTfPredictionAnchor(initialized_nav_state);");
+    "UpdateTfPredictionAnchor(initialized_nav_state, tf_continuity_epoch);");
   const std::size_t initialization_cache = init_body.find(
     "CacheResultToSystem(init_result, tf_continuity_epoch);");
   ASSERT_NE(initialization_complete, std::string::npos);
@@ -1365,7 +1429,7 @@ TEST(LocalizationTfPredictionSurface, UsesReadOnlyPredictionSnapshot) {
   const std::size_t tracking_complete = run_body.find(
     "frame_processing_watchdog_.Complete(tracking_commit_now_us, false);");
   const std::size_t tracking_anchor = run_body.find(
-    "UpdateTfPredictionAnchor(curr_nav_state);");
+    "UpdateTfPredictionAnchor(curr_nav_state, tf_continuity_epoch);");
   const std::size_t tracking_cache = run_body.find(
     "CacheResultToSystem(result, tf_continuity_epoch);");
   ASSERT_NE(tracking_complete, std::string::npos);
@@ -1392,4 +1456,58 @@ TEST(LocalizationTfPredictionSurface, UsesReadOnlyPredictionSnapshot) {
   ASSERT_NE(integration, std::string::npos);
   EXPECT_LT(exact_anchor_start, integration);
   EXPECT_LT(final_timestamp_advance, integration);
+}
+
+TEST(LocalizationTfPredictionSurface, PairsPredictionAnchorWithResultTimestampAndEpoch) {
+  // The anchor matcher is a real unit-tested helper; this surface contract only
+  // pins that the production prediction path and both anchor commits use it.
+  ExpectToken("include/localization_health/tf_prediction_anchor.h",
+    "MatchTfPredictionAnchor");
+  ExpectToken("include/localization_health/tf_prediction_anchor.h",
+    "TfPredictionAnchorKey");
+  ExpectToken("include/localization_health/tf_prediction_anchor.h",
+    "TfPredictionRequestKey");
+  ExpectToken("include/localization_health/tf_prediction_anchor.h",
+    "tf_continuity_epoch");
+  ExpectToken("include/localization_health/tf_prediction_anchor.h",
+    "TfPredictionAnchorMatch::kTimestampMismatch");
+  ExpectToken("include/localization_health/tf_prediction_anchor.h",
+    "TfPredictionAnchorMatch::kEpochMismatch");
+  ExpectToken("include/slam/localization.h",
+    "localization_health/tf_prediction_anchor.h");
+
+  const std::string commit_body = ReadFunctionBody(
+    "src/slam/localization.cpp",
+    "void Localization::UpdateTfPredictionAnchor(");
+  ExpectTextToken(commit_body,
+    "anchor.tf_continuity_epoch = tf_continuity_epoch;");
+  ExpectTextToken(commit_body, "anchor.timestamp = nav_state.timestamp_;");
+
+  const std::string predict_body = ReadFunctionBody(
+    "src/slam/localization.cpp", "Localization::PredictMapLidarPose(");
+  const std::string packed_predict_body = RemoveWhitespace(predict_body);
+  ExpectTextToken(packed_predict_body,
+    "localization_health::TfPredictionAnchorKeyanchor_key{anchor->timestamp,"
+    "anchor->tf_continuity_epoch,true}");
+  ExpectTextToken(packed_predict_body,
+    "MatchTfPredictionAnchor(anchor_key,request)");
+  ExpectTextToken(packed_predict_body, "TfPredictionAnchorMatch::kMatched");
+  const std::size_t anchor_match = predict_body.find(
+    "MatchTfPredictionAnchor(");
+  const std::size_t integration = predict_body.find(
+    "predictor.IntegrateDataSegment(");
+  ASSERT_NE(anchor_match, std::string::npos);
+  ASSERT_NE(integration, std::string::npos);
+  EXPECT_LT(anchor_match, integration);
+
+  const std::string system_body = ReadFunctionBody(
+    "src/slam/system.cpp", "bool System::ProcessLocalizationResultCache(");
+  ExpectTextToken(RemoveWhitespace(system_body),
+    "ProjectTfPoseToLatestImu({result.timestamp_,"
+    "result.tf_continuity_epoch_})");
+  const std::string fallback_body = ReadFunctionBody(
+    "src/slam/system.cpp", "void System::PublishTfFallback()");
+  ExpectTextToken(RemoveWhitespace(fallback_body),
+    "ProjectTfPoseToLatestImu({anchor_sensor_timestamp_us.value(),"
+    "tf_continuity_expected_epoch_})");
 }

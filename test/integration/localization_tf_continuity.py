@@ -231,7 +231,14 @@ class TfContinuityCollector:
             return
         relevant = {
             key: str(values[key])
-            for key in ("tf_mode", "tf_hold_reason", "auto_relocalization_trigger")
+            for key in (
+                "tf_mode",
+                "tf_hold_reason",
+                "tf_pose_stale",
+                "tf_extrapolation_age_ms",
+                "covariance_scale",
+                "auto_relocalization_trigger",
+            )
             if key in values
         }
         trigger = relevant.get("auto_relocalization_trigger", "none").strip().lower()

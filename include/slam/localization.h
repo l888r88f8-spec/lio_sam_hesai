@@ -7,6 +7,7 @@
 #include "common/slam_config.h"
 #include "imu/pre_integration.h"
 #include "localization_health/reinitialization_control.h"
+#include "localization_health/tf_prediction_anchor.h"
 #include "localization_map/map_provider.h"
 #include "registration/registration_interface.h"
 #include "registration/icp_optimized.h"
@@ -66,7 +67,8 @@ public:
     };
 
     [[nodiscard]] std::optional<MapLidarPrediction> PredictMapLidarPose(
-        const std::vector<IMUData>& imu_segment) const;
+        const std::vector<IMUData>& imu_segment,
+        const localization_health::TfPredictionRequestKey& request) const;
 
 private:
     enum class InitializationResult {
@@ -86,7 +88,8 @@ private:
 
     [[nodiscard]] PreIntegration::ConfigPara MakePreIntegrationConfig() const;
 
-    void UpdateTfPredictionAnchor(const NavStateData& nav_state);
+    void UpdateTfPredictionAnchor(const NavStateData& nav_state,
+                                  std::uint64_t tf_continuity_epoch);
 
     void InitMatcher();
 
@@ -143,6 +146,7 @@ private:
         NavStateData nav_state;
         MapTLidar map_T_lidar{MapTLidar::Identity()};
         TimeStampUs timestamp{0U};
+        std::uint64_t tf_continuity_epoch{0U};
     };
 
     std::shared_ptr<const SlamConfig> config_;

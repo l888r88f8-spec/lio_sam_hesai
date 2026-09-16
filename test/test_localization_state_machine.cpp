@@ -593,4 +593,69 @@ TEST(LocalizationStateMachine, RejectsInvalidConfiguration) {
   EXPECT_THROW(LocalizationStateMachine machine(config), std::invalid_argument);
 }
 
+// Sustained held/stale TF is a safety fault: the pose TF publishes no longer
+// tracks the vehicle even though localization results keep arriving.
+TEST(LocalizationStateMachine, TfPoseStaleIsHardFailureThroughDegradedToLost) {
+  auto machine = MakeTrackingMachine();
+  auto stale = HealthyTrackingInput();
+  stale.tf_pose_stale = true;
+
+  EXPECT_EQ(machine.Update(stale).state, LocalizationState::kDegraded);
+  EXPECT_EQ(machine.Update(stale).state, LocalizationState::kLost);
+}
+
+TEST(LocalizationStateMachine, TfPoseStaleZerosHealthScoreAndMaximizesCovariance) {
+  auto config = FastConfig();
+  config.max_covariance_scale = 42.0;
+  auto machine = MakeTrackingMachine(config);
+  auto stale = HealthyTrackingInput();
+  stale.tf_pose_stale = true;
+
+  const auto degraded_report = machine.Update(stale);
+  EXPECT_EQ(degraded_report.state, LocalizationState::kDegraded);
+  EXPECT_DOUBLE_EQ(degraded_report.health_score, 0.0);
+  EXPECT_DOUBLE_EQ(degraded_report.covariance_scale, 42.0);
+
+  const auto lost_report = machine.Update(stale);
+  EXPECT_EQ(lost_report.state, LocalizationState::kLost);
+  EXPECT_DOUBLE_EQ(lost_report.health_score, 0.0);
+  EXPECT_DOUBLE_EQ(lost_report.covariance_scale, 42.0);
+}
+
+TEST(LocalizationStateMachine, TfPoseStaleBlocksRecoveryWhileItPersists) {
+  auto machine = MakeTrackingMachine();
+  auto degraded = HealthyTrackingInput();
+  degraded.reg_fitness = 0.6F;
+  machine.Update(degraded);
+  ASSERT_EQ(machine.Update(degraded).state, LocalizationState::kDegraded);
+
+  auto stale = HealthyTrackingInput();
+  stale.tf_pose_stale = true;
+  ASSERT_EQ(machine.Update(stale).state, LocalizationState::kLost);
+
+  // Healthy fitness and streams must not recover the machine while TF stays
+  // stale: the published pose still does not track the vehicle.
+  for (int frame = 0; frame < FastConfig().recover_frames + 2; ++frame) {
+    EXPECT_EQ(machine.Update(stale).state, LocalizationState::kLost)
+        << "frame " << frame;
+  }
+
+  // Once TF tracks the sensor horizon again, normal recovery resumes.
+  EXPECT_EQ(machine.Update(HealthyTrackingInput()).state,
+            LocalizationState::kRelocalizing);
+}
+
+TEST(LocalizationStateMachine, ShortTransientHoldDoesNotAffectHealth) {
+  auto machine = MakeTrackingMachine();
+  auto held = HealthyTrackingInput();
+  held.tf_pose_stale = false;
+
+  const auto report = machine.Update(held);
+
+  EXPECT_EQ(report.state, LocalizationState::kTracking);
+  EXPECT_EQ(report.level, HealthLevel::kOk);
+  EXPECT_NEAR(report.health_score, 0.9, 1e-6);
+  EXPECT_DOUBLE_EQ(report.covariance_scale, 1.0);
+}
+
 }  // namespace

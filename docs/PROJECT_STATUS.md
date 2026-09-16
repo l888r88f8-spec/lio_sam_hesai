@@ -1,16 +1,18 @@
 # 项目状态文档 — lio_sam_hesai 定位稳定化
 
-更新日期：2026-09-15
+更新日期：2026-09-16
 当前分支：`main`
-当前提交：`db15459 docs(p2): record post-merge hardening evidence`
-远端状态：本地 `main` 相对 `origin/main` ahead 183，尚未 push。
-工作区：更新本文档前已有一项用户改动——`docs/P2_2_MIGRATION.md` 被删除；本轮不处理、不恢复该删除。
+本文档前述历史阶段的提交信息以各节记录为准；本次行驶中 TF 试改见第十二节。
+远端状态：本地 `main` 尚未 push；具体 ahead 数以当前 `git status` 为准。
+本次试改前已有用户对 `launch/localization_with_nonground.launch.py` 的改动（`publish_static_tf` 默认值改为 `true`）；本轮保留，不纳入 TF 修复提交。
 
 ## 一、当前结论
 
 **P2.2（建图/重定位坐标与命名收敛）及其修复、复核和合并后加固均已完成，并已进入本地 `main`。** 第 8 节记录的是 2026-09-12 的阶段性未签收状态；第 9 节随后修复了 launch 参数方向、相对地图路径、分块覆盖语义和回放判据等问题。原先阻塞签收的 `tiled-quick`、`tiled-faults` 已在修复轮与复核轮通过，不再是当前阻塞项。代码加固止于 `bbfd47d`；其后的 `db15459` 只修改本文档与本轮计划文档，验证与未重跑范围见 9.9。
 
 原定的稳定化子项目均已合入 `main`：健康可观测性、低风险缺陷清理、外参统一、回放与 RSS 验证框架、LOST 自恢复、启动就绪握手、实时资源治理，以及定位 TF 连续性收尾。当前没有已批准但尚未开始的 P0/P1 子项目。
+
+第十二节是之后新增的行驶抖动试改：离线空间回跳显著改善，但 TF 间隔门禁有微秒级偶发越界，且尚无实车导航验收，不能据此宣称整车定位已经稳定。
 
 稳定化基线的历史完整验证记录于 2026-08-04；P2.2 修复轮、独立复核轮与合并后加固轮的最新证据记录于 2026-09-15。9.9 当轮记录的约定 CTest 门禁为 44/44、Python 测试为 173/173，并完整重跑了 `tiled-faults`；相关临时构建与结果目录现已不存在，本次文档更新没有在 `db15459` 上重跑这些检查。`quick`、`tf-continuity`、`tiled-quick` 的最近一次真实全绿回放仍来自 9.8，不能表述为已在 `bbfd47d` 上重跑。详见第 3 节与 9.8-9.9。
 
@@ -19,7 +21,7 @@
 | 子项目 | 状态 | 交付内容 |
 | --- | --- | --- |
 | A：定位可观测性与降级状态机 | 已完成 | `INIT → RELOCALIZING → TRACKING → DEGRADED → LOST` 状态机、雷达/IMU 数据流看门狗、`/diagnostics`、odom 协方差可信度标记。|
-| A 收尾：TF 连续性 | 已完成 | 有有效定位锚点后，正常发布测量 TF；无新结果时短时 IMU 外推；IMU 不可用或超时则保持最后锚点。诊断发布 `tf_mode`、`tf_hold_reason`、锚点/外推年龄。|
+| A 收尾：TF 连续性 | 历史阶段已完成；后续行驶抖动试改见第十二节 | 原实现有有效定位锚点后发布测量 TF、无新结果时短时 IMU 外推；后续试改统一两者的传感器时间视界，并保持最后实际发布的位姿。|
 | F：代码缺陷清理 | 已完成 | iVox 批量添加的提前 `return` 已改为 `continue`；已删除未编译的 `frontend.cpp` 与 `loop_closure.cpp`；公共头不再泄漏 `using namespace std;`。|
 | B：坐标与外参基准统一 | 已完成 | mapping 与两个 localization launch 都使用 `base_link → hesai_lidar = [0.02, 0, 0.32]`、`base_link → imu_link = [0.02, 0, 0.22]`，由此得到 YAML 中的 `T^imu_lidar = [0, 0, 0.10]`。|
 | C：稳定性验证框架 | 已完成 | 外置 `hesai_sim` bag/地图身份校验、quick 指标基线回归、RSS 长测、结果产物、手动/定时 Orin CI；同时提供 TF 故障注入回放。|
@@ -484,3 +486,19 @@ LIO_SAM_WORKSPACE=/tmp/p22_clean LIO_SAM_KEEP_RESULTS=1 \
 - 未实现新的 Kalman filter 融合算法，未改变另外两个融合模式及默认配置。
 - 未恢复或推进 P2.3，未治理四项历史 lint 基线，未做真实 bag 回放。
 - 未 push。
+
+## 十二、行驶中 `map → base_link` 前后抖动试改（2026-09-16）
+
+本轮按[设计](superpowers/specs/2026-09-16-localization-tf-motion-stability-design.md)与
+[计划](superpowers/plans/2026-09-16-localization-tf-motion-stability.md)在当前工作区试改。
+只处理当前直接 `map → base_link` 链路的激光结果/IMU 外推切换；不接入车轮里程计，
+不恢复旧 `map → odom → base_link` 校正链。旧版在 `hesai_sim` 的 10–30 秒前进窗口中，
+101/101 次外推到新测量的切换均后跳，中位约 -0.076 m。
+
+- 新激光结果与无新结果的 TF 均从匹配传感器时间和 TF epoch 的定位锚点，投影到最新有效 IMU 时间视界；原始 odometry/path 保持测量位姿与源时间。预测不可用时保持最后实际发出的 TF，不把历史测量盖上当前时间戳。
+- 最后发出的 TF 比最新 IMU 落后超过现有 0.5 秒上限时，`tf_pose_stale` 驱动健康状态进入 `DEGRADED/LOST`、健康分数归零、协方差升至配置上限；新测量导致的当周期 odometry 也立即使用上限协方差。`tf_extrapolation_age_ms` 现在也显示新测量 TF 的实际投影跨度。
+- 最终代码的 C++ 功能 CTest（排除既有 lint 与下述标定测试）42/42 通过；TF Python 单元测试 30/30 通过。新定位可执行文件编译成功。最终二进制的 `quick`（`/tmp/lio-sam-hesai-stability.ON7D3k`）和 `tiled-quick`（`/tmp/lio-sam-hesai-stability.WGwSdr`）均退出 0；两者 `error_samples=0`、`valid_odom_ratio=1.0`、odom 时间戳单调。
+- 最终二进制的第一次 `tf-continuity`（`/tmp/lio-sam-hesai-stability.DyCsTG`）退出 0、`violations=[]`：前进窗口 102 次切换中仅 1 次反向，最小 -0.0029 m，中位 +0.0182 m；odometry/path 各 238 条，源时间戳逐条一致。新增诊断采集后的两次回放（`/tmp/lio-sam-hesai-stability.6YkWFG`、`/tmp/lio-sam-hesai-stability.gc6W3c`）空间检查均通过，但严格 0.100000 秒 TF 间隔门限分别出现 0.100044 秒和 0.100016 秒，脚本退出 1，**不能称三次全绿**。门限未放宽。
+- 后两次回放实际捕获的 `tf_pose_stale=true` 样本分别为 1014 和 1033 个，均处于 `LOST`/ERROR，`covariance_scale=100`；说明长时间保持旧 TF 不再被健康诊断标作正常。`test_lidar_imu_calibration` 单独运行仍有 1/8 个子测试失败，仅因用户原有 launch 改动把 `publish_static_tf` 默认值设为 `true`，而测试期望 `false`；本轮未改动该 launch 文件。
+
+这只是离线试验，尚未进行实车导航验收。回放的测量/TF 时间邻近匹配不能完全证明每个 TF 的内部发布来源；另外锚点不匹配等非 IMU 故障目前可能仍被 `tf_hold_reason=imu_unavailable` 概括。上车前需按设计先静止、再低速、再正常速度记录 TF、处理延迟及导航对 `held/LOST` 的响应；若导航继续使用陈旧 TF 运动估计，应停止试验。

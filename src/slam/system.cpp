@@ -638,6 +638,45 @@ void System::Run() {
   }
 }
 
+System::TfHorizonProjection System::ProjectTfPoseToLatestImu(
+    const localization_health::TfPredictionRequestKey& request) {
+  TfHorizonProjection projection;
+  if (!data_stream_watchdog_ ||
+      data_stream_watchdog_->IsImuStalled(SteadyNowMicroseconds()) ||
+      !config_->localization.tf.enable_imu_extrapolation ||
+      !imu_data_searcher_ptr_ || !localization_ptr_) {
+    return projection;
+  }
+
+  const auto latest_imu = imu_data_searcher_ptr_->LatestData();
+  if (!latest_imu.has_value()) {
+    return projection;
+  }
+  projection.sensor_now_us = latest_imu->timestamp_;
+  if (latest_imu->timestamp_ <= request.sensor_timestamp_us) {
+    return projection;
+  }
+
+  const auto imu_segment = imu_data_searcher_ptr_->GetDataSegment(
+      request.sensor_timestamp_us, latest_imu->timestamp_);
+  const auto map_lidar_prediction =
+      localization_ptr_->PredictMapLidarPose(imu_segment, request);
+  const auto lidar_T_base = GetLidarTBase();
+  if (!map_lidar_prediction.has_value() || !lidar_T_base.has_value()) {
+    return projection;
+  }
+
+  Eigen::Isometry3d map_T_base = Eigen::Isometry3d(
+      (map_lidar_prediction->map_T_lidar * lidar_T_base.value()).Matrix());
+  if (config_->localization.localization.enable_ground_height_constraint &&
+      has_localization_z_offset_) {
+    map_T_base.translation().z() += last_localization_z_offset_;
+  }
+  projection.sample = localization_health::TfPoseSample{
+      MapTBase(map_T_base), map_lidar_prediction->timestamp_};
+  return projection;
+}
+
 void System::PublishTfFallback() {
   if (!tf_continuity_controller_) {
     return;
@@ -647,35 +686,11 @@ void System::PublishTfFallback() {
   std::optional<TimeStampUs> sensor_now_us;
   const auto anchor_sensor_timestamp_us =
       tf_continuity_controller_->anchor_sensor_timestamp_us();
-  const bool imu_is_fresh = data_stream_watchdog_ &&
-      !data_stream_watchdog_->IsImuStalled(SteadyNowMicroseconds());
-  if (imu_is_fresh &&
-      config_->localization.tf.enable_imu_extrapolation &&
-      anchor_sensor_timestamp_us.has_value() && imu_data_searcher_ptr_ &&
-      localization_ptr_) {
-    const auto latest_imu = imu_data_searcher_ptr_->LatestData();
-    if (latest_imu.has_value()) {
-      sensor_now_us = latest_imu->timestamp_;
-    }
-    if (latest_imu.has_value() &&
-        latest_imu->timestamp_ > anchor_sensor_timestamp_us.value()) {
-      const auto imu_segment = imu_data_searcher_ptr_->GetDataSegment(
-          anchor_sensor_timestamp_us.value(), latest_imu->timestamp_);
-      const auto map_lidar_prediction =
-          localization_ptr_->PredictMapLidarPose(imu_segment);
-      const auto lidar_T_base = GetLidarTBase();
-      if (map_lidar_prediction.has_value() && lidar_T_base.has_value()) {
-        Eigen::Isometry3d map_T_base = Eigen::Isometry3d(
-            (map_lidar_prediction->map_T_lidar * lidar_T_base.value())
-                .Matrix());
-        if (config_->localization.localization.enable_ground_height_constraint &&
-            has_localization_z_offset_) {
-          map_T_base.translation().z() += last_localization_z_offset_;
-        }
-        extrapolated = localization_health::TfPoseSample{
-            MapTBase(map_T_base), map_lidar_prediction->timestamp_};
-      }
-    }
+  if (anchor_sensor_timestamp_us.has_value()) {
+    const auto projection = ProjectTfPoseToLatestImu(
+        {anchor_sensor_timestamp_us.value(), tf_continuity_expected_epoch_});
+    sensor_now_us = projection.sensor_now_us;
+    extrapolated = projection.sample;
   }
 
   const TimeStampUs publication_now_us =
@@ -781,18 +796,43 @@ bool System::ProcessLocalizationResultCache(bool& had_new_result) {
   const MapTBase sampled_map_T_base(map_T_base);
   const TimeStampUs publication_now_us =
       RosTimeToMicroseconds(get_clock()->now());
+  // Normal TF publishes the measurement projected onto the current sensor
+  // horizon, never the historical measurement pose stamped with the current
+  // ROS time. Without IMU extrapolation the validated measurement is the
+  // newest horizon this configuration permits.
+  std::optional<localization_health::TfPoseSample> projected_map_T_base;
+  if (config_->localization.tf.enable_imu_extrapolation) {
+    const auto projection = ProjectTfPoseToLatestImu(
+        {result.timestamp_, result.tf_continuity_epoch_});
+    projected_map_T_base = projection.sample;
+  } else {
+    projected_map_T_base = localization_health::TfPoseSample{
+        sampled_map_T_base, result.timestamp_};
+  }
   const auto measured_decision = tf_continuity_controller_->RecordMeasured(
       localization_health::TfPoseSample{sampled_map_T_base, result.timestamp_},
-      publication_now_us);
-  last_tf_extrapolation_duration_us_ =
-      measured_decision.extrapolation_duration_us;
-  PublishTF(measured_decision.sample.map_T_base,
-            measured_decision.publication_timestamp_us);
+      publication_now_us, projected_map_T_base);
+  if (measured_decision.has_value()) {
+    last_tf_extrapolation_duration_us_ =
+        measured_decision->extrapolation_duration_us;
+    PublishTF(measured_decision->sample.map_T_base,
+              measured_decision->publication_timestamp_us);
+  }
+  // Measured at the newest IMU horizon: a held update that already exceeds the
+  // extrapolation bound must inflate the odometry covariance on this cycle,
+  // not one health cycle later.
+  const auto latest_imu = imu_data_searcher_ptr_
+      ? imu_data_searcher_ptr_->LatestData()
+      : std::nullopt;
+  const bool tf_pose_stale = tf_continuity_controller_->IsPoseStale(
+      latest_imu.has_value()
+          ? std::optional<TimeStampUs>(latest_imu->timestamp_)
+          : std::nullopt,
+      true);
   tf_continuity_time_jump_recovery_active_ = false;
 
   geometry_msgs::msg::PoseStamped pose_stamped;
-  pose_stamped.pose =
-      RosPoseAdapter::ToPose(measured_decision.sample.map_T_base);
+  pose_stamped.pose = RosPoseAdapter::ToPose(sampled_map_T_base);
   pose_stamped.header.frame_id = config_->frames.map;
   pose_stamped.header.stamp = stamp;
   localization_path_.poses.emplace_back(std::move(pose_stamped));
@@ -801,12 +841,15 @@ bool System::ProcessLocalizationResultCache(bool& had_new_result) {
   }
 
   nav_msgs::msg::Odometry localization_odometry = RosPoseAdapter::ToOdometry(
-      measured_decision.sample.map_T_base, config_->frames.map,
+      sampled_map_T_base, config_->frames.map,
       config_->frames.base_link, stamp);
   if (config_->localization.health.enable) {
     localization_odometry.pose.covariance.fill(0.0);
-    const double covariance = config_->localization.health.base_covariance *
-                              current_health_covariance_scale_;
+    const double covariance_scale =
+        tf_pose_stale ? config_->localization.health.max_covariance_scale
+                      : current_health_covariance_scale_;
+    const double covariance =
+        config_->localization.health.base_covariance * covariance_scale;
     localization_odometry.pose.covariance[0] = covariance;
     localization_odometry.pose.covariance[7] = covariance;
     localization_odometry.pose.covariance[14] = covariance;
@@ -857,6 +900,16 @@ void System::PublishLocalizationHealth() {
   }
   inputs.stream = data_stream_watchdog_->Evaluate(steady_now_us);
   inputs.has_new_stream_observation = inputs.stream.has_new_observation;
+  if (tf_continuity_controller_) {
+    const auto latest_imu = imu_data_searcher_ptr_
+        ? imu_data_searcher_ptr_->LatestData()
+        : std::nullopt;
+    inputs.tf_pose_stale = tf_continuity_controller_->IsPoseStale(
+        latest_imu.has_value()
+            ? std::optional<TimeStampUs>(latest_imu->timestamp_)
+            : std::nullopt,
+        inputs.is_tracking);
+  }
 
   std::function<void()> request_automatic_relocalization;
   if (localization_ptr_) {
@@ -944,11 +997,15 @@ void System::PublishLocalizationHealth() {
       tf_anchor_age_us =
           latest_imu->timestamp_ - anchor_sensor_timestamp_us.value();
     }
-    if (tf_mode == localization_health::TfPublicationMode::kExtrapolated) {
+    // Measured projections carry the span they were projected by; held and
+    // no-anchor publications did not move with the sensor horizon and are 0.
+    if (tf_mode == localization_health::TfPublicationMode::kMeasured ||
+        tf_mode == localization_health::TfPublicationMode::kExtrapolated) {
       tf_extrapolation_age_us = last_tf_extrapolation_duration_us_;
     }
   }
   add_value("tf_mode", TfModeString(tf_mode));
+  add_value("tf_pose_stale", BoolString(inputs.tf_pose_stale));
   add_value("tf_anchor_age_ms", std::to_string(
       static_cast<double>(tf_anchor_age_us) /
       static_cast<double>(kMicrosecondsPerMillisecond)));
