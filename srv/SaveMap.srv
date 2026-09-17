@@ -1,5 +1,8 @@
+# Negative values use the mapping node's configured map_save resolutions.
+# Zero keeps the existing meaning of no additional downsampling.
 float32 resolution
 float32 ground_resolution
+# Empty destination uses the mapping node's configured map_save.directory.
 string destination
 ---
 bool success

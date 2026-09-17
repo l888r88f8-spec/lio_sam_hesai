@@ -24,6 +24,8 @@ Panels:
     Name: Time
     SyncMode: 0
     SyncSource: Localization Global Map
+  - Class: lio_sam_hesai/SaveMapPanel
+    Name: Save Map
 Visualization Manager:
   Class: ""
   Displays:
@@ -461,6 +463,8 @@ Visualization Manager:
     Saved: ~
 Window Geometry:
   Displays:
+    collapsed: false
+  Save Map:
     collapsed: false
   Height: 766
   Hide Left Dock: false

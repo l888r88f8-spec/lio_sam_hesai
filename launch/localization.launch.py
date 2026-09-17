@@ -47,8 +47,12 @@ def generate_launch_description():
     )
     use_sim_declare = DeclareLaunchArgument(
         "use_sim",
-        default_value="true",
-        description="Use simulation clock if true.",
+        default_value=os.environ.get("USE_SIM_TIME") or "true",
+        description=(
+            "Use simulation clock if true. Defaults to USE_SIM_TIME from the "
+            "launch process environment, or true when unset; an explicit "
+            "use_sim:=... overrides it."
+        ),
     )
     publish_static_tf_declare = DeclareLaunchArgument(
         "publish_static_tf",

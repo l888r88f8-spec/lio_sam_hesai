@@ -6,17 +6,27 @@ Each launch file is imported and its launch description inspected directly: the
 declared argument names, their defaults, and the value every node receives for
 its internal `use_sim_time` parameter. No node is started.
 
-Contract under test (P2.2 fix plan section 1):
+Contract under test (P2.2 fix plan section 1, plus the shared environment
+default):
 
 * `use_sim` is the single external argument.
 * `use_sim_time` is not declared as a launch argument; it stays the ROS node's
   internal parameter name.
 * Every node that sets `use_sim_time` resolves it from `use_sim`.
-* Defaults: mapping false, both localization launches true.
+* The default is read from `USE_SIM_TIME` in the environment inherited by the
+  launching process. When it is unset or empty, each launch keeps its own
+  pre-existing default: mapping false, localization true, and
+  localization_with_nonground false.
+* An explicit `use_sim:=...` launch argument overrides the environment default.
+* The value is sampled when the launch starts, so a new export is only picked
+  up by a new launch, never by a running node.
 """
+import contextlib
 import importlib.util
+import os
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from launch import LaunchContext
 from launch.actions import DeclareLaunchArgument
@@ -28,15 +38,36 @@ from launch_ros.actions import Node
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# relative launch path -> default value of the use_sim argument
+# Environment variable carrying the shared default for the `use_sim` argument
+# into every launch process.
+_ENV_VAR = "USE_SIM_TIME"
+
+# relative launch path -> use_sim default when _ENV_VAR is unset
 _LAUNCHES = {
     "mapping": ("launch/mapping.launch.py", "false"),
     "localization": ("launch/localization.launch.py", "true"),
     "localization_with_nonground": (
         "launch/localization_with_nonground.launch.py",
-        "true",
+        "false",
     ),
 }
+
+
+@contextlib.contextmanager
+def _environment(use_sim_time):
+    """
+    Run the block with _ENV_VAR set to `use_sim_time` (None removes it).
+
+    The environment is replaced wholesale so a value exported by whoever runs
+    the tests cannot leak in and decide the result.
+    """
+    env = dict(os.environ)
+    if use_sim_time is None:
+        env.pop(_ENV_VAR, None)
+    else:
+        env[_ENV_VAR] = use_sim_time
+    with mock.patch.dict(os.environ, env, clear=True):
+        yield
 
 
 def _load_launch_module(name, relative_path):
@@ -54,6 +85,12 @@ def _launch_description(name, relative_path):
         raise AssertionError(
             f"{relative_path} did not return a LaunchDescription")
     return description
+
+
+def _launch_description_with_env(name, relative_path, use_sim_time):
+    """Generate the launch description under a controlled environment."""
+    with _environment(use_sim_time):
+        return _launch_description(name, relative_path)
 
 
 def _declared_names(description):
@@ -134,21 +171,24 @@ class LaunchSimClockTest(unittest.TestCase):
         for name, (relative_path, _default) in _LAUNCHES.items():
             with self.subTest(launch=name):
                 declared = _declared_names(
-                    _launch_description(name, relative_path))
+                    _launch_description_with_env(name, relative_path, None))
                 self.assertEqual(declared.count("use_sim"), 1, declared)
                 self.assertNotIn("use_sim_time", declared, declared)
 
     def test_declared_default(self):
+        # No environment variable and no override: each launch's own default.
         for name, (relative_path, default) in _LAUNCHES.items():
             with self.subTest(launch=name):
-                description = _launch_description(name, relative_path)
+                description = _launch_description_with_env(
+                    name, relative_path, None)
                 self.assertEqual(
                     _declared_default(description, "use_sim"), default)
 
     def test_every_node_sets_use_sim_time(self):
         for name, (relative_path, _default) in _LAUNCHES.items():
             with self.subTest(launch=name):
-                description = _launch_description(name, relative_path)
+                description = _launch_description_with_env(
+                    name, relative_path, None)
                 present, missing = _use_sim_time_by_node(
                     description, _default_context(description))
                 self.assertEqual(
@@ -161,7 +201,8 @@ class LaunchSimClockTest(unittest.TestCase):
         # No override at all: every node must get the declared default.
         for name, (relative_path, default) in _LAUNCHES.items():
             with self.subTest(launch=name):
-                description = _launch_description(name, relative_path)
+                description = _launch_description_with_env(
+                    name, relative_path, None)
                 present, _missing = _use_sim_time_by_node(
                     description, _default_context(description))
                 self.assertTrue(present)
@@ -173,7 +214,8 @@ class LaunchSimClockTest(unittest.TestCase):
         for name, (relative_path, _default) in _LAUNCHES.items():
             for override in ("true", "false"):
                 with self.subTest(launch=name, use_sim=override):
-                    description = _launch_description(name, relative_path)
+                    description = _launch_description_with_env(
+                        name, relative_path, None)
                     context = _default_context(description)
                     context.launch_configurations["use_sim"] = override
                     present, _missing = _use_sim_time_by_node(
@@ -182,6 +224,76 @@ class LaunchSimClockTest(unittest.TestCase):
                     for label, value in present:
                         self.assertEqual(
                             value, override, f"{relative_path}: {label}")
+
+    def test_environment_sets_the_default(self):
+        # `USE_SIM_TIME=...` in the environment decides the default of every
+        # launch, both in the declared argument and in every node.
+        for name, (relative_path, _default) in _LAUNCHES.items():
+            for env_value in ("true", "false"):
+                with self.subTest(launch=name, env=env_value):
+                    description = _launch_description_with_env(
+                        name, relative_path, env_value)
+                    self.assertEqual(
+                        _declared_default(description, "use_sim"), env_value)
+                    present, missing = _use_sim_time_by_node(
+                        description, _default_context(description))
+                    self.assertEqual(missing, [], relative_path)
+                    self.assertTrue(present)
+                    for label, value in present:
+                        self.assertEqual(
+                            value, env_value, f"{relative_path}: {label}")
+
+    def test_empty_environment_falls_back_to_launch_default(self):
+        # `USE_SIM_TIME=` (empty) is treated as unset, not as "".
+        for name, (relative_path, default) in _LAUNCHES.items():
+            with self.subTest(launch=name):
+                description = _launch_description_with_env(
+                    name, relative_path, "")
+                self.assertEqual(
+                    _declared_default(description, "use_sim"), default)
+                present, _missing = _use_sim_time_by_node(
+                    description, _default_context(description))
+                self.assertTrue(present)
+                for label, value in present:
+                    self.assertEqual(
+                        value, default, f"{relative_path}: {label}")
+
+    def test_explicit_argument_overrides_environment(self):
+        # An explicit use_sim:=... on the command line wins over the export.
+        for name, (relative_path, _default) in _LAUNCHES.items():
+            for env_value, override in (("true", "false"), ("false", "true")):
+                with self.subTest(
+                        launch=name, env=env_value, use_sim=override):
+                    description = _launch_description_with_env(
+                        name, relative_path, env_value)
+                    context = _default_context(description)
+                    context.launch_configurations["use_sim"] = override
+                    present, _missing = _use_sim_time_by_node(
+                        description, context)
+                    self.assertTrue(present)
+                    for label, value in present:
+                        self.assertEqual(
+                            value, override, f"{relative_path}: {label}")
+
+    def test_restart_picks_up_a_new_export(self):
+        # Importing the module must not freeze the value. The description is
+        # rebuilt on every launch start, so a later export is honoured by the
+        # next launch while an already running launch keeps its old value.
+        for name, (relative_path, _default) in _LAUNCHES.items():
+            with self.subTest(launch=name):
+                with _environment(None):
+                    module = _load_launch_module(name, relative_path)
+                for env_value in ("true", "false"):
+                    with _environment(env_value):
+                        description = module.generate_launch_description()
+                    self.assertEqual(
+                        _declared_default(description, "use_sim"), env_value)
+                    present, _missing = _use_sim_time_by_node(
+                        description, _default_context(description))
+                    self.assertTrue(present)
+                    for label, value in present:
+                        self.assertEqual(
+                            value, env_value, f"{relative_path}: {label}")
 
     def test_keeps_the_internal_parameter_name(self):
         # The external argument was renamed; the ROS parameter was not.

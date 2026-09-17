@@ -238,7 +238,7 @@ TEST(LidarImuCalibration, LaunchStaticTransformsMatchCanonicalCalibration)
 
   const std::array<std::pair<std::string, std::string>, 2> launch_files = {{
     {"launch/localization.launch.py", "true"},
-    {"launch/localization_with_nonground.launch.py", "false"},
+    {"launch/localization_with_nonground.launch.py", "true"},
   }};
   for (const auto & launch_file : launch_files) {
     const std::string launch_text = ReadProjectFile(launch_file.first);

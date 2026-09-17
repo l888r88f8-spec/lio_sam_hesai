@@ -77,7 +77,10 @@ ros2 launch lio_sam_hesai mapping.launch.py
 ros2 bag play your_data
 ```
 
-### 2. 保存地图服务
+### 2. 在 RViz 保存地图
+建图启动后，在 RViz 的 **Save Map** 面板点击 **Save Map**，确认覆盖后即可保存。面板会显示保存状态和结果；建图服务未启动时按钮不可用。地图保存到建图节点当前参数中的 `map_save.directory`，分辨率使用当前的 `map_save.resolution` 和 `map_save.ground_resolution`，包括通过 `params_file` 传入的自定义值。保存会清空并重建该目录。
+
+也可以通过服务保存：
 ```bash
 ros2 service call /lio_sam/save_map lio_sam_hesai/srv/SaveMap "{resolution: 0.2, ground_resolution: 0.05, destination: /tmp/LOAM}"
 ```
@@ -110,6 +113,32 @@ ros2 launch lio_sam_hesai localization_with_nonground.launch.py
 同样支持`publish_static_tf:=false`以关闭launch内置的传感器静态TF发布。
 
 <img width="1453" height="650" alt="image_3" src="image/image_3.png" />
+
+## 四、仿真时钟（use_sim）
+三个launch文件（`mapping`、`localization`、`localization_with_nonground`）的`use_sim`参数共享同一个环境变量覆盖入口`USE_SIM_TIME`；环境变量未设置或为空字符串时，各launch使用自己的默认值：`mapping=false`、`localization=true`、`localization_with_nonground=false`。
+
+```bash
+export USE_SIM_TIME=true
+ros2 launch lio_sam_hesai mapping.launch.py
+
+# 只对本次启动生效
+USE_SIM_TIME=true ros2 launch lio_sam_hesai localization.launch.py
+```
+
+优先级：命令行显式传入的`use_sim:=...` > 环境变量`USE_SIM_TIME` > 各launch自身默认值。环境变量未设置或为空字符串时按未设置处理，使用该launch自己的默认值，而不是统一的`true`。
+
+```bash
+# 环境变量为true，但本次以真实时钟运行
+USE_SIM_TIME=true ros2 launch lio_sam_hesai localization.launch.py use_sim:=false
+
+# 覆盖三个launch，统一以真实时钟运行
+export USE_SIM_TIME=false
+ros2 launch lio_sam_hesai mapping.launch.py
+ros2 launch lio_sam_hesai localization.launch.py
+ros2 launch lio_sam_hesai localization_with_nonground.launch.py
+```
+
+注意：环境变量只在launch启动时读取一次，之后不再变化。修改`export`不会热更新已经运行的节点，需要重新执行`ros2 launch`才会生效。环境变量只是提供启动时的统一覆盖入口：需要真实时钟时用`use_sim:=false`或`export USE_SIM_TIME=false`，需要仿真时钟时用`use_sim:=true`或`export USE_SIM_TIME=true`。
 
 ## 注意
 - 请确保Livox点类型包含每个点的时间信息（扫描内相对时间）以及ring/channel索引。如果字段定义不同，请修改`imageProjection.cpp`。
@@ -153,4 +182,3 @@ ros2 launch lio_sam_hesai localization_with_nonground.launch.py
 - 适配与维护：LRF
 - 基于Tixiao Shan的原始项目[LIO-SAM](https://github.com/TixiaoShan/LIO-SAM)以及Vishnura的[LIO_SAM_MID360](https://github.com/rajvishnu07/lio_sam_mid360)开发，引用信息请参见`LICENSE`和原始仓库。
 - 本项目的重定位功能参考了[funny_lidar_slam](https://github.com/zm0612/funny_lidar_slam)。
-

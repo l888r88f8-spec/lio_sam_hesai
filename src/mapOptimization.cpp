@@ -1,6 +1,7 @@
 #include "utility.hpp"
 #include "ivox_map/ivox_map.h"
 #include "common/map_artifact_layout.h"
+#include "common/map_save_resolution.hpp"
 #include "lio_sam/ground_grid_patcher.h"
 #include "lio_sam_hesai/msg/cloud_info.hpp"
 #include "lio_sam_hesai/srv/save_map.hpp"
@@ -469,17 +470,19 @@ public:
                      << " m (align ground to map z=0)" << std::endl;
             }
 
-            if(req->resolution != 0)
+            const float resolution = lio_sam_hesai::ResolveMapSaveResolution(
+                req->resolution, config_.mapping.map_save.resolution);
+            if(resolution != 0)
             {
-               std::cout << "\n\nSave resolution: " << req->resolution << std::endl;
+               std::cout << "\n\nSave resolution: " << resolution << std::endl;
                // down-sample and save corner cloud
                downSizeFilterCorner.setInputCloud(globalCornerCloud);
-               downSizeFilterCorner.setLeafSize(req->resolution, req->resolution, req->resolution);
+               downSizeFilterCorner.setLeafSize(resolution, resolution, resolution);
                downSizeFilterCorner.filter(*globalCornerCloudDS);
                pcl::io::savePCDFileBinary(save_layout.CornerMap().string(), *globalCornerCloudDS);
                // down-sample and save surf cloud
                downSizeFilterSurf.setInputCloud(globalSurfCloud);
-               downSizeFilterSurf.setLeafSize(req->resolution, req->resolution, req->resolution);
+               downSizeFilterSurf.setLeafSize(resolution, resolution, resolution);
                downSizeFilterSurf.filter(*globalSurfCloudDS);
                pcl::io::savePCDFileBinary(save_layout.SurfaceMap().string(), *globalSurfCloudDS);
                //pcl::io::savePCDFileBinary(saveMapDirectory + "/localmap.pcd", *globalSurfCloudDS);
@@ -519,14 +522,15 @@ public:
                                  scanContextPath.c_str());
                 }
             }
-            const float groundRes = req->ground_resolution;
+            const float groundRes = lio_sam_hesai::ResolveMapSaveResolution(
+                req->ground_resolution, config_.mapping.map_save.ground_resolution);
             bool groundSaved = false;
             {
                 std::lock_guard<std::mutex> lock(mtx);
                 groundSaved = saveGlobalGroundMap(
                     save_layout.GroundMap().string(), groundRes, true);
             }
-            if (groundRes != req->resolution)
+            if (groundRes != resolution)
                 std::cout << "Ground save resolution: " << groundRes << std::endl;
             bool tiledMapSaved = !config_.mapping.map_save.save_tiled_map;
             if (config_.mapping.map_save.save_tiled_map && ret == 0 && groundSaved && scanContextDbSaved)

@@ -23,8 +23,12 @@ def generate_launch_description():
     )
     use_sim_declare = DeclareLaunchArgument(
         "use_sim",
-        default_value="true",
-        description="Use simulation clock if true.",
+        default_value=os.environ.get("USE_SIM_TIME") or "false",
+        description=(
+            "Use simulation clock if true. Defaults to USE_SIM_TIME from the "
+            "launch process environment, or false when unset; an explicit "
+            "use_sim:=... overrides it."
+        ),
     )
     use_rviz_declare = DeclareLaunchArgument(
         "use_rviz",
@@ -33,7 +37,7 @@ def generate_launch_description():
     )
     publish_static_tf_declare = DeclareLaunchArgument(
         "publish_static_tf",
-        default_value="false",
+        default_value="true",
         description="Publish base_link->lidar and base_link->imu static transforms.",
     )
     colorized_output = SetEnvironmentVariable(

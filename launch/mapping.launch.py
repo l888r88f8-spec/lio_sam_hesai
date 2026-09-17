@@ -20,8 +20,12 @@ def generate_launch_description():
     )
     use_sim_declare = DeclareLaunchArgument(
         "use_sim",
-        default_value="false",
-        description="Use simulation clock if true.",
+        default_value=os.environ.get("USE_SIM_TIME") or "false",
+        description=(
+            "Use simulation clock if true. Defaults to USE_SIM_TIME from the "
+            "launch process environment, or false when unset; an explicit "
+            "use_sim:=... overrides it."
+        ),
     )
 
     nodes = [

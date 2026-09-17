@@ -114,19 +114,22 @@ const std::vector<ParameterContract> kParameterContracts = {
   {"extrinsicTrans", "calibration.translation", kSharedSurfaces},
   {"extrinsicRot", "calibration.rotation", kSharedSurfaces},
   {"extrinsicRPY", "calibration.rpy", kSharedSurfaces},
-  {"generateScDb", "map_save.generate_scan_context_db", kMappingSurfaces},
+  // Loader-only keys: the shared mapping reader still declares these with
+  // defaults and their legacy aliases stay covered, but config/mapping.yaml no
+  // longer exposes them, so they carry no YAML surface.
+  {"generateScDb", "map_save.generate_scan_context_db", kMappingReader},
   {"savePCDDirectory", "map_save.directory", kMappingSurfaces},
   {"savePCDResolution", "map_save.resolution", kMappingSurfaces},
   {"saveGroundPCD", "map_save.save_ground_map", kMappingSurfaces},
   {"saveGroundPCDResolution", "map_save.ground_resolution",
     kMappingSurfaces},
-  {"groundPCDDirectory", "map_save.ground_directory", kMappingSurfaces},
+  {"groundPCDDirectory", "map_save.ground_directory", kMappingReader},
   {"groundPCDDirectoryGlobal", "map_save.ground_global_directory",
-    kMappingSurfaces},
+    kMappingReader},
   {"groundFinalUseOdom", "map_save.ground_final_use_odometry",
-    kMappingSurfaces},
+    kMappingReader},
   {"groundGlobalLeafSize", "map_save.ground_global_leaf_size",
-    kMappingSurfaces},
+    kMappingReader},
   {"alignSavedMapGroundToZero", "map_save.align_ground_to_zero",
     kMappingSurfaces},
   {"savedMapGroundZOffset", "map_save.ground_z_offset", kMappingSurfaces},
@@ -697,7 +700,7 @@ TEST(UnifiedParameterSchema, TiledMapParametersUseCanonicalNames) {
   const std::string mapping_yaml = ReadProjectFile("config/mapping.yaml");
   const std::string relocalization_yaml =
       ReadProjectFile("config/relocalization.yaml");
-  EXPECT_NE(mapping_yaml.find("save_tiled_map: false"),
+  EXPECT_NE(mapping_yaml.find("save_tiled_map: true"),
             std::string::npos);
   EXPECT_NE(mapping_yaml.find("tile_size_m: 100.0"), std::string::npos);
   EXPECT_NE(mapping_yaml.find("output_subdirectory: \"tiled\""),

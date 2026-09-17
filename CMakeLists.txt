@@ -46,6 +46,10 @@ else()
 endif()
 find_package(OpenMP REQUIRED)
 find_package(Threads REQUIRED)
+find_package(pluginlib REQUIRED)
+find_package(rviz_common REQUIRED)
+find_package(class_loader REQUIRED)
+find_package(Qt5 REQUIRED COMPONENTS Widgets)
 
 set(GTSAM_LIBRARY_PATH_SUFFIXES
   ${CMAKE_INSTALL_LIBDIR}
@@ -231,6 +235,26 @@ set_target_properties(
   PROPERTIES
     INSTALL_RPATH "$ORIGIN/..")
 
+# RViz panel for the mapping UI. Kept in a plugin library so the shared
+# config/rviz2.rviz can list it in every session; when localization mode does
+# not offer /lio_sam/save_map the panel reports the service as unavailable.
+add_library(${PROJECT_NAME}_save_map_panel
+  include/lio_sam_hesai/rviz/save_map_panel.hpp
+  src/rviz/save_map_controller.cpp
+  src/rviz/save_map_panel.cpp
+)
+target_include_directories(${PROJECT_NAME}_save_map_panel PUBLIC include)
+ament_target_dependencies(${PROJECT_NAME}_save_map_panel
+  rclcpp rviz_common pluginlib)
+target_link_libraries(${PROJECT_NAME}_save_map_panel
+  "${cpp_typesupport_target}" Qt5::Widgets)
+set_target_properties(${PROJECT_NAME}_save_map_panel PROPERTIES
+  AUTOMOC ON
+  INSTALL_RPATH "$ORIGIN")
+# Registers lio_sam_hesai/SaveMapPanel with rviz_common so the panel can be
+# listed in config/rviz2.rviz for both mapping and localization sessions.
+pluginlib_export_plugin_description_file(rviz_common plugin_description.xml)
+
 install(
   DIRECTORY launch
   DESTINATION share/${PROJECT_NAME}/
@@ -277,6 +301,11 @@ install(
   TARGETS ${PROJECT_NAME}_relocalization
     ${PROJECT_NAME}_generate_tiled_map
   DESTINATION lib/${PROJECT_NAME}
+)
+
+install(
+  TARGETS ${PROJECT_NAME}_save_map_panel
+  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
 
 install(
@@ -462,6 +491,37 @@ if(BUILD_TESTING)
   ament_add_gtest(test_scan_context test/test_scan_context.cpp)
   target_include_directories(test_scan_context PRIVATE include)
   target_link_libraries(test_scan_context ${PROJECT_NAME}_relocalization_lib ${PCL_LIBRARIES})
+  ament_add_gtest(test_save_map_controller
+    test/test_save_map_controller.cpp
+    src/rviz/save_map_controller.cpp)
+  target_include_directories(test_save_map_controller PRIVATE include)
+  ament_target_dependencies(test_save_map_controller rclcpp)
+  target_link_libraries(test_save_map_controller
+    "${cpp_typesupport_target}")
+  # rclcpp dlopens the rmw typesupport library by name when a client is
+  # created; keep it as a DT_NEEDED entry (the linker would otherwise drop the
+  # unreferenced library) so the binary is self-contained for out-of-tree ctest
+  # runs that do not set LD_LIBRARY_PATH to the build tree.
+  if(TARGET ${PROJECT_NAME}__rosidl_typesupport_fastrtps_cpp)
+    target_link_libraries(test_save_map_controller
+      ${PROJECT_NAME}__rosidl_typesupport_fastrtps_cpp)
+    set_target_properties(test_save_map_controller PROPERTIES
+      LINK_FLAGS "-Wl,--no-as-needed")
+  endif()
+  # rosidl typesupport libraries are opened by name at runtime, so keep the
+  # build tree on the test's RPATH for out-of-tree ctest runs.
+  set_target_properties(test_save_map_controller PROPERTIES
+    BUILD_RPATH "${CMAKE_CURRENT_BINARY_DIR}")
+  ament_add_gtest(test_save_map_panel_plugin test/test_save_map_panel_plugin.cpp)
+  target_include_directories(test_save_map_panel_plugin PRIVATE include)
+  ament_target_dependencies(test_save_map_panel_plugin
+    rclcpp rviz_common class_loader pluginlib)
+  target_compile_definitions(test_save_map_panel_plugin PRIVATE
+    SAVE_MAP_PANEL_LIBRARY="$<TARGET_FILE:${PROJECT_NAME}_save_map_panel>"
+    SAVE_MAP_PANEL_PLUGIN_XML="${CMAKE_CURRENT_SOURCE_DIR}/plugin_description.xml")
+  add_dependencies(test_save_map_panel_plugin ${PROJECT_NAME}_save_map_panel)
+  set_tests_properties(test_save_map_panel_plugin PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
   # the following line skips the linter which checks for copyrights
   # uncomment the line when a copyright and license is not present in all source files
   #set(ament_cmake_copyright_FOUND TRUE)

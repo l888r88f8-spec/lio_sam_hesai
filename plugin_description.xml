@@ -1,0 +1,11 @@
+<library path="lio_sam_hesai_save_map_panel">
+  <class
+    name="lio_sam_hesai/SaveMapPanel"
+    type="lio_sam_hesai::rviz::SaveMapPanel"
+    base_class_type="rviz_common::Panel">
+    <description>
+      Save Map button for mapping sessions. Calls the /lio_sam/save_map service
+      after confirmation and reports success, failure, or service availability.
+    </description>
+  </class>
+</library>
