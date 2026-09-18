@@ -2,14 +2,26 @@
 
 #include <exception>
 #include <memory>
+#include <utility>
 
 namespace lio_sam_hesai
 {
 namespace rviz
 {
 
+namespace
+{
+
+// Message shown when the mapping node disappears while a save is in flight, so
+// the panel can explain the failure instead of silently re-enabling the button.
+constexpr char kServiceLostMessage[] =
+  "The save_map_options service disappeared before the save finished.";
+
+}  // namespace
+
 SaveMapController::SaveMapController(rclcpp::Node::SharedPtr node)
-: client_(node->create_client<lio_sam_hesai::srv::SaveMap>("lio_sam/save_map")),
+: client_(node->create_client<lio_sam_hesai::srv::SaveMapOptions>(
+    "lio_sam/save_map_options")),
   state_(std::make_shared<SharedState>())
 {
 }
@@ -32,7 +44,7 @@ bool SaveMapController::SaveInProgress() const
       state_->pending_request_id.reset();
       ++state_->sequence;
       state_->in_flight = false;
-      state_->outcome = Outcome::kFailed;
+      state_->result = Result{Outcome::kFailed, kServiceLostMessage};
     }
     in_flight = state_->in_flight;
   }
@@ -43,9 +55,11 @@ bool SaveMapController::SaveInProgress() const
   return in_flight;
 }
 
-bool SaveMapController::RequestSave(float resolution, float ground_resolution)
+bool SaveMapController::RequestSave(
+  const std::string& destination, bool save_ground_map, bool save_tiled_map,
+  float resolution, float ground_resolution)
 {
-  if (!client_->service_is_ready())
+  if (destination.empty() || !client_->service_is_ready())
   {
     return false;
   }
@@ -60,38 +74,53 @@ bool SaveMapController::RequestSave(float resolution, float ground_resolution)
     state_->in_flight = true;
     sequence = ++state_->sequence;
     state_->pending_request_id.reset();
-    // Drop feedback the GUI has not consumed yet so the next outcome the panel
+    // Drop feedback the GUI has not consumed yet so the next result the panel
     // reads belongs to this request.
-    state_->outcome.reset();
+    state_->result.reset();
   }
 
-  auto request = std::make_shared<lio_sam_hesai::srv::SaveMap::Request>();
+  auto request =
+    std::make_shared<lio_sam_hesai::srv::SaveMapOptions::Request>();
+  request->destination = destination;
   request->resolution = resolution;
   request->ground_resolution = ground_resolution;
-  request->destination.clear();
+  request->save_ground_map = save_ground_map;
+  request->save_tiled_map = save_tiled_map;
 
   const std::shared_ptr<SharedState> state = state_;
   try
   {
     const auto future = client_->async_send_request(
       request,
-      [state, sequence](SaveMapClient::SharedFuture future)
+      [state, sequence](SaveMapOptionsClient::SharedFuture future)
       {
         bool success = false;
+        std::string message;
         try
         {
-          success = future.get()->success;
+          const std::shared_ptr<lio_sam_hesai::srv::SaveMapOptions::Response>
+            response = future.get();
+          success = response->success;
+          message = response->message;
         }
-        catch (const std::exception&)
+        catch (const std::exception& error)
         {
           success = false;
+          message = std::string("Save map service call failed: ") + error.what();
+        }
+        catch (...)
+        {
+          success = false;
+          message = "Save map service call failed";
         }
         std::lock_guard<std::mutex> lock(state->mutex);
         if (!state->in_flight || state->sequence != sequence)
         {
           return;
         }
-        state->outcome = success ? Outcome::kSucceeded : Outcome::kFailed;
+        state->result =
+          Result{success ? Outcome::kSucceeded : Outcome::kFailed,
+                 std::move(message)};
         state->in_flight = false;
         state->pending_request_id.reset();
       });
@@ -119,12 +148,12 @@ bool SaveMapController::RequestSave(float resolution, float ground_resolution)
   return true;
 }
 
-std::optional<SaveMapController::Outcome> SaveMapController::TakeOutcome()
+std::optional<SaveMapController::Result> SaveMapController::TakeResult()
 {
   std::lock_guard<std::mutex> lock(state_->mutex);
-  const std::optional<Outcome> outcome = state_->outcome;
-  state_->outcome.reset();
-  return outcome;
+  const std::optional<Result> result = state_->result;
+  state_->result.reset();
+  return result;
 }
 
 }  // namespace rviz

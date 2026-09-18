@@ -4,3 +4,4 @@ docs/*
 !docs/PROJECT_STATUS.md
 test/
 .worktrees/
+measure_localization_jitter.py

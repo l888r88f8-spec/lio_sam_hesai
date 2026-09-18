@@ -88,13 +88,13 @@
 
     # 显式地图与点云导出
     map_save:
-      directory: "/Downloads/LOAM_hesai/"                # 全局地图导出目录，程序会删除后重建该目录
+      directory: "/map/hesai_outdoor_yifu/"              # 全局地图导出目录，程序会删除后重建该目录
       save_ground_map: true                              # 是否保存全局地面点云，保存路径与全局地图一致
       resolution: 0.3                                    # 自动导出全局地图时的下采样分辨率，0表示不额外下采样
       ground_resolution: 0.1                             # 自动导出全局地面地图时的下采样分辨率，0表示不额外下采样
       save_tiled_map: true                               # 按瓦片导出地图
       tiled_map:
-        tile_size_m: 100.0
+        tile_size_m: 30.0
         output_subdirectory: "tiled"
         overview_resolution_m: 5.0
       align_ground_to_zero: false                        # 保存地图PCD时整体平移Z，使地面接近map.z=0

@@ -1,0 +1,20 @@
+# Save the current map to an explicit destination directory.
+#
+# `destination` is required and must be an absolute path. It is used exactly
+# as given. The filesystem root, the user's home directory, and symlink
+# destinations are rejected before anything is written.
+#
+# Negative resolution values use the mapping node's configured map_save
+# resolutions. Zero keeps the existing meaning of no additional downsampling.
+string destination
+float32 resolution
+float32 ground_resolution
+# Per-save artifact toggles. false removes the matching prior artifact and
+# writes no replacement, so a stale map cannot survive a re-save.
+bool save_ground_map
+bool save_tiled_map
+---
+# Human-readable result: the resolved destination on success, or the reason
+# the save was rejected or failed.
+bool success
+string message

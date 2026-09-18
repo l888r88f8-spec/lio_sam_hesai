@@ -99,7 +99,7 @@ include_directories(
   ${G2O_INCLUDE_DIR}
 )
 
-rosidl_generate_interfaces(${PROJECT_NAME} "msg/CloudInfo.msg" "srv/SaveMap.srv" DEPENDENCIES std_msgs sensor_msgs)
+rosidl_generate_interfaces(${PROJECT_NAME} "msg/CloudInfo.msg" "srv/SaveMap.srv" "srv/SaveMapOptions.srv" DEPENDENCIES std_msgs sensor_msgs)
 
 # Shared contract sources: direction-safe transforms, ROS pose/TF conversion,
 # immutable configuration, and map artifact layout. Consumers link this instead
@@ -107,6 +107,7 @@ rosidl_generate_interfaces(${PROJECT_NAME} "msg/CloudInfo.msg" "srv/SaveMap.srv"
 add_library(${PROJECT_NAME}_contracts STATIC
   src/common/map_artifact_layout.cpp
   src/common/ros_pose_adapter.cpp
+  src/common/save_map_request.cpp
   src/common/slam_config.cpp
 )
 ament_target_dependencies(${PROJECT_NAME}_contracts
@@ -237,10 +238,13 @@ set_target_properties(
 
 # RViz panel for the mapping UI. Kept in a plugin library so the shared
 # config/rviz2.rviz can list it in every session; when localization mode does
-# not offer /lio_sam/save_map the panel reports the service as unavailable.
+# not offer /lio_sam/save_map_options the panel reports the service as
+# unavailable.
 add_library(${PROJECT_NAME}_save_map_panel
+  include/lio_sam_hesai/rviz/save_map_dialog.hpp
   include/lio_sam_hesai/rviz/save_map_panel.hpp
   src/rviz/save_map_controller.cpp
+  src/rviz/save_map_dialog.cpp
   src/rviz/save_map_panel.cpp
 )
 target_include_directories(${PROJECT_NAME}_save_map_panel PUBLIC include)
@@ -372,6 +376,35 @@ if(BUILD_TESTING)
   ament_add_gtest(test_map_artifact_layout test/test_map_artifact_layout.cpp)
   target_include_directories(test_map_artifact_layout PRIVATE include)
   target_link_libraries(test_map_artifact_layout ${PROJECT_NAME}_contracts)
+  ament_add_gtest(test_save_map_request test/test_save_map_request.cpp)
+  target_include_directories(test_save_map_request PRIVATE include)
+  target_link_libraries(test_save_map_request
+    ${PROJECT_NAME}_contracts "${cpp_typesupport_target}")
+  # Drives the real mapOptimization::ExportMap so a save request whose
+  # save_ground_map differs from the YAML flag is covered end to end. The node
+  # class has no header, so the test includes src/mapOptimization.cpp and needs
+  # the same dependencies as the node executable.
+  ament_add_gtest(test_map_optimization_save_export
+    test/test_map_optimization_save_export.cpp)
+  target_include_directories(test_map_optimization_save_export PRIVATE include)
+  ament_target_dependencies(test_map_optimization_save_export
+    rclcpp rclpy std_msgs sensor_msgs geometry_msgs nav_msgs pcl_conversions
+    pcl_msgs visualization_msgs tf2 tf2_ros tf2_eigen tf2_sensor_msgs
+    tf2_geometry_msgs OpenCV PCL)
+  target_sources(test_map_optimization_save_export PRIVATE
+    src/ivox_map/ivox_map.cpp
+    src/ivox_map/voxel_grid_node.cpp
+    src/localization_map/tile_manifest.cpp
+    src/localization_map/tile_map_generator.cpp
+    src/relocalization/scan_context.cpp
+  )
+  target_link_libraries(test_map_optimization_save_export
+    ${PROJECT_NAME}_contracts ${GTSAM_LIBRARIES} "${cpp_typesupport_target}"
+    ${GLOG_LIBRARIES} yaml-cpp)
+  if(OpenMP_CXX_FOUND)
+    target_link_libraries(test_map_optimization_save_export
+      OpenMP::OpenMP_CXX)
+  endif()
   ament_add_gtest(test_rigid_transform test/test_rigid_transform.cpp)
   target_include_directories(test_rigid_transform PRIVATE include)
   target_link_libraries(test_rigid_transform ${LIO_SAM_EIGEN_TARGET})
@@ -512,6 +545,15 @@ if(BUILD_TESTING)
   # build tree on the test's RPATH for out-of-tree ctest runs.
   set_target_properties(test_save_map_controller PROPERTIES
     BUILD_RPATH "${CMAKE_CURRENT_BINARY_DIR}")
+  # Drives the real SaveMapDialog widgets: default artifact toggles, the
+  # absolute-path gate, and the exact values the panel forwards to the
+  # controller.
+  ament_add_gtest(test_save_map_dialog test/test_save_map_dialog.cpp)
+  target_include_directories(test_save_map_dialog PRIVATE include)
+  target_link_libraries(test_save_map_dialog
+    ${PROJECT_NAME}_save_map_panel Qt5::Widgets)
+  set_tests_properties(test_save_map_dialog PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
   ament_add_gtest(test_save_map_panel_plugin test/test_save_map_panel_plugin.cpp)
   target_include_directories(test_save_map_panel_plugin PRIVATE include)
   ament_target_dependencies(test_save_map_panel_plugin

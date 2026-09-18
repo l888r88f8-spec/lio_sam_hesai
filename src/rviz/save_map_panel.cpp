@@ -1,8 +1,10 @@
 #include "lio_sam_hesai/rviz/save_map_panel.hpp"
 
 #include <memory>
+#include <string>
 #include <utility>
 
+#include <QDialog>
 #include <QHBoxLayout>
 #include <QMessageBox>
 #include <QVBoxLayout>
@@ -10,6 +12,8 @@
 #include <pluginlib/class_list_macros.hpp>
 #include <rviz_common/display_context.hpp>
 #include <rviz_common/ros_integration/ros_node_abstraction_iface.hpp>
+
+#include "lio_sam_hesai/rviz/save_map_dialog.hpp"
 
 namespace lio_sam_hesai
 {
@@ -30,7 +34,7 @@ SaveMapPanel::SaveMapPanel(QWidget* parent)
 {
   save_button_ = new QPushButton(tr("Save Map"), this);
   save_button_->setToolTip(
-    tr("Export using the mapping node's configured directory and resolutions"));
+    tr("Choose a destination directory and the map artifacts to export"));
   save_button_->setEnabled(false);
 
   status_label_ = new QLabel(tr("Waiting for the RViz ROS node ..."), this);
@@ -86,7 +90,8 @@ void SaveMapPanel::OnSaveClicked()
     return;
   }
 
-  if (!ConfirmSave())
+  SaveMapDialog dialog(this);
+  if (dialog.exec() != QDialog::Accepted)
   {
     pending_status_ = tr("Map save cancelled.");
     pending_status_is_error_ = false;
@@ -94,9 +99,20 @@ void SaveMapPanel::OnSaveClicked()
     return;
   }
 
-  // Empty destination and negative resolutions use the mapping node's active
-  // map_save parameters, including a custom launch params_file.
-  if (!controller_->RequestSave())
+  const QString destination = dialog.Destination();
+  if (!ConfirmSave(destination))
+  {
+    pending_status_ = tr("Map save cancelled.");
+    pending_status_is_error_ = false;
+    PollServiceState();
+    return;
+  }
+
+  // Negative resolutions use the mapping node's active map_save parameters,
+  // including values from a custom launch params_file.
+  if (!controller_->RequestSave(
+        destination.toStdString(), dialog.SaveGroundMap(),
+        dialog.SaveTiledMap()))
   {
     pending_status_ =
       tr("Could not start the map save: the service is unavailable or a save "
@@ -106,7 +122,7 @@ void SaveMapPanel::OnSaveClicked()
     return;
   }
 
-  pending_status_ = tr("Saving map, please wait ...");
+  pending_status_ = tr("Saving map to %1, please wait ...").arg(destination);
   pending_status_is_error_ = false;
   status_label_->setStyleSheet(QString());
   status_label_->setText(pending_status_);
@@ -122,31 +138,38 @@ void SaveMapPanel::PollServiceState()
 
   const bool service_available = controller_->ServiceAvailable();
   const bool save_in_progress = controller_->SaveInProgress();
-  if (const auto outcome = controller_->TakeOutcome())
+  if (const auto result = controller_->TakeResult())
   {
-    if (*outcome == SaveMapController::Outcome::kSucceeded)
+    const QString message = QString::fromStdString(result->message);
+    if (result->outcome == SaveMapController::Outcome::kSucceeded)
     {
       pending_status_ =
-        tr("Map saved to the mapping node's configured destination.");
+        message.isEmpty() ? tr("Map saved.") : message;
       pending_status_is_error_ = false;
     }
     else
     {
-      pending_status_ =
-        tr("Map save failed. Check the mapOptimization log for details.");
+      pending_status_ = message.isEmpty()
+                          ? tr("Map save failed. Check the mapOptimization log "
+                               "for details.")
+                          : message;
       pending_status_is_error_ = true;
     }
   }
 
   if (save_in_progress)
   {
-    status_label_->setText(tr("Saving map, please wait ..."));
+    status_label_->setText(pending_status_.isEmpty()
+                             ? tr("Saving map, please wait ...")
+                             : pending_status_);
     status_label_->setStyleSheet(QString());
   }
   else if (!service_available)
   {
     status_label_->setText(
-      tr("Save service unavailable: start mapping mode to enable it."));
+      pending_status_is_error_ && !pending_status_.isEmpty()
+        ? pending_status_
+        : tr("Save service unavailable: start mapping mode to enable it."));
     status_label_->setStyleSheet(kErrorStyle);
   }
   else
@@ -160,15 +183,19 @@ void SaveMapPanel::PollServiceState()
   save_button_->setEnabled(service_available && !save_in_progress);
 }
 
-bool SaveMapPanel::ConfirmSave()
+bool SaveMapPanel::ConfirmSave(const QString& destination)
 {
-  // /lio_sam/save_map removes the destination directory before exporting.
+  // The options service removes only the known map artifacts before exporting;
+  // unrelated files in the destination survive.
   const auto answer = QMessageBox::warning(
     this,
     tr("Save map"),
-    tr("The mapping node deletes and recreates its configured "
-       "map_save.directory before exporting.\n\n"
-       "Save the map now?"),
+    tr("Save the map to:\n%1\n\n"
+       "Existing map artifacts in that directory - including the configured "
+       "tiled map directory and GroundMap.pcd - will be overwritten. Unrelated files "
+       "are preserved.\n\n"
+       "Save the map now?")
+      .arg(destination),
     QMessageBox::Yes | QMessageBox::No,
     QMessageBox::No);
   return answer == QMessageBox::Yes;

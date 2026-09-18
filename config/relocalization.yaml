@@ -26,7 +26,7 @@
       non_ground_cloud_topic: "lio_sam/cloud_nonground"        # 非地面点云话题
 
     localization:
-      map_path: "/home/robot/map/hesai_sim2/tiled"      # 全局地图
+      map_path: "/home/robot/map/hesai_outdoor_yifu/tiled"      # 全局地图
       map_mode: auto                                            # auto, global, or tiled
       tiled_map:
         active_radius_tiles: 1

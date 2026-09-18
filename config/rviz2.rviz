@@ -7,7 +7,7 @@ Panels:
         - /Global Options1
         - /Status1
       Splitter Ratio: 0.6470588445663452
-    Tree Height: 470
+    Tree Height: 384
   - Class: rviz_common/Selection
     Name: Selection
   - Class: rviz_common/Tool Properties
@@ -180,8 +180,8 @@ Visualization Manager:
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
-        Max Value: 13.767849922180176
-        Min Value: -1.1331228017807007
+        Max Value: 11.756757736206055
+        Min Value: -0.8927513957023621
         Value: true
       Axis: Z
       Channel Name: intensity
@@ -214,8 +214,8 @@ Visualization Manager:
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
-        Max Value: 10
-        Min Value: -10
+        Max Value: 9.70981502532959
+        Min Value: -0.7621965408325195
         Value: true
       Axis: Z
       Channel Name: intensity
@@ -223,10 +223,12 @@ Visualization Manager:
       Color: 255; 255; 255
       Color Transformer: AxisColor
       Decay Time: 0
-      Enabled: false
+      Enabled: true
       Invert Rainbow: false
       Max Color: 255; 255; 255
+      Max Intensity: 4096
       Min Color: 0; 0; 0
+      Min Intensity: 0
       Name: Localization Local Map
       Position Transformer: XYZ
       Selectable: true
@@ -242,7 +244,7 @@ Visualization Manager:
         Value: /lio_sam/localization/local_map
       Use Fixed Frame: true
       Use rainbow: true
-      Value: false
+      Value: true
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
@@ -289,7 +291,7 @@ Visualization Manager:
       Color: 255; 0; 0
       Color Transformer: FlatColor
       Decay Time: 0
-      Enabled: true
+      Enabled: false
       Invert Rainbow: false
       Max Color: 255; 255; 255
       Max Intensity: 0
@@ -310,7 +312,7 @@ Visualization Manager:
         Value: /lio_sam/cloud_nonground
       Use Fixed Frame: true
       Use rainbow: true
-      Value: true
+      Value: false
     - Alpha: 1
       Buffer Length: 1
       Class: rviz_default_plugins/Path
@@ -441,16 +443,16 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 48.79000473022461
+      Distance: 93.70821380615234
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: 8.863205909729004
-        Y: 0.5412645936012268
-        Z: 0.04002012312412262
+        X: -5.4210028648376465
+        Y: -8.362828254699707
+        Z: 0.04899897798895836
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
@@ -459,17 +461,17 @@ Visualization Manager:
       Pitch: 1.5697963237762451
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 1.5603963136672974
+      Yaw: 1.5753962993621826
     Saved: ~
 Window Geometry:
   Displays:
     collapsed: false
-  Save Map:
-    collapsed: false
   Height: 766
   Hide Left Dock: false
   Hide Right Dock: false
-  QMainWindow State: 000000ff00000000fd00000002000000000000015600000262fc0200000004fb000000100044006900730070006c006100790073010000003e00000262000000ca00fffffffb0000001200530065006c0065006300740069006f006e00000002b6000000b30000005c00fffffffb0000001e0054006f006f006c002000500072006f00700065007200740069006500730000000296000000d30000005c00fffffffb0000000a00560069006500770073000000023900000130000000a600ffffff00000003000006400000003afc0100000001fb0000000800540069006d00650100000000000006400000027100ffffff000004e40000026200000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  QMainWindow State: 000000ff00000000fd00000002000000000000015600000266fc0200000005fb000000100044006900730070006c006100790073010000003c0000020a000000c800fffffffb0000001200530065006c0065006300740069006f006e00000002b6000000b30000005c00fffffffb0000001e0054006f006f006c002000500072006f00700065007200740069006500730000000296000000d30000005c00fffffffb0000000a00560069006500770073000000023900000130000000a200fffffffb0000001000530061007600650020004d00610070010000024c000000560000005600ffffff00000003000006400000003afc0100000001fb0000000800540069006d00650100000000000006400000021000ffffff000004e40000026600000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  Save Map:
+    collapsed: false
   Selection:
     collapsed: false
   Time:
@@ -479,5 +481,5 @@ Window Geometry:
   Views:
     collapsed: false
   Width: 1600
-  X: 0
+  X: 70
   Y: 27

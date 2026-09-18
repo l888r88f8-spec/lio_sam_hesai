@@ -89,15 +89,15 @@ def generate_launch_description():
             output="screen",
             sigterm_timeout="30",
         ),
-        Node(
-            package="rviz2",
-            executable="rviz2",
-            name="rviz2",
-            arguments=["-d", rviz_config_file],
-            parameters=[{"use_sim_time": use_sim}],
-            output="screen",
-            emulate_tty=True,
-        ),
+        # Node(
+        #     package="rviz2",
+        #     executable="rviz2",
+        #     name="rviz2",
+        #     arguments=["-d", rviz_config_file],
+        #     parameters=[{"use_sim_time": use_sim}],
+        #     output="screen",
+        #     emulate_tty=True,
+        # ),
     ]
 
     return LaunchDescription(

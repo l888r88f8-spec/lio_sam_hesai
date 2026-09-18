@@ -21,9 +21,11 @@ namespace rviz
 /// The panel only ever touches Qt widgets from the GUI thread: the
 /// SaveMapController is polled by a QTimer, and the asynchronous service
 /// response is stored inside the controller from the rclcpp executor thread.
-/// When /lio_sam/save_map is not offered (localization mode, or mapping not
-/// running) the panel disables the button and reports the service as
-/// unavailable instead of failing.
+/// Clicking the button opens a SaveMapDialog for the destination directory and
+/// the ground/tiled artifact toggles, then asks for explicit confirmation
+/// naming that directory. When /lio_sam/save_map_options is not offered
+/// (localization mode, or mapping not running) the panel disables the button
+/// and reports the service as unavailable instead of failing.
 class SaveMapPanel : public rviz_common::Panel
 {
   Q_OBJECT
@@ -41,7 +43,9 @@ private Q_SLOTS:
   void PollServiceState();
 
 private:
-  bool ConfirmSave();
+  /// Asks the operator to confirm overwriting the known map artifacts in
+  /// `destination`. Returns true only for an explicit Yes.
+  bool ConfirmSave(const QString& destination);
 
   QPushButton* save_button_{nullptr};
   QLabel* status_label_{nullptr};

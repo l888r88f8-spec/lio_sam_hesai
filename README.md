@@ -13,6 +13,7 @@
 - 修复TF树
 - 增加重定位功能
 - 增加地面点云和非地面点云输出（用于3D导航）
+- 增强建图、定位稳定性
 
 ## 依赖要求
 - Ubuntu 22.04 + Humble / Ubuntu 24.04 + Jazzy
@@ -78,13 +79,14 @@ ros2 bag play your_data
 ```
 
 ### 2. 在 RViz 保存地图
-建图启动后，在 RViz 的 **Save Map** 面板点击 **Save Map**，确认覆盖后即可保存。面板会显示保存状态和结果；建图服务未启动时按钮不可用。地图保存到建图节点当前参数中的 `map_save.directory`，分辨率使用当前的 `map_save.resolution` 和 `map_save.ground_resolution`，包括通过 `params_file` 传入的自定义值。保存会清空并重建该目录。
+建图启动后，在 RViz 的 **Save Map** 面板点击 **Save Map**，会弹出保存对话框。
 
-也可以通过服务保存：
+也可以直接调用：
+
 ```bash
 ros2 service call /lio_sam/save_map lio_sam_hesai/srv/SaveMap "{resolution: 0.2, ground_resolution: 0.05, destination: /tmp/LOAM}"
 ```
-注意：服务名`/lio_sam/save_map`沿用了原始命名空间；但服务类型来自当前这个包。
+
 <img width="1387" height="992" alt="image" src="image/image.png" />
 <img width="1453" height="964" alt="image_1" src="image/image_1.png" />
 <img width="1453" height="964" alt="image_4" src="image/image_4.png" />
@@ -101,7 +103,7 @@ ros2 launch lio_sam_hesai localization.launch.py
 ros2 launch lio_sam_hesai localization.launch.py publish_static_tf:=false
 ```
 
-### 2. 在RViz中设置初始位置
+### 2. 自动重定位或者在RViz中设置初始位置
 
 <img width="1453" height="650" alt="image_2" src="image/image_2.png" />
 
@@ -125,27 +127,20 @@ ros2 launch lio_sam_hesai mapping.launch.py
 USE_SIM_TIME=true ros2 launch lio_sam_hesai localization.launch.py
 ```
 
-优先级：命令行显式传入的`use_sim:=...` > 环境变量`USE_SIM_TIME` > 各launch自身默认值。环境变量未设置或为空字符串时按未设置处理，使用该launch自己的默认值，而不是统一的`true`。
-
-```bash
-# 环境变量为true，但本次以真实时钟运行
-USE_SIM_TIME=true ros2 launch lio_sam_hesai localization.launch.py use_sim:=false
-
-# 覆盖三个launch，统一以真实时钟运行
-export USE_SIM_TIME=false
-ros2 launch lio_sam_hesai mapping.launch.py
-ros2 launch lio_sam_hesai localization.launch.py
-ros2 launch lio_sam_hesai localization_with_nonground.launch.py
-```
-
-注意：环境变量只在launch启动时读取一次，之后不再变化。修改`export`不会热更新已经运行的节点，需要重新执行`ros2 launch`才会生效。环境变量只是提供启动时的统一覆盖入口：需要真实时钟时用`use_sim:=false`或`export USE_SIM_TIME=false`，需要仿真时钟时用`use_sim:=true`或`export USE_SIM_TIME=true`。
-
 ## 注意
 - 请确保Livox点类型包含每个点的时间信息（扫描内相对时间）以及ring/channel索引。如果字段定义不同，请修改`imageProjection.cpp`。
 - DDS/QoS：如果运行Livox驱动，请根据实际情况调整相关参数。
 - 地面分割只适合机械雷达。
 
 ## 更新日志
+
+### 2026-09-18
+- 新增自动重定位
+- 引入多种门控增强定位稳定性
+- 重定位与跟踪支持按需加载瓦片地图，加入地图清单校验、异步加载和有界缓存，减少大地图常驻内存占用。
+- RViz 的 **Save Map** 面板新增目标目录选择、地面地图与瓦片地图开关及覆盖确认；新增 `/lio_sam/save_map_options` 服务，支持按次指定保存选项。旧版 `/lio_sam/save_map` 服务继续可用。
+- 整理建图与定位的坐标系、位姿变换和共享配置，增加参数校验；修复相对地图路径解析及瓦片覆盖范围判断。
+- 调整定位 TF 的发布时间以匹配当前 IMU 时间，并完善传感器中断及时间跳变时的 TF 处理；三个 launch 的仿真时间可通过 `USE_SIM_TIME` 或 `use_sim:=...` 设置。
 
 ### 2026-05-30
 - 输出的所有RING的非地面点。

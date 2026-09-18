@@ -2,9 +2,11 @@
 #include "ivox_map/ivox_map.h"
 #include "common/map_artifact_layout.h"
 #include "common/map_save_resolution.hpp"
+#include "common/save_map_request.h"
 #include "lio_sam/ground_grid_patcher.h"
 #include "lio_sam_hesai/msg/cloud_info.hpp"
 #include "lio_sam_hesai/srv/save_map.hpp"
+#include "lio_sam_hesai/srv/save_map_options.hpp"
 #include "localization_map/tile_map_generator.h"
 #include "relocalization/scan_context.h"
 #include <gtsam/geometry/Rot3.h>
@@ -23,6 +25,8 @@
 #include <pcl/segmentation/extract_clusters.h>
 #include <pcl/segmentation/sac_segmentation.h>
 #include <pcl/search/kdtree.h>
+#include <cstdlib>
+#include <filesystem>
 #include <unordered_map>
 #include <cmath>
 
@@ -63,6 +67,20 @@ constexpr float kSurfIVoxResolution = 0.5f;
 constexpr std::size_t kCornerMapNeighborCount = 5;
 constexpr float kCornerMapNeighborMaxDistance = 1.0f;
 constexpr float kCornerIVoxResolution = 0.5f;
+
+// Result of one synchronous map export, reported through both save services.
+struct MapExportOutcome
+{
+    bool success = false;
+    std::string message;
+};
+
+// HOME is the anchor of the legacy /lio_sam/save_map destination contract.
+std::string HomeDirectory()
+{
+    const char* home = std::getenv("HOME");
+    return home != nullptr ? std::string(home) : std::string();
+}
 
 }  // namespace
 
@@ -202,6 +220,7 @@ public:
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pubLoopConstraintEdge;
 
     rclcpp::Service<lio_sam_hesai::srv::SaveMap>::SharedPtr srvSaveMap;
+    rclcpp::Service<lio_sam_hesai::srv::SaveMapOptions>::SharedPtr srvSaveMapOptions;
     rclcpp::Subscription<lio_sam_hesai::msg::CloudInfo>::SharedPtr subCloud;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr subGPS;
     rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr subLoop;
@@ -326,249 +345,60 @@ public:
 
         if (config_.mapping.system.mapping_mode)
         {
-            auto saveMapService = [this](const std::shared_ptr<rmw_request_id_t> request_header, const std::shared_ptr<lio_sam_hesai::srv::SaveMap::Request> req, std::shared_ptr<lio_sam_hesai::srv::SaveMap::Response> res) -> void {
-            (void)request_header;
-            std::string saveMapDirectory;
-            std::cout << "****************************************************" << std::endl;
-            std::cout << "Saving map to pcd files ..." << std::endl;
-            if(req->destination.empty()) saveMapDirectory = std::getenv("HOME") + config_.mapping.map_save.directory;
-            else saveMapDirectory = std::getenv("HOME") + req->destination;
-            std::cout << "Save destination: " << saveMapDirectory << std::endl;
-            const MapArtifactLayout save_layout(saveMapDirectory);
-            // create directory and remove old files;
-            int unused = system((std::string("exec rm -r ") + saveMapDirectory).c_str());
-            unused = system((std::string("mkdir -p ") + saveMapDirectory).c_str());
-
-            // Copy the keyframe metadata while mapping/loop closure is locked.
-            // The feature-cloud pointers are immutable once keyframes are saved,
-            // so the expensive map export can safely run after releasing mtx.
-            pcl::PointCloud<PointType>::Ptr keyPoses3DSnapshot(
-                new pcl::PointCloud<PointType>());
-            pcl::PointCloud<PointTypePose>::Ptr keyPoses6DSnapshot(
-                new pcl::PointCloud<PointTypePose>());
-            std::vector<pcl::PointCloud<PointType>::Ptr> cornerKeyFramesSnapshot;
-            std::vector<pcl::PointCloud<PointType>::Ptr> surfKeyFramesSnapshot;
-            {
-                std::lock_guard<std::mutex> lock(mtx);
-                *keyPoses3DSnapshot = *cloudKeyPoses3D;
-                *keyPoses6DSnapshot = *cloudKeyPoses6D;
-                const std::size_t keyFrameCount = std::min(
-                    std::min(keyPoses3DSnapshot->size(), keyPoses6DSnapshot->size()),
-                    std::min(cornerCloudKeyFrames.size(), surfCloudKeyFrames.size()));
-                keyPoses3DSnapshot->resize(keyFrameCount);
-                keyPoses6DSnapshot->resize(keyFrameCount);
-                cornerKeyFramesSnapshot.assign(cornerCloudKeyFrames.begin(),
-                                               cornerCloudKeyFrames.begin() + keyFrameCount);
-                surfKeyFramesSnapshot.assign(surfCloudKeyFrames.begin(),
-                                             surfCloudKeyFrames.begin() + keyFrameCount);
-            }
-
-            // Save key frame transformations from the same snapshot used below.
-            pcl::io::savePCDFileBinary(save_layout.Trajectory().string(), *keyPoses3DSnapshot);
-            pcl::io::savePCDFileBinary(save_layout.Transformations().string(), *keyPoses6DSnapshot);
-            // extract global point cloud map
-            pcl::PointCloud<PointType>::Ptr globalCornerCloud(new pcl::PointCloud<PointType>());
-            pcl::PointCloud<PointType>::Ptr globalCornerCloudDS(new pcl::PointCloud<PointType>());
-            pcl::PointCloud<PointType>::Ptr globalSurfCloud(new pcl::PointCloud<PointType>());
-            pcl::PointCloud<PointType>::Ptr globalSurfCloudDS(new pcl::PointCloud<PointType>());
-            pcl::PointCloud<PointType>::Ptr globalMapCloud(new pcl::PointCloud<PointType>());
-            const bool useStaticFilter = config_.mapping.static_map_filter.enable && config_.mapping.static_map_filter.voxel_size > 1e-3f && config_.mapping.static_map_filter.min_keyframes > 1;
-
-            std::unordered_map<VoxelIndex, VoxelAcc, VoxelIndexHash> voxSurf;
-            std::unordered_map<VoxelIndex, VoxelAcc, VoxelIndexHash> voxCorner;
-
-            size_t rawSurfPts = 0;
-            size_t rawCornerPts = 0;
-
-            if (useStaticFilter)
-            {
-                // Reserve a rough amount to reduce rehash; tune if needed.
-                voxSurf.reserve((size_t)keyPoses3DSnapshot->size() * 2000);
-                if (config_.mapping.static_map_filter.filter_corners)
-                    voxCorner.reserve((size_t)keyPoses3DSnapshot->size() * 400);
-            }
-
-            relocalization::ScanContext scanContextGenerator;
-            const bool generateScanContextDb = config_.mapping.map_save.generate_scan_context_db;
-            for (int i = 0; i < (int)keyPoses3DSnapshot->size(); i++)
-            {
-                if (cornerKeyFramesSnapshot[i] == nullptr ||
-                    surfKeyFramesSnapshot[i] == nullptr)
+            // Legacy service: HOME-relative destination, configured ground and
+            // tiled flags, response limited to the historical bool field.
+            auto legacySaveMapService = [this](const std::shared_ptr<rmw_request_id_t> request_header, const std::shared_ptr<lio_sam_hesai::srv::SaveMap::Request> req, std::shared_ptr<lio_sam_hesai::srv::SaveMap::Response> res) -> void {
+                (void)request_header;
+                std::string error;
+                const auto options = lio_sam_hesai::MakeLegacySaveMapExportOptions(
+                    req->destination,
+                    req->resolution,
+                    req->ground_resolution,
+                    HomeDirectory(),
+                    config_.mapping.map_save.directory,
+                    config_.mapping.map_save.save_ground_map,
+                    config_.mapping.map_save.save_tiled_map,
+                    &error);
+                if (!options)
                 {
-                    RCLCPP_WARN(get_logger(),
-                                "Skipping keyframe %d with missing feature cloud", i);
-                    continue;
+                    RCLCPP_ERROR(get_logger(), "Rejected save_map request: %s", error.c_str());
+                    res->success = false;
+                    return;
                 }
-                pcl::PointCloud<PointType>::Ptr cornerT = transformPointCloud(cornerKeyFramesSnapshot[i],  &keyPoses6DSnapshot->points[i]);
-                pcl::PointCloud<PointType>::Ptr surfT   = transformPointCloud(surfKeyFramesSnapshot[i],    &keyPoses6DSnapshot->points[i]);
-
-                if (generateScanContextDb)
-                {
-                    pcl::PointCloud<PointType> localFeatureCloud;
-                    localFeatureCloud.reserve(cornerKeyFramesSnapshot[i]->size() +
-                                              surfKeyFramesSnapshot[i]->size());
-                    localFeatureCloud += *cornerKeyFramesSnapshot[i];
-                    localFeatureCloud += *surfKeyFramesSnapshot[i];
-                    if (!localFeatureCloud.empty())
-                    {
-                        Eigen::Matrix4d keyFramePose =
-                            pclPointToAffine3f(keyPoses6DSnapshot->points[i])
-                                .cast<double>()
-                                .matrix();
-                        if (config_.mapping.map_save.align_ground_to_zero)
-                            keyFramePose(2, 3) += config_.mapping.map_save.ground_z_offset;
-                        scanContextGenerator.AddKeyFrame(
-                            scanContextGenerator.MakeDescriptor(localFeatureCloud),
-                            keyFramePose);
-                    }
-                }
-
-                rawCornerPts += cornerT->size();
-                rawSurfPts   += surfT->size();
-
-                if (useStaticFilter)
-                {
-                    if (config_.mapping.static_map_filter.filter_corners)
-                        accumulateVoxelMap(voxCorner, cornerT, i, config_.mapping.static_map_filter.voxel_size);
-                    else
-                        *globalCornerCloud += *cornerT;
-
-                    // 对surf做静态一致性筛选
-                    accumulateVoxelMap(voxSurf, surfT, i, config_.mapping.static_map_filter.voxel_size);
-                }
-                else
-                {
-                    *globalCornerCloud += *cornerT;
-                    *globalSurfCloud   += *surfT;
-                }
-
-                std::cout << "" << std::flush << "Processing feature cloud " << i << " of " << keyPoses6DSnapshot->size() << " ..." << std::endl;
-            }
-
-            if (useStaticFilter)
-            {
-                // 把大于等于minKF次观测的体素输出成点
-                if (config_.mapping.static_map_filter.filter_corners)
-                    globalCornerCloud = voxelMapToCloud(voxCorner, config_.mapping.static_map_filter.min_keyframes);
-
-                globalSurfCloud = voxelMapToCloud(voxSurf, config_.mapping.static_map_filter.min_keyframes);
-
-                std::cout
-                    << "Static-map filter: voxel=" << std::fixed << std::setprecision(2)
-                    << config_.mapping.static_map_filter.voxel_size << " m, minKF=" << config_.mapping.static_map_filter.min_keyframes
-                    << ", filterCorner=" << (config_.mapping.static_map_filter.filter_corners ? "true" : "false")
-                    << " | corner " << rawCornerPts << " -> " << globalCornerCloud->size()
-                    << " | surf "   << rawSurfPts   << " -> " << globalSurfCloud->size()
-                << std::endl;
-            }
-
-            shiftSavedMapCloudZ(globalCornerCloud);
-            shiftSavedMapCloudZ(globalSurfCloud);
-            if (config_.mapping.map_save.align_ground_to_zero)
-            {
-                std::cout << "Saved map Z offset: " << config_.mapping.map_save.ground_z_offset
-                     << " m (align ground to map z=0)" << std::endl;
-            }
-
-            const float resolution = lio_sam_hesai::ResolveMapSaveResolution(
-                req->resolution, config_.mapping.map_save.resolution);
-            if(resolution != 0)
-            {
-               std::cout << "\n\nSave resolution: " << resolution << std::endl;
-               // down-sample and save corner cloud
-               downSizeFilterCorner.setInputCloud(globalCornerCloud);
-               downSizeFilterCorner.setLeafSize(resolution, resolution, resolution);
-               downSizeFilterCorner.filter(*globalCornerCloudDS);
-               pcl::io::savePCDFileBinary(save_layout.CornerMap().string(), *globalCornerCloudDS);
-               // down-sample and save surf cloud
-               downSizeFilterSurf.setInputCloud(globalSurfCloud);
-               downSizeFilterSurf.setLeafSize(resolution, resolution, resolution);
-               downSizeFilterSurf.filter(*globalSurfCloudDS);
-               pcl::io::savePCDFileBinary(save_layout.SurfaceMap().string(), *globalSurfCloudDS);
-               //pcl::io::savePCDFileBinary(saveMapDirectory + "/localmap.pcd", *globalSurfCloudDS);
-               // build and save GlobalMap with same resolution
-               *globalMapCloud += *globalCornerCloudDS;
-               *globalMapCloud += *globalSurfCloudDS;
-            }
-            else
-            {
-               // save corner cloud
-               pcl::io::savePCDFileBinary(save_layout.CornerMap().string(), *globalCornerCloud);
-               // save surf cloud
-               pcl::io::savePCDFileBinary(save_layout.SurfaceMap().string(), *globalSurfCloud);
-               // build GlobalMap without downsampling
-               *globalMapCloud += *globalCornerCloud;
-               *globalMapCloud += *globalSurfCloud;
-            }
-            int ret = pcl::io::savePCDFileBinary(save_layout.GlobalMap().string(), *globalMapCloud);
-            bool scanContextDbSaved = !generateScanContextDb;
-            if (generateScanContextDb)
-            {
-                const std::string scanContextPath =
-                    save_layout.ScanContextDb().string();
-                scanContextDbSaved =
-                    ret == 0 && scanContextGenerator.Size() > 0 &&
-                    scanContextGenerator.SaveDB(
-                        scanContextPath, MapArtifactLayout::kGlobalMapName);
-                if (scanContextDbSaved)
-                {
-                    std::cout << "Scan Context DB (" << scanContextGenerator.Size()
-                         << " keyframes) saved: " << scanContextPath << std::endl;
-                }
-                else
-                {
-                    RCLCPP_ERROR(get_logger(),
-                                 "Failed to save Scan Context DB: %s",
-                                 scanContextPath.c_str());
-                }
-            }
-            const float groundRes = lio_sam_hesai::ResolveMapSaveResolution(
-                req->ground_resolution, config_.mapping.map_save.ground_resolution);
-            bool groundSaved = false;
-            {
-                std::lock_guard<std::mutex> lock(mtx);
-                groundSaved = saveGlobalGroundMap(
-                    save_layout.GroundMap().string(), groundRes, true);
-            }
-            if (groundRes != resolution)
-                std::cout << "Ground save resolution: " << groundRes << std::endl;
-            bool tiledMapSaved = !config_.mapping.map_save.save_tiled_map;
-            if (config_.mapping.map_save.save_tiled_map && ret == 0 && groundSaved && scanContextDbSaved)
-            {
-                localization_map::TileMapGeneratorOptions options;
-                options.map_directory = saveMapDirectory;
-                options.output_subdirectory = config_.mapping.map_save.tiled_map.output_subdirectory;
-                options.tile_size_m = config_.mapping.map_save.tiled_map.tile_size_m;
-                options.overview_resolution_m = config_.mapping.map_save.tiled_map.overview_resolution_m;
-                options.frame_id = config_.frames.map;
-                try
-                {
-                    const auto result = localization_map::GenerateTileMap(options);
-                    tiledMapSaved = true;
-                    RCLCPP_INFO(get_logger(), "Saved %zu tiled map cells to %s",
-                                result.tile_count,
-                                result.output_directory.c_str());
-                }
-                catch (const std::exception& error)
-                {
-                    RCLCPP_ERROR(get_logger(), "Failed to save tiled map: %s",
-                                 error.what());
-                }
-            }
-            res->success =
-                (ret == 0) && groundSaved && scanContextDbSaved && tiledMapSaved;
-            downSizeFilterCorner.setLeafSize(config_.mapping.voxel_filter.mapping_corner_leaf_size, config_.mapping.voxel_filter.mapping_corner_leaf_size, config_.mapping.voxel_filter.mapping_corner_leaf_size);
-            downSizeFilterSurf.setLeafSize(config_.mapping.voxel_filter.mapping_surface_leaf_size, config_.mapping.voxel_filter.mapping_surface_leaf_size, config_.mapping.voxel_filter.mapping_surface_leaf_size);
-            std::cout << "****************************************************" << std::endl;
-            std::cout << "Saving map to pcd files completed\n" << std::endl;
-            return;
+                res->success = ExportMap(*options).success;
             };
 
-            srvSaveMap = create_service<lio_sam_hesai::srv::SaveMap>("lio_sam/save_map", saveMapService);
+            // Options service: explicit absolute destination and per-save
+            // ground/tiled toggles, with a text result for the UI.
+            auto optionsSaveMapService = [this](const std::shared_ptr<rmw_request_id_t> request_header, const std::shared_ptr<lio_sam_hesai::srv::SaveMapOptions::Request> req, std::shared_ptr<lio_sam_hesai::srv::SaveMapOptions::Response> res) -> void {
+                (void)request_header;
+                std::string error;
+                const auto options = lio_sam_hesai::MakeSaveMapExportOptions(
+                    req->destination,
+                    req->resolution,
+                    req->ground_resolution,
+                    req->save_ground_map,
+                    req->save_tiled_map,
+                    HomeDirectory(),
+                    &error);
+                if (!options)
+                {
+                    RCLCPP_ERROR(get_logger(), "Rejected save_map_options request: %s", error.c_str());
+                    res->success = false;
+                    res->message = error;
+                    return;
+                }
+                const MapExportOutcome outcome = ExportMap(*options);
+                res->success = outcome.success;
+                res->message = outcome.message;
+            };
+
+            srvSaveMap = create_service<lio_sam_hesai::srv::SaveMap>("lio_sam/save_map", legacySaveMapService);
+            srvSaveMapOptions = create_service<lio_sam_hesai::srv::SaveMapOptions>("lio_sam/save_map_options", optionsSaveMapService);
         }
         else
         {
-            RCLCPP_WARN(get_logger(), "mappingMode=false: save_map service disabled");
+            RCLCPP_WARN(get_logger(), "mappingMode=false: save_map and save_map_options services disabled");
         }
         pubHistoryKeyFrames = create_publisher<sensor_msgs::msg::PointCloud2>(config_.outputs.loop_history, 1);
         pubIcpKeyFrames = create_publisher<sensor_msgs::msg::PointCloud2>(config_.outputs.loop_history, 1);
@@ -584,6 +414,328 @@ public:
         downSizeFilterSurroundingKeyPoses.setLeafSize(config_.mapping.local_map.keyframe_density, config_.mapping.local_map.keyframe_density, config_.mapping.local_map.keyframe_density); // for surrounding key poses of scan-to-map optimization
 
         allocateMemory();
+    }
+
+    // Single export body shared by /lio_sam/save_map and
+    // /lio_sam/save_map_options: both services resolve their request into
+    // lio_sam_hesai::SaveMapExportOptions and land here, so the exported
+    // artifacts and the per-save toggles cannot drift apart.
+    MapExportOutcome ExportMap(const lio_sam_hesai::SaveMapExportOptions& options)
+    {
+        MapExportOutcome outcome;
+        const std::string saveMapDirectory = options.directory.string();
+        std::cout << "****************************************************" << std::endl;
+        std::cout << "Saving map to pcd files ..." << std::endl;
+        std::cout << "Save destination: " << saveMapDirectory << std::endl;
+
+        std::error_code directoryError;
+        std::filesystem::create_directories(options.directory, directoryError);
+        if (directoryError)
+        {
+            outcome.message = "Unable to create save destination " + saveMapDirectory +
+                              ": " + directoryError.message();
+            RCLCPP_ERROR(get_logger(), "%s", outcome.message.c_str());
+            return outcome;
+        }
+
+        std::unique_ptr<MapArtifactLayout> saveLayout;
+        try
+        {
+            saveLayout = std::make_unique<MapArtifactLayout>(
+                options.directory,
+                config_.mapping.map_save.tiled_map.output_subdirectory);
+        }
+        catch (const std::exception& error)
+        {
+            outcome.message = "Invalid map save layout for " + saveMapDirectory +
+                              ": " + error.what();
+            RCLCPP_ERROR(get_logger(), "%s", outcome.message.c_str());
+            return outcome;
+        }
+
+        // Remove the artifacts a previous save could have written, and nothing
+        // else: unrelated files in the destination directory survive.
+        std::string artifactError;
+        if (!lio_sam_hesai::RemovePriorMapArtifacts(*saveLayout, &artifactError))
+        {
+            outcome.message = artifactError;
+            RCLCPP_ERROR(get_logger(), "%s", outcome.message.c_str());
+            return outcome;
+        }
+        const MapArtifactLayout& save_layout = *saveLayout;
+        std::string failure;
+        // Copy the keyframe metadata while mapping/loop closure is locked.
+        // The feature-cloud pointers are immutable once keyframes are saved,
+        // so the expensive map export can safely run after releasing mtx.
+        pcl::PointCloud<PointType>::Ptr keyPoses3DSnapshot(
+            new pcl::PointCloud<PointType>());
+        pcl::PointCloud<PointTypePose>::Ptr keyPoses6DSnapshot(
+            new pcl::PointCloud<PointTypePose>());
+        std::vector<pcl::PointCloud<PointType>::Ptr> cornerKeyFramesSnapshot;
+        std::vector<pcl::PointCloud<PointType>::Ptr> surfKeyFramesSnapshot;
+        {
+            std::lock_guard<std::mutex> lock(mtx);
+            *keyPoses3DSnapshot = *cloudKeyPoses3D;
+            *keyPoses6DSnapshot = *cloudKeyPoses6D;
+            const std::size_t keyFrameCount = std::min(
+                std::min(keyPoses3DSnapshot->size(), keyPoses6DSnapshot->size()),
+                std::min(cornerCloudKeyFrames.size(), surfCloudKeyFrames.size()));
+            keyPoses3DSnapshot->resize(keyFrameCount);
+            keyPoses6DSnapshot->resize(keyFrameCount);
+            cornerKeyFramesSnapshot.assign(cornerCloudKeyFrames.begin(),
+                                           cornerCloudKeyFrames.begin() + keyFrameCount);
+            surfKeyFramesSnapshot.assign(surfCloudKeyFrames.begin(),
+                                         surfCloudKeyFrames.begin() + keyFrameCount);
+        }
+
+        // Save key frame transformations from the same snapshot used below.
+        if (pcl::io::savePCDFileBinary(save_layout.Trajectory().string(), *keyPoses3DSnapshot) != 0 &&
+            failure.empty())
+            failure = "Failed to save " + save_layout.Trajectory().string();
+        if (pcl::io::savePCDFileBinary(save_layout.Transformations().string(), *keyPoses6DSnapshot) != 0 &&
+            failure.empty())
+            failure = "Failed to save " + save_layout.Transformations().string();
+        // extract global point cloud map
+        pcl::PointCloud<PointType>::Ptr globalCornerCloud(new pcl::PointCloud<PointType>());
+        pcl::PointCloud<PointType>::Ptr globalCornerCloudDS(new pcl::PointCloud<PointType>());
+        pcl::PointCloud<PointType>::Ptr globalSurfCloud(new pcl::PointCloud<PointType>());
+        pcl::PointCloud<PointType>::Ptr globalSurfCloudDS(new pcl::PointCloud<PointType>());
+        pcl::PointCloud<PointType>::Ptr globalMapCloud(new pcl::PointCloud<PointType>());
+        const bool useStaticFilter = config_.mapping.static_map_filter.enable && config_.mapping.static_map_filter.voxel_size > 1e-3f && config_.mapping.static_map_filter.min_keyframes > 1;
+
+        std::unordered_map<VoxelIndex, VoxelAcc, VoxelIndexHash> voxSurf;
+        std::unordered_map<VoxelIndex, VoxelAcc, VoxelIndexHash> voxCorner;
+
+        size_t rawSurfPts = 0;
+        size_t rawCornerPts = 0;
+
+        if (useStaticFilter)
+        {
+            // Reserve a rough amount to reduce rehash; tune if needed.
+            voxSurf.reserve((size_t)keyPoses3DSnapshot->size() * 2000);
+            if (config_.mapping.static_map_filter.filter_corners)
+                voxCorner.reserve((size_t)keyPoses3DSnapshot->size() * 400);
+        }
+
+        relocalization::ScanContext scanContextGenerator;
+        const bool generateScanContextDb = config_.mapping.map_save.generate_scan_context_db;
+        for (int i = 0; i < (int)keyPoses3DSnapshot->size(); i++)
+        {
+            if (cornerKeyFramesSnapshot[i] == nullptr ||
+                surfKeyFramesSnapshot[i] == nullptr)
+            {
+                RCLCPP_WARN(get_logger(),
+                            "Skipping keyframe %d with missing feature cloud", i);
+                continue;
+            }
+            pcl::PointCloud<PointType>::Ptr cornerT = transformPointCloud(cornerKeyFramesSnapshot[i],  &keyPoses6DSnapshot->points[i]);
+            pcl::PointCloud<PointType>::Ptr surfT   = transformPointCloud(surfKeyFramesSnapshot[i],    &keyPoses6DSnapshot->points[i]);
+
+            if (generateScanContextDb)
+            {
+                pcl::PointCloud<PointType> localFeatureCloud;
+                localFeatureCloud.reserve(cornerKeyFramesSnapshot[i]->size() +
+                                          surfKeyFramesSnapshot[i]->size());
+                localFeatureCloud += *cornerKeyFramesSnapshot[i];
+                localFeatureCloud += *surfKeyFramesSnapshot[i];
+                if (!localFeatureCloud.empty())
+                {
+                    Eigen::Matrix4d keyFramePose =
+                        pclPointToAffine3f(keyPoses6DSnapshot->points[i])
+                            .cast<double>()
+                            .matrix();
+                    if (config_.mapping.map_save.align_ground_to_zero)
+                        keyFramePose(2, 3) += config_.mapping.map_save.ground_z_offset;
+                    scanContextGenerator.AddKeyFrame(
+                        scanContextGenerator.MakeDescriptor(localFeatureCloud),
+                        keyFramePose);
+                }
+            }
+
+            rawCornerPts += cornerT->size();
+            rawSurfPts   += surfT->size();
+
+            if (useStaticFilter)
+            {
+                if (config_.mapping.static_map_filter.filter_corners)
+                    accumulateVoxelMap(voxCorner, cornerT, i, config_.mapping.static_map_filter.voxel_size);
+                else
+                    *globalCornerCloud += *cornerT;
+
+                // 对surf做静态一致性筛选
+                accumulateVoxelMap(voxSurf, surfT, i, config_.mapping.static_map_filter.voxel_size);
+            }
+            else
+            {
+                *globalCornerCloud += *cornerT;
+                *globalSurfCloud   += *surfT;
+            }
+
+            std::cout << "" << std::flush << "Processing feature cloud " << i << " of " << keyPoses6DSnapshot->size() << " ..." << std::endl;
+        }
+
+        if (useStaticFilter)
+        {
+            // 把大于等于minKF次观测的体素输出成点
+            if (config_.mapping.static_map_filter.filter_corners)
+                globalCornerCloud = voxelMapToCloud(voxCorner, config_.mapping.static_map_filter.min_keyframes);
+
+            globalSurfCloud = voxelMapToCloud(voxSurf, config_.mapping.static_map_filter.min_keyframes);
+
+            std::cout
+                << "Static-map filter: voxel=" << std::fixed << std::setprecision(2)
+                << config_.mapping.static_map_filter.voxel_size << " m, minKF=" << config_.mapping.static_map_filter.min_keyframes
+                << ", filterCorner=" << (config_.mapping.static_map_filter.filter_corners ? "true" : "false")
+                << " | corner " << rawCornerPts << " -> " << globalCornerCloud->size()
+                << " | surf "   << rawSurfPts   << " -> " << globalSurfCloud->size()
+            << std::endl;
+        }
+
+        shiftSavedMapCloudZ(globalCornerCloud);
+        shiftSavedMapCloudZ(globalSurfCloud);
+        if (config_.mapping.map_save.align_ground_to_zero)
+        {
+            std::cout << "Saved map Z offset: " << config_.mapping.map_save.ground_z_offset
+                 << " m (align ground to map z=0)" << std::endl;
+        }
+
+        const float resolution = lio_sam_hesai::ResolveMapSaveResolution(
+            options.resolution, config_.mapping.map_save.resolution);
+        if(resolution != 0)
+        {
+           std::cout << "\n\nSave resolution: " << resolution << std::endl;
+           // down-sample and save corner cloud
+           downSizeFilterCorner.setInputCloud(globalCornerCloud);
+           downSizeFilterCorner.setLeafSize(resolution, resolution, resolution);
+           downSizeFilterCorner.filter(*globalCornerCloudDS);
+           if (pcl::io::savePCDFileBinary(save_layout.CornerMap().string(), *globalCornerCloudDS) != 0 &&
+               failure.empty())
+               failure = "Failed to save " + save_layout.CornerMap().string();
+           // down-sample and save surf cloud
+           downSizeFilterSurf.setInputCloud(globalSurfCloud);
+           downSizeFilterSurf.setLeafSize(resolution, resolution, resolution);
+           downSizeFilterSurf.filter(*globalSurfCloudDS);
+           if (pcl::io::savePCDFileBinary(save_layout.SurfaceMap().string(), *globalSurfCloudDS) != 0 &&
+               failure.empty())
+               failure = "Failed to save " + save_layout.SurfaceMap().string();
+           //pcl::io::savePCDFileBinary(saveMapDirectory + "/localmap.pcd", *globalSurfCloudDS);
+           // build and save GlobalMap with same resolution
+           *globalMapCloud += *globalCornerCloudDS;
+           *globalMapCloud += *globalSurfCloudDS;
+        }
+        else
+        {
+           // save corner cloud
+           if (pcl::io::savePCDFileBinary(save_layout.CornerMap().string(), *globalCornerCloud) != 0 &&
+               failure.empty())
+               failure = "Failed to save " + save_layout.CornerMap().string();
+           // save surf cloud
+           if (pcl::io::savePCDFileBinary(save_layout.SurfaceMap().string(), *globalSurfCloud) != 0 &&
+               failure.empty())
+               failure = "Failed to save " + save_layout.SurfaceMap().string();
+           // build GlobalMap without downsampling
+           *globalMapCloud += *globalCornerCloud;
+           *globalMapCloud += *globalSurfCloud;
+        }
+        int ret = pcl::io::savePCDFileBinary(save_layout.GlobalMap().string(), *globalMapCloud);
+        if (ret != 0 && failure.empty())
+            failure = "Failed to save " + save_layout.GlobalMap().string();
+        bool scanContextDbSaved = !generateScanContextDb;
+        if (generateScanContextDb)
+        {
+            const std::string scanContextPath =
+                save_layout.ScanContextDb().string();
+            scanContextDbSaved =
+                ret == 0 && scanContextGenerator.Size() > 0 &&
+                scanContextGenerator.SaveDB(
+                    scanContextPath, MapArtifactLayout::kGlobalMapName);
+            if (scanContextDbSaved)
+            {
+                std::cout << "Scan Context DB (" << scanContextGenerator.Size()
+                     << " keyframes) saved: " << scanContextPath << std::endl;
+            }
+            else
+            {
+                if (failure.empty())
+                    failure = "Failed to save Scan Context DB: " + scanContextPath;
+                RCLCPP_ERROR(get_logger(),
+                             "Failed to save Scan Context DB: %s",
+                             scanContextPath.c_str());
+            }
+        }
+        const float groundRes = lio_sam_hesai::ResolveMapSaveResolution(
+            options.ground_resolution, config_.mapping.map_save.ground_resolution);
+        // Ground stays optional: when the request turns it off the stale file
+        // was already removed above and the tiled export simply sees no ground
+        // source.
+        bool groundSaved = true;
+        if (options.save_ground_map)
+        {
+            {
+                std::lock_guard<std::mutex> lock(mtx);
+                groundSaved = saveGlobalGroundMap(
+                    save_layout.GroundMap().string(), groundRes, true);
+            }
+            if (!groundSaved && failure.empty())
+                failure = "Failed to save " + save_layout.GroundMap().string();
+            if (groundRes != resolution)
+                std::cout << "Ground save resolution: " << groundRes << std::endl;
+        }
+
+        bool tiledMapSaved = !options.save_tiled_map;
+        if (options.save_tiled_map)
+        {
+            if (ret == 0 && groundSaved && scanContextDbSaved)
+            {
+                localization_map::TileMapGeneratorOptions tileOptions;
+                tileOptions.map_directory = saveMapDirectory;
+                tileOptions.output_subdirectory = config_.mapping.map_save.tiled_map.output_subdirectory;
+                tileOptions.tile_size_m = config_.mapping.map_save.tiled_map.tile_size_m;
+                tileOptions.overview_resolution_m = config_.mapping.map_save.tiled_map.overview_resolution_m;
+                tileOptions.frame_id = config_.frames.map;
+                try
+                {
+                    const auto result = localization_map::GenerateTileMap(tileOptions);
+                    tiledMapSaved = true;
+                    RCLCPP_INFO(get_logger(), "Saved %zu tiled map cells to %s",
+                                result.tile_count,
+                                result.output_directory.c_str());
+                }
+                catch (const std::exception& error)
+                {
+                    tiledMapSaved = false;
+                    if (failure.empty())
+                        failure = std::string("Failed to save tiled map: ") + error.what();
+                    RCLCPP_ERROR(get_logger(), "Failed to save tiled map: %s", error.what());
+                }
+            }
+            else
+            {
+                tiledMapSaved = false;
+                if (failure.empty())
+                    failure = "Skipped tiled map because a required source artifact was not saved";
+            }
+        }
+
+        downSizeFilterCorner.setLeafSize(config_.mapping.voxel_filter.mapping_corner_leaf_size, config_.mapping.voxel_filter.mapping_corner_leaf_size, config_.mapping.voxel_filter.mapping_corner_leaf_size);
+        downSizeFilterSurf.setLeafSize(config_.mapping.voxel_filter.mapping_surface_leaf_size, config_.mapping.voxel_filter.mapping_surface_leaf_size, config_.mapping.voxel_filter.mapping_surface_leaf_size);
+        std::cout << "****************************************************" << std::endl;
+        std::cout << "Saving map to pcd files completed\n" << std::endl;
+
+        outcome.success = failure.empty() && groundSaved && scanContextDbSaved && tiledMapSaved;
+        if (outcome.success)
+        {
+            outcome.message = "Saved map to " + saveMapDirectory;
+        }
+        else if (!failure.empty())
+        {
+            outcome.message = failure;
+        }
+        else
+        {
+            outcome.message = "Map save failed";
+        }
+        return outcome;
     }
 
     std::shared_ptr<IVoxMap> CreateSurfIVoxMap() const
@@ -1089,12 +1241,11 @@ public:
         return buildGlobalGroundMapFromIndices(keyFrameIndices, leafSize);
     }
 
-    // 将全局地面点云保存到与全局地图相同的输出目录中。
+    // 将全局地面点云保存到与全局地图相同的输出目录中。Whether ground is
+    // exported at all is decided by the caller's SaveMapExportOptions toggle;
+    // the legacy service feeds it the configured save_ground_map flag.
     bool saveGlobalGroundMap(const std::string &filePath, float leafSize, bool useBinary)
     {
-        if (!config_.mapping.map_save.save_ground_map)
-            return true;
-
         pcl::PointCloud<PointType>::Ptr globalGroundMap =
             buildFullGlobalGroundMap(leafSize);
         if (globalGroundMap->empty())
