@@ -10,7 +10,7 @@ namespace {
 
 using localization_health::ReinitializationControl;
 
-TEST(ReinitializationControl, FailedAutomaticAttemptWaitsForAnotherRequest) {
+TEST(ReinitializationControl, FailedAutomaticAttemptDoesNotParkForAnotherRequest) {
   ReinitializationControl control;
   control.RequestAutomaticRelocalization();
 
@@ -21,13 +21,15 @@ TEST(ReinitializationControl, FailedAutomaticAttemptWaitsForAnotherRequest) {
     EXPECT_FALSE(attempt.has_manual_initialization());
     EXPECT_FALSE(attempt.waiting_for_automatic_request());
     attempt.RecordInitializationResult(false);
-    EXPECT_TRUE(attempt.waiting_for_automatic_request());
+    EXPECT_FALSE(attempt.waiting_for_automatic_request());
   }
 
-  auto waiting_attempt = control.BeginWorkerAttempt();
-  EXPECT_FALSE(waiting_attempt.automatic_relocalization_requested());
-  EXPECT_FALSE(waiting_attempt.owns_automatic_initialization());
-  EXPECT_TRUE(waiting_attempt.waiting_for_automatic_request());
+  // The worker keeps retrying through its recovery policy; no new external
+  // request edge is required.
+  auto retry_attempt = control.BeginWorkerAttempt();
+  EXPECT_FALSE(retry_attempt.automatic_relocalization_requested());
+  EXPECT_FALSE(retry_attempt.owns_automatic_initialization());
+  EXPECT_FALSE(retry_attempt.waiting_for_automatic_request());
 }
 
 TEST(ReinitializationControl,
@@ -138,7 +140,7 @@ TEST(ReinitializationControl,
   EXPECT_TRUE(automatic_attempt_active.load());
   finish_automatic_attempt.set_value();
   automatic_attempt_finished_future.wait();
-  EXPECT_TRUE(automatic_waiting_after_failure_future.get());
+  EXPECT_FALSE(automatic_waiting_after_failure_future.get());
   manual_request_acquired_future.wait();
   release_manual_request.set_value();
 
@@ -185,6 +187,88 @@ TEST(ReinitializationControl,
 
   auto next_attempt = control.BeginWorkerAttempt();
   EXPECT_FALSE(next_attempt.automatic_relocalization_requested());
+}
+
+
+TEST(ReinitializationControl,
+     ManualCancellationVisibleWhileWorkerHoldsMutex) {
+  ReinitializationControl control;
+  control.RequestAutomaticRelocalization();
+
+  std::promise<void> manual_contention_observed;
+  std::future<void> manual_contention_observed_future =
+      manual_contention_observed.get_future();
+  control.SetManualContentionObserverForTest([&] {
+    manual_contention_observed.set_value();
+  });
+
+  bool cancellation_observed = false;
+  bool can_commit = true;
+  std::promise<void> release_manual;
+  std::future<void> release_manual_future = release_manual.get_future();
+  std::thread manual_worker;
+  {
+    auto automatic_attempt = control.BeginWorkerAttempt();
+    ASSERT_TRUE(automatic_attempt.owns_automatic_initialization());
+
+    manual_worker = std::thread([&] {
+      auto manual_request = control.BeginManualInitialization();
+      release_manual_future.wait();
+    });
+
+    // Deterministic handshake: the observer fires while BeginManual is still
+    // blocked on the worker mutex. No sleep is used.
+    manual_contention_observed_future.wait();
+    cancellation_observed = automatic_attempt.manual_cancellation_observed();
+    can_commit = automatic_attempt.CanCommitAutomatic();
+  }
+  // The worker mutex is released before the manual request can proceed.
+  release_manual.set_value();
+  manual_worker.join();
+
+  EXPECT_TRUE(cancellation_observed);
+  EXPECT_FALSE(can_commit);
+
+  auto manual_attempt = control.BeginWorkerAttempt();
+  EXPECT_TRUE(manual_attempt.has_manual_initialization());
+  EXPECT_FALSE(manual_attempt.owns_automatic_initialization());
+}
+
+TEST(ReinitializationControl,
+     WaitingManualRequestSurvivesWorkerBarging) {
+  ReinitializationControl control;
+  std::promise<void> manual_contention_observed;
+  std::future<void> manual_contention_observed_future =
+      manual_contention_observed.get_future();
+  std::promise<void> release_manual_contention;
+  std::future<void> release_manual_contention_future =
+      release_manual_contention.get_future();
+  control.SetManualContentionObserverForTest([&] {
+    manual_contention_observed.set_value();
+    release_manual_contention_future.wait();
+  });
+
+  std::thread manual_worker;
+  {
+    auto first_worker = control.BeginWorkerAttempt();
+    manual_worker = std::thread([&] {
+      auto manual_request = control.BeginManualInitialization();
+    });
+    // The manual request has published its cancellation and is blocked on the
+    // worker mutex; it has not published a pose yet.
+    manual_contention_observed_future.wait();
+  }
+
+  control.RequestAutomaticRelocalization();
+  {
+    // Race the waiting manual request for the mutex. Whether this worker or
+    // the manual request wins, the manual request must remain visible.
+    auto next_worker = control.BeginWorkerAttempt();
+    EXPECT_TRUE(control.HasPendingManualInitialization());
+    EXPECT_FALSE(next_worker.CanCommitAutomatic());
+    release_manual_contention.set_value();
+  }
+  manual_worker.join();
 }
 
 }  // namespace

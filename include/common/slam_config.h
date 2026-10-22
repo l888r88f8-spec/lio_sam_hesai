@@ -267,6 +267,12 @@ struct LocalizationMapConfig {
   double sc_consistency_yaw_thres{0.1};
   double sc_ringkey_max_dist{5.0};
   double sc_accept_fitness{0.3};
+  // Automatic recovery budgets are independent of the 500 ms tracking frame
+  // budget. Deadlines are cooperative stage-boundary checks.
+  int auto_relocalization_round_timeout_ms{1000};
+  int auto_relocalization_attempt_timeout_ms{5000};
+  int auto_relocalization_retry_cooldown_ms{2000};
+  int auto_relocalization_max_source_age_ms{500};
   std::string ground_map_path;
 };
 

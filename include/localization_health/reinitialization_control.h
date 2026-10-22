@@ -44,6 +44,12 @@ class ReinitializationControl {
     [[nodiscard]] bool owns_automatic_initialization() const;
     [[nodiscard]] bool has_manual_initialization() const;
     [[nodiscard]] bool waiting_for_automatic_request() const;
+    // Manual requests become visible before the worker mutex is acquired.
+    // These checks let a worker holding the mutex observe a manual request
+    // that is currently blocked waiting for it.
+    [[nodiscard]] std::uint64_t manual_cancellation_generation_at_start() const;
+    [[nodiscard]] bool manual_cancellation_observed() const;
+    [[nodiscard]] bool CanCommitAutomatic() const;
 
     // Keeps a request-owned automatic relocalization attempt active while
     // Scan Context gathers the remaining consistency frames. This is not a
@@ -63,6 +69,7 @@ class ReinitializationControl {
     bool automatic_relocalization_requested_ = false;
     bool owns_automatic_initialization_ = false;
     bool has_manual_initialization_ = false;
+    std::uint64_t manual_cancellation_generation_at_start_ = 0U;
   };
 
   void RequestAutomaticRelocalization();
@@ -74,12 +81,28 @@ class ReinitializationControl {
   [[nodiscard]] ManualInitializationTransaction BeginManualInitialization();
   [[nodiscard]] WorkerAttempt BeginWorkerAttempt();
 
+  // Lock-free cancellation signal for a worker already inside Init().
+  [[nodiscard]] std::uint64_t ManualCancellationGeneration() const {
+    return manual_cancellation_generation_.load();
+  }
+  [[nodiscard]] bool HasPendingManualInitialization() const {
+    // True while any published manual request has not yet been represented by
+    // a consumed pending pose. A single boolean would let one worker consume
+    // the flag while another manual request is still blocked on mutex_.
+    return manual_cancellation_generation_.load() >
+           manual_initialization_consumed_generation_.load();
+  }
+
  private:
   void NotifyManualContentionForTest();
 
   std::atomic_bool automatic_relocalization_request_pending_{false};
+  // Published before BeginManualInitialization blocks on mutex_.
+  std::atomic<std::uint64_t> manual_cancellation_generation_{0U};
+  std::atomic<std::uint64_t> manual_initialization_consumed_generation_{0U};
   std::mutex mutex_;
   bool manual_initialization_pending_ = false;
+  std::uint64_t manual_initialization_pending_generation_{0U};
   bool automatic_relocalization_in_progress_ = false;
   std::atomic_bool waiting_for_automatic_relocalization_request_{false};
   std::mutex mutex_manual_contention_observer_;

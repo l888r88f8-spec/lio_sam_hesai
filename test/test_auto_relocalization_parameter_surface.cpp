@@ -506,7 +506,7 @@ TEST(TfContinuitySurface, ConfiguresAndPublishesTfOnlyFallback) {
   const std::string localization_header =
     ReadProjectFile("include/slam/localization.h");
   ExpectTextToken(localization_header,
-    "Init(std::uint64_t tf_continuity_epoch)");
+    "Init(std::uint64_t tf_continuity_epoch,");
   ExpectTextToken(localization_header, "CacheResultToSystem(");
   ExpectTextToken(localization_header,
     "const LocalizationResult& result,");
@@ -524,7 +524,7 @@ TEST(TfContinuitySurface, ConfiguresAndPublishesTfOnlyFallback) {
   const std::size_t dequeued_work_epoch = localization_run_body.find(
     "const std::uint64_t tf_continuity_epoch =");
   const std::size_t initialize = localization_run_body.find(
-    "Init(tf_continuity_epoch)");
+    "Init(tf_continuity_epoch, automatic_round)");
   const std::size_t tracking_cache = localization_run_body.find(
     "CacheResultToSystem(result, tf_continuity_epoch)");
   ASSERT_NE(cloud_work_item, std::string::npos);
@@ -958,10 +958,26 @@ TEST(FrameProcessingPipelineSurface, DropsOverdueFramesBeforeStateCommit) {
   const std::string initialization_body = ReadFunctionBody(
     "src/slam/localization.cpp",
     "Localization::InitializationResult Localization::Init(");
+  const std::size_t snapshot_preparation = initialization_body.find(
+    "PrepareActiveMapSnapshot(initial_map.snapshot)");
+  const std::size_t commit_clock = initialization_body.find(
+    "const auto initialization_commit_now_us =");
   const std::size_t initialization_deadline = initialization_body.find(
-    "DiscardTimedOutFrameIfNeeded(initialization_commit_now_us)");
+    "automatic_recovery_policy_.RoundTimeout(", commit_clock);
+  const std::size_t manual_initialization_deadline = initialization_body.find(
+    "frame_processing_watchdog_.Exceeded(initialization_commit_now_us)",
+    commit_clock);
+  ASSERT_NE(snapshot_preparation, std::string::npos);
+  ASSERT_NE(commit_clock, std::string::npos);
   ASSERT_NE(initialization_deadline, std::string::npos);
-  const std::array<std::string, 7> initialization_commit_tokens = {
+  ASSERT_NE(manual_initialization_deadline, std::string::npos);
+  EXPECT_LT(snapshot_preparation, commit_clock);
+  EXPECT_EQ(initialization_body.find("DiscardTimedOutFrameIfNeeded("),
+    std::string::npos)
+    << "Failed initialization must preserve the active matcher and integrator";
+  const std::array<std::string, 9> initialization_commit_tokens = {
+    "matcher_ = candidate_matcher",
+    "ApplyActiveMapSnapshot(",
     "curr_pose_ =",
     "last_nav_state_ =",
     "delta_pose_ =",
@@ -975,10 +991,12 @@ TEST(FrameProcessingPipelineSurface, DropsOverdueFramesBeforeStateCommit) {
     ASSERT_NE(commit, std::string::npos) << token;
     EXPECT_LT(initialization_deadline, commit)
       << token << " must remain a local candidate until the deadline passes";
+    EXPECT_LT(manual_initialization_deadline, commit)
+      << token << " must remain a local candidate until the manual deadline passes";
   }
 
   const std::size_t initialization_branch = localization_run.find(
-    "Init(tf_continuity_epoch)");
+    "Init(tf_continuity_epoch, automatic_round)");
   const std::size_t tracking_branch = localization_run.find(
     "if (curr_cloud_cluster_ptr_->imu_data_.size() < 2)");
   ASSERT_NE(initialization_branch, std::string::npos);
@@ -1133,7 +1151,7 @@ TEST(FrameProcessingPipelineSurface, DropsOverdueFramesBeforeStateCommit) {
   }
 }
 
-TEST(AutomaticRecoverySurface, UsesOneShotWorkerOwnedReinitialization) {
+TEST(AutomaticRecoverySurface, UsesBoundedWorkerOwnedRecoveryWithRetry) {
   const std::array<std::string, 2> header_tokens = {
     "void RequestAutomaticRelocalization()",
     "reinitialization_control_",
@@ -1160,8 +1178,11 @@ TEST(AutomaticRecoverySurface, UsesOneShotWorkerOwnedReinitialization) {
     "include/localization_health/reinitialization_control.h",
     "automatic_relocalization_request_pending_");
   ExpectToken(
-    "include/localization_health/reinitialization_control.h",
-    "waiting_for_automatic_relocalization_request_");
+    "include/slam/localization.h", "AutomaticRecoveryPolicy");
+  ExpectToken("src/slam/localization.cpp", "EnsureAttempt(");
+  ExpectToken("src/slam/localization.cpp", "RecordRoundFailure(");
+  ExpectToken("src/slam/localization.cpp", "RecordRoundSuccess(");
+  ExpectToken("src/slam/system.cpp", "data_stream_watchdog_->Peek(");
   ExpectToken(
     "src/localization_health/reinitialization_control.cpp", ".exchange(false)");
   ExpectToken(

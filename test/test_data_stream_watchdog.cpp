@@ -228,4 +228,27 @@ TEST(DataStreamWatchdog, KeepsRatesUnknownUntilBothStreamsReachMinimumSamples) {
   EXPECT_FALSE(watchdog.Evaluate(100000U).rates_known);
 }
 
+
+TEST(DataStreamWatchdog, PeekDoesNotConsumePendingAnomalyOrObservation) {
+  localization_health::DataStreamWatchdog watchdog(
+      localization_health::DataStreamWatchdog::Config{});
+  watchdog.RecordLidar(100'000U, 100'000U);
+  watchdog.RecordImu(10'000U, 100'000U);
+  // Rollback latches an anomaly until the diagnostics timer consumes it.
+  watchdog.RecordLidar(90'000U, 200'000U);
+
+  const auto peeked = watchdog.Peek(200'001U);
+  EXPECT_FALSE(peeked.timestamp_monotonic);
+  EXPECT_TRUE(peeked.has_new_observation);
+  // Recovery gating may peek repeatedly without stealing the timer's events.
+  EXPECT_FALSE(watchdog.Peek(200'002U).timestamp_monotonic);
+
+  const auto consumed = watchdog.Evaluate(200'003U);
+  EXPECT_FALSE(consumed.timestamp_monotonic);
+  EXPECT_TRUE(consumed.has_new_observation);
+  const auto after_consume = watchdog.Evaluate(200'004U);
+  EXPECT_TRUE(after_consume.timestamp_monotonic);
+  EXPECT_FALSE(after_consume.has_new_observation);
+}
+
 }  // namespace

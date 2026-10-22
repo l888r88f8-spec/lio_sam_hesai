@@ -170,6 +170,7 @@ add_library(${PROJECT_NAME}_relocalization_lib
   src/optimization/g2o/rotation_edge.cpp
   src/optimization/g2o/velocity_edge.cpp
   src/relocalization/scan_context.cpp
+  src/localization_health/automatic_recovery_policy.cpp
   src/localization_health/data_stream_watchdog.cpp
   src/localization_health/localization_state_machine.cpp
   src/localization_health/recovery_attempt_gate.cpp
@@ -491,6 +492,10 @@ if(BUILD_TESTING)
     src/localization_health/recovery_attempt_gate.cpp
     src/localization_health/localization_state_machine.cpp)
   target_include_directories(test_recovery_attempt_gate PRIVATE include)
+  ament_add_gtest(test_automatic_recovery_policy
+    test/test_automatic_recovery_policy.cpp
+    src/localization_health/automatic_recovery_policy.cpp)
+  target_include_directories(test_automatic_recovery_policy PRIVATE include)
   ament_add_gtest(test_reinitialization_control
     test/test_reinitialization_control.cpp
     src/localization_health/reinitialization_control.cpp)

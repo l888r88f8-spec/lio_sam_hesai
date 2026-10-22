@@ -54,6 +54,21 @@ class System : public rclcpp::Node {
 
   [[nodiscard]] std::uint64_t FrameProcessingTimeoutUs() const;
 
+  // Newest sensor-time inputs available to the localization worker. Used for
+  // same-time-domain candidate freshness, never as a wall-clock substitute.
+  [[nodiscard]] std::optional<TimeStampUs> LatestLidarInputTimestampUs() const;
+  [[nodiscard]] std::optional<TimeStampUs> LatestImuInputTimestampUs() const;
+  // Live, non-consuming stream-health snapshot. It is independent of
+  // localization_health.enable and does not steal pending watchdog anomalies
+  // from the diagnostics timer. Gates automatic retries and commits so a
+  // persistently bad stream cannot busy-loop relocalization.
+  [[nodiscard]] bool RecoveryInputsHealthy() const;
+  // Raw-input epoch, incremented on replay/time-jump reset. Cached candidate
+  // seeds from a previous epoch must be rejected.
+  [[nodiscard]] std::uint64_t LatestLidarInputEpoch() const {
+    return latest_lidar_input_epoch_.load();
+  }
+
   static constexpr std::size_t kMaxRawCloudQueueSize = 3;
   static constexpr std::size_t kMaxCloudClusterQueueSize = 2;
   static constexpr std::size_t kMaxLocalizationResultQueueSize = 5;
@@ -164,6 +179,10 @@ class System : public rclcpp::Node {
   std::unique_ptr<runtime::ThreadRuntimeController>
       localization_thread_runtime_;
   std::uint64_t runtime_frame_processing_timeout_us_{0U};
+  // Updated in the raw lidar callback before any queue/IMU-init gating. Queue
+  // emptiness is not proof that no newer input exists.
+  std::atomic<TimeStampUs> latest_lidar_input_timestamp_us_{0U};
+  std::atomic<std::uint64_t> latest_lidar_input_epoch_{0U};
   std::unique_ptr<localization_health::DataStreamWatchdog>
       data_stream_watchdog_;
   std::unique_ptr<localization_health::LocalizationRecoveryCoordinator>
@@ -191,7 +210,7 @@ class System : public rclcpp::Node {
 
   // mutex
   std::mutex mutex_raw_cloud_deque_;
-  std::mutex mutex_cloud_cluster_deque_;
+  mutable std::mutex mutex_cloud_cluster_deque_;
   std::mutex mutex_localization_results_deque_;
   std::mutex mutex_health_result_;
   std::mutex mutex_lidar_t_base_;

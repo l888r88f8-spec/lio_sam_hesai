@@ -851,6 +851,18 @@ void LoadLocalizationConfig(rclcpp::Node& node, SlamConfig& config,
   map.sc_accept_fitness = ReadParam<double>(
       node, "localization.sc_accept_fitness", std::nullopt,
       map.sc_accept_fitness, warnings);
+  map.auto_relocalization_round_timeout_ms = ReadParam<int>(
+      node, "localization.auto_relocalization_round_timeout_ms", std::nullopt,
+      map.auto_relocalization_round_timeout_ms, warnings);
+  map.auto_relocalization_attempt_timeout_ms = ReadParam<int>(
+      node, "localization.auto_relocalization_attempt_timeout_ms",
+      std::nullopt, map.auto_relocalization_attempt_timeout_ms, warnings);
+  map.auto_relocalization_retry_cooldown_ms = ReadParam<int>(
+      node, "localization.auto_relocalization_retry_cooldown_ms", std::nullopt,
+      map.auto_relocalization_retry_cooldown_ms, warnings);
+  map.auto_relocalization_max_source_age_ms = ReadParam<int>(
+      node, "localization.auto_relocalization_max_source_age_ms", std::nullopt,
+      map.auto_relocalization_max_source_age_ms, warnings);
   map.ground_map_path = ReadParam<std::string>(
       node, "localization.ground_map_path", std::nullopt, map.ground_map_path,
       warnings);
@@ -1176,6 +1188,19 @@ void LoadLocalizationConfig(rclcpp::Node& node, SlamConfig& config,
   RequirePositive(lidar.point_jump_span, "lidar.point_jump_span");
   RequirePositive(runtime.frame_processing_timeout_ms,
                   "runtime.frame_processing_timeout_ms");
+  RequirePositive(map.auto_relocalization_round_timeout_ms,
+                  "localization.auto_relocalization_round_timeout_ms");
+  RequirePositive(map.auto_relocalization_attempt_timeout_ms,
+                  "localization.auto_relocalization_attempt_timeout_ms");
+  RequirePositive(map.auto_relocalization_retry_cooldown_ms,
+                  "localization.auto_relocalization_retry_cooldown_ms");
+  RequirePositive(map.auto_relocalization_max_source_age_ms,
+                  "localization.auto_relocalization_max_source_age_ms");
+  if (map.auto_relocalization_attempt_timeout_ms <
+      map.auto_relocalization_round_timeout_ms) {
+    Reject("localization.auto_relocalization_attempt_timeout_ms",
+           "must be >= localization.auto_relocalization_round_timeout_ms");
+  }
 
   RequirePositive(tf.publish_rate_hz, "localization_tf.publish_rate_hz");
   RequirePositive(tf.max_extrapolation_seconds,

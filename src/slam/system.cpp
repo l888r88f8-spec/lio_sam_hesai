@@ -283,6 +283,49 @@ std::uint64_t System::FrameProcessingTimeoutUs() const {
   return runtime_frame_processing_timeout_us_;
 }
 
+std::optional<TimeStampUs> System::LatestLidarInputTimestampUs() const {
+  const TimeStampUs raw = latest_lidar_input_timestamp_us_.load();
+  if (raw != 0U) {
+    return raw;
+  }
+  std::lock_guard<std::mutex> lock(mutex_cloud_cluster_deque_);
+  if (cloud_cluster_deque_.empty() || !cloud_cluster_deque_.back().cloud_cluster_ptr) {
+    return std::nullopt;
+  }
+  return cloud_cluster_deque_.back().cloud_cluster_ptr->timestamp_;
+}
+
+bool System::RecoveryInputsHealthy() const {
+  if (!data_stream_watchdog_) {
+    // During construction the watchdog is not available yet; do not report
+    // healthy merely because the timer has not run.
+    return false;
+  }
+  const auto stream = data_stream_watchdog_->Peek(SteadyNowMicroseconds());
+  const auto& health = config_->localization.health;
+  const bool rates_ok =
+      !stream.rates_known ||
+      (std::isfinite(stream.lidar_rate_hz) &&
+       std::isfinite(stream.imu_rate_hz) &&
+       stream.lidar_rate_hz >= health.nominal_lidar_rate_hz *
+                                  health.min_rate_ratio &&
+       stream.imu_rate_hz >= health.nominal_imu_rate_hz *
+                                 health.min_rate_ratio);
+  return !stream.lidar_stalled && !stream.imu_stalled &&
+         stream.timestamp_monotonic && !stream.timestamp_jump && rates_ok;
+}
+
+std::optional<TimeStampUs> System::LatestImuInputTimestampUs() const {
+  if (!imu_data_searcher_ptr_) {
+    return std::nullopt;
+  }
+  const auto latest = imu_data_searcher_ptr_->LatestData();
+  if (!latest.has_value()) {
+    return std::nullopt;
+  }
+  return latest->timestamp_;
+}
+
 void System::InitLidarModel() {
   const LocalizationLidarConfig& lidar = config_->localization.lidar;
   if (lidar.sensor_type == "None" || lidar.sensor_type == "Hesai") {
@@ -358,7 +401,10 @@ void System::InitSubscriber() {
 
 void System::LidarMsgCallBack(
     const sensor_msgs::msg::PointCloud2::ConstSharedPtr& cloud_ros_ptr) {
-  data_stream_watchdog_->RecordLidar(RosTimeToUs(cloud_ros_ptr->header),
+  const TimeStampUs lidar_stamp_us = RosTimeToUs(cloud_ros_ptr->header);
+  latest_lidar_input_timestamp_us_.store(lidar_stamp_us);
+  latest_lidar_input_epoch_.store(tf_continuity_input_epoch_.load());
+  data_stream_watchdog_->RecordLidar(lidar_stamp_us,
                                      SteadyNowMicroseconds());
 
   if (!has_imu_init_.load()) {
@@ -580,6 +626,7 @@ void System::ResetTfContinuityOnTimeJump(TimeStampUs now_us) {
       now_us < last_ros_time_us_.value()) {
     tf_continuity_expected_epoch_ =
         tf_continuity_input_epoch_.fetch_add(1U) + 1U;
+    latest_lidar_input_epoch_.store(tf_continuity_input_epoch_.load());
     if (tf_continuity_controller_) {
       tf_continuity_controller_->Reset();
       last_tf_extrapolation_duration_us_ = 0U;
@@ -882,6 +929,12 @@ void System::PublishLocalizationHealth() {
     return;
   }
   if (!config_->localization.health.enable) {
+    // Keep the watchdog observation window moving even without health reports.
+    // Recovery uses non-consuming Peek(); otherwise an old timestamp anomaly
+    // would stay latched forever when this timer stops consuming observations.
+    if (data_stream_watchdog_) {
+      (void)data_stream_watchdog_->Evaluate(SteadyNowMicroseconds());
+    }
     PublishRuntimeDiagnostics();
     return;
   }

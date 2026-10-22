@@ -42,9 +42,7 @@ bool DataStreamWatchdog::IsImuStalled(std::uint64_t now_us) const {
   return IsStalled(imu_, now_us, config_.imu_stall_timeout_us);
 }
 
-StreamHealth DataStreamWatchdog::Evaluate(std::uint64_t now_us) const {
-  std::lock_guard<std::mutex> lock(mutex_);
-
+StreamHealth DataStreamWatchdog::BuildHealth(std::uint64_t now_us) const {
   StreamHealth health;
   health.lidar_rate_hz = RateHz(lidar_);
   health.imu_rate_hz = RateHz(imu_);
@@ -57,6 +55,17 @@ StreamHealth DataStreamWatchdog::Evaluate(std::uint64_t now_us) const {
   health.rates_known = lidar_.stamps.size() >= config_.min_samples &&
                        imu_.stamps.size() >= config_.min_samples;
   health.has_new_observation = pending_observation_;
+  return health;
+}
+
+StreamHealth DataStreamWatchdog::Peek(std::uint64_t now_us) const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return BuildHealth(now_us);
+}
+
+StreamHealth DataStreamWatchdog::Evaluate(std::uint64_t now_us) const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  StreamHealth health = BuildHealth(now_us);
   pending_observation_ = false;
   lidar_.pending_rollback = false;
   imu_.pending_rollback = false;

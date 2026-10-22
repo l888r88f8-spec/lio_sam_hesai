@@ -95,7 +95,7 @@ TEST(RelocalizationEfficiencySurface,
   const std::size_t isolated_catch =
       localization.find("} catch (const std::exception& error)", fitness_stop);
   const std::size_t candidate_summary = localization.find(
-      "LOG(INFO) << \"Auto relocalization prepared \"", isolated_catch);
+      "LOG(INFO) << \"LOC_AUTO_ROUND summary prepared=\"", isolated_catch);
 
   ASSERT_NE(isolated_preparation, std::string::npos);
   ASSERT_NE(lazy_local_map, std::string::npos);

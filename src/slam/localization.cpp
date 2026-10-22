@@ -11,6 +11,7 @@
 #include <limits>
 #include <sstream>
 #include <string>
+#include <utility>
 
 #include <g2o/core/sparse_optimizer.h>
 
@@ -122,15 +123,32 @@ std::optional<localization_map::MapMode> ResolveMapMode(
   return fail("map path is neither a regular file nor a directory");
 }
 
+localization_health::AutomaticRecoveryConfig MakeAutomaticRecoveryConfig(
+    const LocalizationMapConfig& map_config) {
+  localization_health::AutomaticRecoveryConfig config;
+  config.round_timeout_ms = map_config.auto_relocalization_round_timeout_ms;
+  config.attempt_timeout_ms = map_config.auto_relocalization_attempt_timeout_ms;
+  config.cooldown_ms = map_config.auto_relocalization_retry_cooldown_ms;
+  config.max_source_age_ms = map_config.auto_relocalization_max_source_age_ms;
+  return config;
+}
+
 }  // namespace
 
 Localization::Localization(System* system_ptr,
                            std::shared_ptr<const SlamConfig> config)
     : system_ptr_(system_ptr),
       config_(std::move(config)),
-      frame_processing_watchdog_(system_ptr->FrameProcessingTimeoutUs()) {
+      frame_processing_watchdog_(system_ptr->FrameProcessingTimeoutUs()),
+      automatic_recovery_policy_(
+          MakeAutomaticRecoveryConfig(config_->localization.localization)) {
   SetLidarPoseInformation();
   InitMatcher();
+}
+
+bool Localization::HasPendingManualInitPose() const {
+  std::lock_guard<std::mutex> lock(mutex_init_pose_optional_);
+  return init_pose_optional_.has_value();
 }
 
 void Localization::SetInitPose(const MapTLidar& map_T_lidar) {
@@ -391,7 +409,7 @@ void Localization::UpdateTfPredictionAnchor(
 }
 
 Localization::InitializationResult Localization::Init(
-    std::uint64_t tf_continuity_epoch) {
+    std::uint64_t tf_continuity_epoch, bool automatic_round) {
   const std::uint64_t init_start_us = SteadyNowMicroseconds();
   const Vec3d bg_before = last_nav_state_.bg_;
   const Vec3d ba_before = last_nav_state_.ba_;
@@ -408,8 +426,9 @@ Localization::InitializationResult Localization::Init(
       init_pose = init_pose_optional_.value();
       init_pose_optional_.reset();
       has_manual_init_pose = true;
+      automatic_seed_.reset();
       consistency_ref_pose_.reset();
-      consistency_hit_count_ = 0;
+      seed_lifecycle_.Reset();
     }
   }
   if (has_manual_init_pose) {
@@ -429,9 +448,124 @@ Localization::InitializationResult Localization::Init(
       return InitializationResult::kFailed;
     }
 
+    const auto automatic_round_timeout = [&] {
+      return automatic_round
+                 ? automatic_recovery_policy_.RoundTimeout(
+                       SteadyNowMicroseconds())
+                 : localization_health::RoundTimeoutReason::kNone;
+    };
+    const auto reject_for_timeout = [&](const char* stage) {
+      const auto reason = automatic_round_timeout();
+      if (reason == localization_health::RoundTimeoutReason::kNone) {
+        return false;
+      }
+      if (reason ==
+          localization_health::RoundTimeoutReason::kAttemptDeadline) {
+        automatic_recovery_policy_.ExpireAttemptIfDue(
+            SteadyNowMicroseconds());
+      }
+      automatic_seed_.reset();
+      LOG(WARNING) << "LOC_INIT rejected stage=" << stage
+                   << " source=automatic frame_ts_us=" << curr_time_us_
+                   << " primary_reason="
+                   << (reason ==
+                               localization_health::RoundTimeoutReason::
+                                   kAttemptDeadline
+                           ? "attempt_timeout"
+                           : "round_timeout")
+                   << " timeout_reason="
+                   << localization_health::ToString(reason)
+                   << " round_elapsed_ms="
+                   << automatic_recovery_policy_.RoundElapsedMs(
+                          SteadyNowMicroseconds())
+                   << " round_budget_ms="
+                   << automatic_recovery_policy_.config().round_timeout_ms
+                   << " attempt_elapsed_ms="
+                   << automatic_recovery_policy_.AttemptElapsedMs(
+                          SteadyNowMicroseconds())
+                   << " attempt_budget_ms="
+                   << automatic_recovery_policy_.config().attempt_timeout_ms
+                   << " action=stop_automatic_round";
+      return true;
+    };
+    const auto manual_cancelled = [&] {
+      return reinitialization_control_.ManualCancellationGeneration() !=
+                 automatic_attempt_manual_generation_ ||
+             reinitialization_control_.HasPendingManualInitialization() ||
+             HasPendingManualInitPose();
+    };
+    if (reject_for_timeout("round_deadline")) {
+      return InitializationResult::kFailed;
+    }
+    if (manual_cancelled()) {
+      automatic_seed_.reset();
+      consistency_ref_pose_.reset();
+      seed_lifecycle_.Reset();
+      LOG(INFO) << "LOC_INIT rejected stage=scan_context source=automatic"
+                << " frame_ts_us=" << curr_time_us_
+                << " primary_reason=manual_priority"
+                << " action=cancel_automatic_candidate";
+      return InitializationResult::kFailed;
+    }
+
     float auto_fitness = std::numeric_limits<float>::infinity();
-    const auto auto_pose = TryAutoRelocalize(&auto_fitness);
+    std::optional<Mat4d> auto_pose;
+    bool seed_reused = false;
+    localization_health::SeedQualification candidate_qualification =
+        localization_health::SeedQualification::kNone;
+    bool candidate_early_accepted = false;
+    int candidate_consistency_hit = 0;
+    int candidate_consistency_required = 0;
+    if (automatic_seed_.has_value()) {
+      const auto seed_decision =
+          localization_health::AutomaticRecoveryPolicy::
+              EvaluateSeedUsability(
+                  automatic_seed_->source_timestamp_us,
+                  automatic_seed_->epoch, curr_time_us_,
+                  tf_continuity_epoch,
+                  system_ptr_->LatestLidarInputTimestampUs());
+      if (seed_decision ==
+          localization_health::SeedDecision::kUseSeed) {
+        auto_pose = automatic_seed_->pose;
+        auto_fitness = automatic_seed_->fitness;
+        seed_reused = true;
+        candidate_qualification = automatic_seed_->qualification;
+        candidate_early_accepted = automatic_seed_->early_accepted;
+        candidate_consistency_hit = automatic_seed_->consistency_hit;
+        candidate_consistency_required =
+            automatic_seed_->consistency_required;
+        result_consistency_hit = candidate_consistency_hit;
+        result_consistency_required = candidate_consistency_required;
+        // The seed already passed early acceptance or the full independent
+        // consistency count. Go straight to this frame's final registration;
+        // do not count another consistency observation.
+        init_pose = auto_pose.value();
+        LOG(INFO) << "LOC_INIT candidate_revalidated source=automatic"
+                  << " mode=cached_seed frame_ts_us=" << curr_time_us_
+                  << " seed_ts_us=" << automatic_seed_->source_timestamp_us
+                  << " seed_epoch=" << automatic_seed_->epoch
+                  << " seed_qualification="
+                  << localization_health::ToString(candidate_qualification)
+                  << " consistency=" << candidate_consistency_hit << "/"
+                  << candidate_consistency_required
+                  << " action=final_registration_without_scan_context";
+      } else {
+        automatic_seed_.reset();
+        consistency_ref_pose_.reset();
+        seed_lifecycle_.Reset();
+        if (seed_decision ==
+            localization_health::SeedDecision::kReplayEpochChanged) {
+          LOG(INFO) << "LOC_INIT seed_discarded primary_reason="
+                    << localization_health::ToString(seed_decision)
+                    << " action=rerun_scan_context";
+        }
+      }
+    }
     if (!auto_pose.has_value()) {
+      auto_pose = TryAutoRelocalize(&auto_fitness);
+    }
+    if (!auto_pose.has_value()) {
+      const auto timeout_reason = automatic_round_timeout();
       if (init_failure_throttle_.ShouldLog(SteadyNowMicroseconds())) {
         LOG(WARNING) << "LOC_INIT rejected stage=scan_context"
                      << " source=automatic frame_ts_us=" << curr_time_us_
@@ -439,10 +573,28 @@ Localization::InitializationResult Localization::Init(
                      << " elapsed_ms="
                      << MillisecondsSince(init_start_us,
                                           SteadyNowMicroseconds())
-                     << " reason=no_candidate";
+                     << " primary_reason="
+                     << (timeout_reason ==
+                                 localization_health::RoundTimeoutReason::
+                                     kAttemptDeadline
+                             ? "attempt_timeout"
+                             : timeout_reason ==
+                                       localization_health::RoundTimeoutReason::
+                                           kRoundDeadline
+                                   ? "round_timeout"
+                                   : "no_candidate")
+                     << " timeout_reason="
+                     << localization_health::ToString(timeout_reason)
+                     << " round_budget_ms="
+                     << automatic_recovery_policy_.config().round_timeout_ms
+                     << " attempt_budget_ms="
+                     << automatic_recovery_policy_.config().attempt_timeout_ms;
+      }
+      if (timeout_reason != localization_health::RoundTimeoutReason::kNone) {
+        automatic_seed_.reset();
       }
       consistency_ref_pose_.reset();
-      consistency_hit_count_ = 0;
+      seed_lifecycle_.Reset();
       return InitializationResult::kFailed;
     }
 
@@ -452,8 +604,16 @@ Localization::InitializationResult Localization::Init(
         init_pose = init_pose_optional_.value();
         init_pose_optional_.reset();
         has_manual_init_pose = true;
+        automatic_seed_.reset();
         consistency_ref_pose_.reset();
-        consistency_hit_count_ = 0;
+        seed_lifecycle_.Reset();
+        candidate_qualification =
+            localization_health::SeedQualification::kNone;
+        candidate_early_accepted = false;
+        candidate_consistency_hit = 0;
+        candidate_consistency_required = 0;
+        result_consistency_hit = 0;
+        result_consistency_required = 0;
       }
     }
     if (has_manual_init_pose && !manual_init_logged) {
@@ -465,23 +625,7 @@ Localization::InitializationResult Localization::Init(
       manual_init_logged = true;
     }
 
-    if (!has_manual_init_pose &&
-        ShouldEarlyAcceptRelocalization(
-            auto_fitness,
-            config_->localization.localization.sc_accept_fitness)) {
-      LOG(INFO) << "LOC_INIT candidate_selected source=automatic mode=early"
-                << " frame_ts_us=" << curr_time_us_
-                << " fitness_sq_dist=" << auto_fitness
-                << " accept_threshold="
-                << config_->localization.localization.sc_accept_fitness
-                << " elapsed_ms="
-                << MillisecondsSince(init_start_us, SteadyNowMicroseconds())
-                << " not_initialized=true"
-                << " (Auto relocalization candidate selected early)";
-      init_pose = auto_pose.value();
-      consistency_ref_pose_.reset();
-      consistency_hit_count_ = 0;
-    } else if (!has_manual_init_pose) {
+    if (!has_manual_init_pose && !seed_reused) {
       const int required_frames = std::max(
           1, config_->localization.localization.sc_consistency_frames);
       const double translation_threshold = std::max(
@@ -490,62 +634,115 @@ Localization::InitializationResult Localization::Init(
       const double yaw_threshold = std::max(
           0.0,
           config_->localization.localization.sc_consistency_yaw_thres);
-      if (consistency_ref_pose_.has_value()) {
-        const Mat4d delta = consistency_ref_pose_.value().inverse() *
-                            auto_pose.value();
-        const double translation_delta = delta.block<3, 1>(0, 3).norm();
-        const double yaw_delta =
-            std::fabs(std::atan2(delta(1, 0), delta(0, 0)));
-        if (translation_delta <= translation_threshold &&
-            yaw_delta <= yaw_threshold) {
-          ++consistency_hit_count_;
-        } else {
-          consistency_ref_pose_ = auto_pose;
-          consistency_hit_count_ = 1;
-        }
+      if (ShouldEarlyAcceptRelocalization(
+              auto_fitness,
+              config_->localization.localization.sc_accept_fitness)) {
+        candidate_qualification = seed_lifecycle_.ObserveFreshCandidate(
+            true, false, 0.0, 0.0, required_frames,
+            translation_threshold, yaw_threshold);
+        candidate_early_accepted = true;
+        candidate_consistency_hit = seed_lifecycle_.hit_count();
+        candidate_consistency_required = 0;
+        LOG(INFO) << "LOC_INIT candidate_selected source=automatic mode=early"
+                  << " frame_ts_us=" << curr_time_us_
+                  << " fitness_sq_dist=" << auto_fitness
+                  << " accept_threshold="
+                  << config_->localization.localization.sc_accept_fitness
+                  << " elapsed_ms="
+                  << MillisecondsSince(init_start_us, SteadyNowMicroseconds())
+                  << " seed_qualification="
+                  << localization_health::ToString(candidate_qualification)
+                  << " not_initialized=true"
+                  << " (Auto relocalization candidate selected early)";
+        init_pose = auto_pose.value();
+        consistency_ref_pose_.reset();
+        result_consistency_hit = candidate_consistency_hit;
+        result_consistency_required = candidate_consistency_required;
       } else {
-        consistency_ref_pose_ = auto_pose;
-        consistency_hit_count_ = 1;
-      }
-
-      if (consistency_hit_count_ < required_frames) {
-        if (init_pending_throttle_.ShouldLog(SteadyNowMicroseconds())) {
-          LOG(INFO) << "LOC_INIT consistency_pending source=automatic"
-                    << " frame_ts_us=" << curr_time_us_
-                    << " fitness_sq_dist=" << auto_fitness
-                    << " hit=" << consistency_hit_count_
-                    << " required=" << required_frames
-                    << " elapsed_ms="
-                    << MillisecondsSince(init_start_us,
-                                         SteadyNowMicroseconds())
-                    << " action=wait_for_more_frames"
-                    << " Auto relocalization consistency "
-                    << consistency_hit_count_ << "/" << required_frames;
+        bool has_reference = consistency_ref_pose_.has_value();
+        double translation_delta = 0.0;
+        double yaw_delta = 0.0;
+        bool consistent_with_reference = false;
+        if (has_reference) {
+          const Mat4d delta = consistency_ref_pose_.value().inverse() *
+                              auto_pose.value();
+          translation_delta = delta.block<3, 1>(0, 3).norm();
+          yaw_delta = std::fabs(std::atan2(delta(1, 0), delta(0, 0)));
+          consistent_with_reference =
+              translation_delta <= translation_threshold &&
+              yaw_delta <= yaw_threshold;
         }
-        return InitializationResult::kAutomaticConsistencyPending;
-      }
+        candidate_qualification = seed_lifecycle_.ObserveFreshCandidate(
+            false, has_reference, translation_delta, yaw_delta,
+            required_frames, translation_threshold, yaw_threshold);
+        candidate_consistency_hit = seed_lifecycle_.hit_count();
+        candidate_consistency_required = required_frames;
+        if (!consistent_with_reference) {
+          // The first observation, or a mismatching one, becomes the new
+          // reference; a matching observation keeps the original reference.
+          consistency_ref_pose_ = auto_pose;
+        }
 
-      LOG(INFO) << "LOC_INIT candidate_selected source=automatic"
-                << " mode=consistency frame_ts_us=" << curr_time_us_
-                << " fitness_sq_dist=" << auto_fitness
-                << " hit=" << consistency_hit_count_
-                << " required=" << required_frames
-                << " elapsed_ms="
-                << MillisecondsSince(init_start_us, SteadyNowMicroseconds())
-                << " not_initialized=true";
-      init_pose = auto_pose.value();
-      result_consistency_hit = consistency_hit_count_;
-      result_consistency_required = required_frames;
-      consistency_ref_pose_.reset();
-      consistency_hit_count_ = 0;
+        if (candidate_qualification !=
+            localization_health::SeedQualification::kConsistencyPassed) {
+          // Never cache a pending candidate. The next frame must run Scan
+          // Context again instead of advancing this count from a cached pose.
+          automatic_seed_.reset();
+          if (init_pending_throttle_.ShouldLog(SteadyNowMicroseconds())) {
+            LOG(INFO) << "LOC_INIT consistency_pending source=automatic"
+                      << " frame_ts_us=" << curr_time_us_
+                      << " fitness_sq_dist=" << auto_fitness
+                      << " hit=" << candidate_consistency_hit
+                      << " required=" << required_frames
+                      << " elapsed_ms="
+                      << MillisecondsSince(init_start_us,
+                                           SteadyNowMicroseconds())
+                      << " action=wait_for_more_frames"
+                      << " Auto relocalization consistency "
+                      << candidate_consistency_hit << "/" << required_frames;
+          }
+          return InitializationResult::kAutomaticConsistencyPending;
+        }
+
+        LOG(INFO) << "LOC_INIT candidate_selected source=automatic"
+                  << " mode=consistency frame_ts_us=" << curr_time_us_
+                  << " fitness_sq_dist=" << auto_fitness
+                  << " hit=" << candidate_consistency_hit
+                  << " required=" << required_frames
+                  << " elapsed_ms="
+                  << MillisecondsSince(init_start_us, SteadyNowMicroseconds())
+                  << " not_initialized=true";
+        init_pose = auto_pose.value();
+        result_consistency_hit = candidate_consistency_hit;
+        result_consistency_required = required_frames;
+        consistency_ref_pose_.reset();
+        // Qualification metadata is copied into the seed below; the lifecycle
+        // itself starts clean for the next independent candidate.
+        seed_lifecycle_.Reset();
+      }
+    }
+
+    if (!has_manual_init_pose && !seed_reused &&
+        localization_health::AutomaticSeedLifecycle::CanReuse(
+            candidate_qualification)) {
+      automatic_seed_.emplace();
+      automatic_seed_->pose = auto_pose.value();
+      automatic_seed_->source_timestamp_us = curr_time_us_;
+      automatic_seed_->epoch = tf_continuity_epoch;
+      automatic_seed_->fitness = auto_fitness;
+      automatic_seed_->qualification = candidate_qualification;
+      automatic_seed_->early_accepted = candidate_early_accepted;
+      automatic_seed_->consistency_hit = candidate_consistency_hit;
+      automatic_seed_->consistency_required =
+          candidate_consistency_required;
     }
   }
 
   const char* init_source = has_manual_init_pose ? "manual" : "automatic";
 
-  // Auto candidates each use a temporary matcher; start final initialization
-  // with a fresh local-map matcher for both automatic and manual poses.
-  InitMatcher();
+  // Candidate isolation: neither automatic nor manual initialization may
+  // overwrite the active tracking matcher before a successful commit.
+  auto candidate_matcher = CreateMatcher();
   const auto initial_map = map_provider_->LoadCandidate(
       MapImuPoseToMapLidarPose(init_pose),
       std::chrono::milliseconds(
@@ -571,13 +768,19 @@ Localization::InitializationResult Localization::Init(
                    << " Initial local map is empty, please check localization "
                       "map path and initialization pose.";
     }
+    if (automatic_round) {
+      automatic_seed_.reset();
+      consistency_ref_pose_.reset();
+      seed_lifecycle_.Reset();
+    }
     return InitializationResult::kFailed;
   }
 
-  matcher_->AddCloudToLocalMap({*local_map});
-  const bool success = matcher_->Match(curr_cloud_cluster_ptr_, init_pose);
+  candidate_matcher->AddCloudToLocalMap({*local_map});
+  const bool success =
+      candidate_matcher->Match(curr_cloud_cluster_ptr_, init_pose);
 
-  const float fitness_score = matcher_->GetFitnessScore(2.0);
+  const float fitness_score = candidate_matcher->GetFitnessScore(2.0);
 
   if (!success || fitness_score >= 1.0) {
     if (init_failure_throttle_.ShouldLog(SteadyNowMicroseconds())) {
@@ -590,6 +793,13 @@ Localization::InitializationResult Localization::Init(
                    << " reason=registration_failed"
                    << " Initial registration failed. Please try to continue "
                       "initialization and give a better initial pose.";
+    }
+    // A failed final registration must not leave a bad seed for the next
+    // frame: the next round runs Scan Context again.
+    if (automatic_round) {
+      automatic_seed_.reset();
+      consistency_ref_pose_.reset();
+      seed_lifecycle_.Reset();
     }
     return InitializationResult::kFailed;
   }
@@ -638,14 +848,147 @@ Localization::InitializationResult Localization::Init(
   }
   const auto initialized_lidar_cloud = TransformPointCloud(
       VoxelGridCloud(curr_cloud_cluster_ptr_->ordered_cloud_, 0.5), init_pose);
+  // Prepare the potentially expensive ground-cloud flattening/KDTree in a
+  // local object. The active snapshot is only published after the final
+  // budget/manual/epoch/input/freshness gates below pass.
+  auto prepared_active_map =
+      PrepareActiveMapSnapshot(initial_map.snapshot);
   const auto initialization_commit_now_us =
       runtime::FrameProcessingWatchdog::SteadyNowMicroseconds();
-  current_timeout_stage_ = "init_commit";
-  if (DiscardTimedOutFrameIfNeeded(initialization_commit_now_us)) {
-    return InitializationResult::kFailed;
+  if (automatic_round) {
+    // The tracking watchdog was closed before automatic work started. Here the
+    // overall attempt deadline, round budget, manual priority, live stream
+    // health and same-sensor-time freshness gate the commit; no active tracking
+    // state is written before all pass.
+    const auto timeout_reason = automatic_recovery_policy_.RoundTimeout(
+        initialization_commit_now_us);
+    if (timeout_reason !=
+        localization_health::RoundTimeoutReason::kNone) {
+      if (timeout_reason ==
+          localization_health::RoundTimeoutReason::kAttemptDeadline) {
+        automatic_recovery_policy_.ExpireAttemptIfDue(
+            initialization_commit_now_us);
+      }
+      automatic_seed_.reset();
+      LOG(WARNING) << "LOC_INIT rejected stage=init_commit"
+                   << " source=automatic frame_ts_us=" << curr_time_us_
+                   << " primary_reason="
+                   << (timeout_reason ==
+                               localization_health::RoundTimeoutReason::
+                                   kAttemptDeadline
+                           ? "attempt_timeout"
+                           : "round_timeout")
+                   << " timeout_reason="
+                   << localization_health::ToString(timeout_reason)
+                   << " round_elapsed_ms="
+                   << automatic_recovery_policy_.RoundElapsedMs(
+                          initialization_commit_now_us)
+                   << " round_budget_ms="
+                   << automatic_recovery_policy_.config().round_timeout_ms
+                   << " attempt_elapsed_ms="
+                   << automatic_recovery_policy_.AttemptElapsedMs(
+                          initialization_commit_now_us)
+                   << " attempt_budget_ms="
+                   << automatic_recovery_policy_.config().attempt_timeout_ms
+                   << " action=stop_automatic_round";
+      consistency_ref_pose_.reset();
+      seed_lifecycle_.Reset();
+      return InitializationResult::kFailed;
+    }
+    if (reinitialization_control_.ManualCancellationGeneration() !=
+            automatic_attempt_manual_generation_ ||
+        reinitialization_control_.HasPendingManualInitialization() ||
+        HasPendingManualInitPose()) {
+      automatic_seed_.reset();
+      LOG(INFO) << "LOC_INIT rejected stage=init_commit source=automatic"
+                << " frame_ts_us=" << curr_time_us_
+                << " primary_reason=manual_priority"
+                << " action=cancel_automatic_candidate";
+      consistency_ref_pose_.reset();
+      seed_lifecycle_.Reset();
+      return InitializationResult::kFailed;
+    }
+    // The queued frame's epoch must still be the newest raw input epoch. A TF
+    // continuity reset during the search invalidates this candidate even when
+    // the seed itself came from the same (now old) epoch.
+    if (tf_continuity_epoch != system_ptr_->LatestLidarInputEpoch()) {
+      automatic_seed_.reset();
+      LOG(WARNING) << "LOC_INIT rejected stage=init_commit"
+                   << " source=automatic frame_ts_us=" << curr_time_us_
+                   << " item_epoch=" << tf_continuity_epoch
+                   << " latest_input_epoch="
+                   << system_ptr_->LatestLidarInputEpoch()
+                   << " primary_reason=input_epoch_changed"
+                   << " action=discard_stale_epoch_candidate";
+      consistency_ref_pose_.reset();
+      seed_lifecycle_.Reset();
+      return InitializationResult::kFailed;
+    }
+    if (!system_ptr_->RecoveryInputsHealthy()) {
+      automatic_seed_.reset();
+      LOG(WARNING) << "LOC_INIT rejected stage=init_commit"
+                   << " source=automatic frame_ts_us=" << curr_time_us_
+                   << " primary_reason=stream_unhealthy"
+                   << " action=discard_candidate_retry_when_healthy";
+      consistency_ref_pose_.reset();
+      seed_lifecycle_.Reset();
+      return InitializationResult::kFailed;
+    }
+    const auto latest_lidar = system_ptr_->LatestLidarInputTimestampUs();
+    const auto latest_imu = system_ptr_->LatestImuInputTimestampUs();
+    const auto freshness =
+        localization_health::AutomaticRecoveryPolicy::EvaluateSourceFreshness(
+            curr_time_us_, latest_lidar, latest_imu,
+            static_cast<std::uint64_t>(
+                automatic_recovery_policy_.config().max_source_age_ms) *
+                1000U);
+    if (freshness != localization_health::SourceFreshness::kFresh) {
+      // Keep the already-qualified seed for the next, newer frame. Never cache
+      // an unqualified candidate here, and never commit this frame's pose as if
+      // it were the current input.
+      if (automatic_seed_.has_value()) {
+        automatic_seed_->pose = init_pose;
+        automatic_seed_->source_timestamp_us = curr_time_us_;
+        automatic_seed_->epoch = tf_continuity_epoch;
+      }
+      LOG(WARNING) << "LOC_INIT rejected stage=init_commit"
+                   << " source=automatic frame_ts_us=" << curr_time_us_
+                   << " latest_lidar_ts_us="
+                   << (latest_lidar.has_value()
+                           ? std::to_string(latest_lidar.value())
+                           : std::string("none"))
+                   << " latest_imu_ts_us="
+                   << (latest_imu.has_value()
+                           ? std::to_string(latest_imu.value())
+                           : std::string("none"))
+                   << " max_source_age_ms="
+                   << automatic_recovery_policy_.config().max_source_age_ms
+                   << " primary_reason="
+                   << localization_health::ToString(freshness)
+                   << " action=keep_seed_revalidate_newer_frame";
+      consistency_ref_pose_.reset();
+      seed_lifecycle_.Reset();
+      return InitializationResult::kFailed;
+    }
+  } else {
+    current_timeout_stage_ = "init_commit";
+    // Initialization must never mutate the active matcher/pre-integration on
+    // failure. Normal tracking timeouts still use DiscardTimedOutFrameIfNeeded.
+    if (frame_processing_watchdog_.Exceeded(initialization_commit_now_us)) {
+      frame_processing_watchdog_.Complete(initialization_commit_now_us, true);
+      LOG(WARNING) << "LOC_INIT rejected stage=init_commit source=manual"
+                   << " primary_reason=frame_timeout"
+                   << " action=drop_candidate_keep_active_state";
+      return InitializationResult::kFailed;
+    }
+    frame_processing_watchdog_.Complete(initialization_commit_now_us, false);
   }
-  frame_processing_watchdog_.Complete(initialization_commit_now_us, false);
-  UpdateActiveMapSnapshot(initial_map.snapshot);
+  // Every gate passed: replace the active matcher in one commit.
+  automatic_seed_.reset();
+  consistency_ref_pose_.reset();
+  seed_lifecycle_.Reset();
+  matcher_ = candidate_matcher;
+  ApplyActiveMapSnapshot(std::move(prepared_active_map));
   UpdateTfPredictionAnchor(initialized_nav_state, tf_continuity_epoch);
   curr_pose_ = init_pose;
   last_nav_state_ = initialized_nav_state;
@@ -824,27 +1167,220 @@ void Localization::Run() {
     {
       auto reinitialization_attempt =
           reinitialization_control_.BeginWorkerAttempt();
+      const std::uint64_t request_now_us = SteadyNowMicroseconds();
       if (reinitialization_attempt.automatic_relocalization_requested()) {
-        has_init_.store(false);
-        consistency_ref_pose_.reset();
-        consistency_hit_count_ = 0;
-        InitPreintegration();
+        if (reinitialization_attempt.has_manual_initialization() ||
+            HasPendingManualInitPose()) {
+          // Manual initialization always wins; the stale automatic request is
+          // never allowed to commit over it.
+          automatic_recovery_policy_.CancelForManual(request_now_us);
+          automatic_seed_.reset();
+          LOG(INFO) << "LOC_AUTO_ATTEMPT event=cancelled reason=manual_priority"
+                    << " frame_ts_us=" << curr_time_us_;
+        } else {
+          // Keep active nav/matcher/pre-integration state intact; only gate the
+          // tracker until a candidate commits. Pre-integration is reset on
+          // success, not on request.
+          has_init_.store(false);
+          automatic_seed_.reset();
+          consistency_ref_pose_.reset();
+          seed_lifecycle_.Reset();
+          automatic_attempt_manual_generation_ =
+              reinitialization_attempt.manual_cancellation_generation_at_start();
+          automatic_recovery_policy_.BeginAttempt(request_now_us);
+          LOG(INFO) << "LOC_AUTO_ATTEMPT event=request"
+                    << " frame_ts_us=" << curr_time_us_
+                    << " round_budget_ms="
+                    << automatic_recovery_policy_.config().round_timeout_ms
+                    << " attempt_budget_ms="
+                    << automatic_recovery_policy_.config().attempt_timeout_ms
+                    << " cooldown_ms="
+                    << automatic_recovery_policy_.config().cooldown_ms
+                    << " max_source_age_ms="
+                    << automatic_recovery_policy_.config().max_source_age_ms
+                    << " action=start_automatic_attempt";
+        }
+      } else if (reinitialization_attempt.has_manual_initialization()) {
+        automatic_recovery_policy_.CancelForManual(request_now_us);
+        automatic_seed_.reset();
+      } else if (reinitialization_attempt.manual_cancellation_observed()) {
+        // A manual request arrived while the worker held the mutex (and may
+        // still be blocked on it). Automatic work must not commit.
+        automatic_recovery_policy_.CancelForManual(request_now_us);
+        automatic_seed_.reset();
       }
 
       if (!has_init_) {
-        if (reinitialization_attempt.waiting_for_automatic_request()) {
-          complete_frame_without_timeout();
-          continue;
+        const bool manual_pending =
+            reinitialization_attempt.has_manual_initialization() ||
+            HasPendingManualInitPose();
+        bool automatic_round = false;
+        if (!manual_pending &&
+            config_->localization.localization.auto_relocalization) {
+          if (!automatic_recovery_policy_.AttemptActive()) {
+            const bool input_healthy = system_ptr_->RecoveryInputsHealthy();
+            const bool started = automatic_recovery_policy_.EnsureAttempt(
+                request_now_us, input_healthy);
+            if (started) {
+              automatic_attempt_manual_generation_ =
+                  reinitialization_attempt
+                      .manual_cancellation_generation_at_start();
+              automatic_seed_.reset();
+              LOG(INFO) << "LOC_AUTO_ATTEMPT event=start"
+                        << " reason=startup_or_cooldown_elapsed"
+                        << " frame_ts_us=" << curr_time_us_
+                        << " input_healthy=" << BoolString(input_healthy)
+                        << " round_budget_ms="
+                        << automatic_recovery_policy_.config().round_timeout_ms
+                        << " attempt_budget_ms="
+                        << automatic_recovery_policy_.config()
+                               .attempt_timeout_ms;
+            }
+          }
+
+          if (automatic_recovery_policy_.AttemptActive()) {
+            if (!system_ptr_->RecoveryInputsHealthy()) {
+              // A bad stream must not postpone the overall attempt deadline.
+              const bool attempt_expired =
+                  automatic_recovery_policy_.ExpireAttemptIfDue(request_now_us);
+              if (attempt_expired) {
+                automatic_seed_.reset();
+                LOG(WARNING)
+                    << "LOC_AUTO_ROUND event=attempt_timeout"
+                    << " primary_reason=attempt_budget_exhausted"
+                    << " timeout_reason=attempt_deadline"
+                    << " stream_healthy=false"
+                    << " frame_ts_us=" << curr_time_us_
+                    << " attempt_elapsed_ms="
+                    << automatic_recovery_policy_.AttemptElapsedMs(
+                           request_now_us)
+                    << " attempt_budget_ms="
+                    << automatic_recovery_policy_.config().attempt_timeout_ms
+                    << " cooldown_ms="
+                    << automatic_recovery_policy_.config().cooldown_ms
+                    << " action=cooldown_then_retry_when_healthy";
+                complete_frame_without_timeout();
+                continue;
+              }
+              // Do not spin candidate evaluation while the stream is bad.
+              if (init_pending_throttle_.ShouldLog(request_now_us)) {
+                LOG(WARNING)
+                    << "LOC_AUTO_ATTEMPT event=retry_blocked"
+                    << " primary_reason=stream_unhealthy"
+                    << " frame_ts_us=" << curr_time_us_
+                    << " attempt_elapsed_ms="
+                    << automatic_recovery_policy_.AttemptElapsedMs(
+                           request_now_us)
+                    << " attempt_budget_ms="
+                    << automatic_recovery_policy_.config().attempt_timeout_ms
+                    << " action=skip_until_healthy";
+              }
+              complete_frame_without_timeout();
+              continue;
+            }
+
+            const localization_health::AutoRecoveryDecision decision =
+                automatic_recovery_policy_.BeginRound(request_now_us);
+            if (decision ==
+                localization_health::AutoRecoveryDecision::kAttemptExpired) {
+              LOG(WARNING) << "LOC_AUTO_ROUND event=attempt_timeout"
+                           << " primary_reason=attempt_budget_exhausted"
+                           << " frame_ts_us=" << curr_time_us_
+                           << " attempt_elapsed_ms="
+                           << automatic_recovery_policy_.AttemptElapsedMs(
+                                  request_now_us)
+                           << " attempt_budget_ms="
+                           << automatic_recovery_policy_.config()
+                                  .attempt_timeout_ms
+                           << " cooldown_ms="
+                           << automatic_recovery_policy_.config().cooldown_ms
+                           << " action=cooldown_then_retry_when_healthy";
+              complete_frame_without_timeout();
+              continue;
+            }
+            if (decision !=
+                localization_health::AutoRecoveryDecision::kStartRound) {
+              if (init_pending_throttle_.ShouldLog(request_now_us)) {
+                LOG(INFO) << "LOC_AUTO_ROUND event=cooldown"
+                          << " primary_reason=cooldown_active"
+                          << " frame_ts_us=" << curr_time_us_
+                          << " cooldown_ms="
+                          << automatic_recovery_policy_.config().cooldown_ms
+                          << " action=wait_for_healthy_frame";
+              }
+              complete_frame_without_timeout();
+              continue;
+            }
+
+            // Automatic work owns its own budget. Close the tracking watchdog
+            // first so it can never drop this frame as a tracking timeout.
+            complete_frame_without_timeout();
+            automatic_round = true;
+          } else {
+            if (init_pending_throttle_.ShouldLog(request_now_us)) {
+              LOG(INFO) << "LOC_AUTO_ATTEMPT event=waiting"
+                        << " primary_reason=cooldown_or_unhealthy"
+                        << " frame_ts_us=" << curr_time_us_
+                        << " action=skip_frame";
+            }
+            complete_frame_without_timeout();
+            continue;
+          }
         }
 
         const InitializationResult initialization_result =
-            Init(tf_continuity_epoch);
-        has_init_ = initialization_result == InitializationResult::kInitialized;
+            Init(tf_continuity_epoch, automatic_round);
+        const std::uint64_t result_now_us = SteadyNowMicroseconds();
+        has_init_ =
+            initialization_result == InitializationResult::kInitialized;
+        if (automatic_round &&
+            (reinitialization_attempt.manual_cancellation_observed() ||
+             reinitialization_attempt.has_manual_initialization())) {
+          has_init_ = false;
+          automatic_seed_.reset();
+        }
         if (initialization_result ==
             InitializationResult::kAutomaticConsistencyPending) {
+          automatic_recovery_policy_.RecordRoundPending(result_now_us);
           reinitialization_attempt.RecordAutomaticConsistencyPending();
+          LOG(INFO) << "LOC_AUTO_ROUND event=consistency_pending"
+                    << " frame_ts_us=" << curr_time_us_
+                    << " attempt_elapsed_ms="
+                    << automatic_recovery_policy_.AttemptElapsedMs(
+                           result_now_us)
+                    << " attempt_budget_ms="
+                    << automatic_recovery_policy_.config().attempt_timeout_ms
+                    << " action=next_healthy_frame";
         } else {
           reinitialization_attempt.RecordInitializationResult(has_init_);
+          if (has_init_) {
+            automatic_recovery_policy_.RecordRoundSuccess(result_now_us);
+          } else if (automatic_round) {
+            const std::uint64_t round_elapsed_ms =
+                automatic_recovery_policy_.RoundElapsedMs(result_now_us);
+            bool attempt_expired = false;
+            const bool retry_allowed =
+                automatic_recovery_policy_.RecordRoundFailure(
+                    result_now_us, &attempt_expired);
+            LOG(WARNING) << "LOC_AUTO_ROUND event=round_failed"
+                         << " frame_ts_us=" << curr_time_us_
+                         << " round_elapsed_ms=" << round_elapsed_ms
+                         << " attempt_elapsed_ms="
+                         << automatic_recovery_policy_.AttemptElapsedMs(
+                                result_now_us)
+                         << " attempt_budget_ms="
+                         << automatic_recovery_policy_.config()
+                                .attempt_timeout_ms
+                         << " primary_reason="
+                         << (attempt_expired ? "attempt_budget_exhausted"
+                                             : "retryable_round_failure")
+                         << " retry_allowed=" << BoolString(retry_allowed)
+                         << " cooldown_ms="
+                         << (attempt_expired
+                                 ? automatic_recovery_policy_.config()
+                                       .cooldown_ms
+                                 : 0);
+          }
         }
 
         if (has_init_) {
@@ -1206,16 +1742,23 @@ std::optional<Mat4d> Localization::TryAutoRelocalize(
   std::size_t evaluated_count = 0U;
   const char* stop_reason = "exhausted";
 
+  const auto round_timed_out = [&] {
+    return automatic_recovery_policy_.RoundDeadlineExceeded(
+        SteadyNowMicroseconds());
+  };
   for (std::size_t candidate_index = 0;
        candidate_index < candidates.size(); ++candidate_index) {
-    if (candidate_index > 0U) {
-      std::lock_guard<std::mutex> lg(mutex_init_pose_optional_);
-      if (init_pose_optional_.has_value()) {
-        LOG(INFO) << "Stop automatic relocalization candidate evaluation "
-                     "because a manual initial pose is pending.";
-        stop_reason = "manual_pose";
-        break;
-      }
+    // Cooperative stage-boundary deadline/manual-priority checks. PCL
+    // iterations themselves are not preemptible.
+    if (round_timed_out()) {
+      stop_reason = "round_timeout";
+      break;
+    }
+    if (HasPendingManualInitPose()) {
+      LOG(INFO) << "Stop automatic relocalization candidate evaluation "
+                   "because a manual initial pose is pending.";
+      stop_reason = "manual_pose";
+      break;
     }
 
     const auto& candidate = candidates[candidate_index];
@@ -1269,6 +1812,15 @@ std::optional<Mat4d> Localization::TryAutoRelocalize(
       total_preparation_ms += preparation_ms;
       ++prepared_count;
 
+      if (round_timed_out()) {
+        stop_reason = "round_timeout";
+        break;
+      }
+      if (HasPendingManualInitPose()) {
+        stop_reason = "manual_pose";
+        break;
+      }
+
       stage = "fine registration";
       float fitness = std::numeric_limits<float>::infinity();
       Mat4d match_pose = MapLidarPoseToMapImuPose(
@@ -1284,6 +1836,17 @@ std::optional<Mat4d> Localization::TryAutoRelocalize(
       }
       const double registration_ms = registration_timer.End();
       total_registration_ms += registration_ms;
+
+      // A candidate that finished after the round deadline must not be
+      // selected; it would commit a stale multi-second search result.
+      if (round_timed_out()) {
+        stop_reason = "round_timeout";
+        break;
+      }
+      if (HasPendingManualInitPose()) {
+        stop_reason = "manual_pose";
+        break;
+      }
 
       LOG(INFO) << "Auto relocalization candidate " << candidate_index + 1U
                 << "/" << candidates.size() << " (score=" << candidate.score
@@ -1313,11 +1876,21 @@ std::optional<Mat4d> Localization::TryAutoRelocalize(
     }
   }
 
-  LOG(INFO) << "Auto relocalization prepared " << prepared_count
-            << " candidates in " << total_preparation_ms
-            << " ms and evaluated " << evaluated_count << " serially in "
-            << total_registration_ms << " ms (stop_reason=" << stop_reason
-            << ").";
+  LOG(INFO) << "LOC_AUTO_ROUND summary prepared=" << prepared_count
+            << " evaluated=" << evaluated_count
+            << " preparation_ms=" << total_preparation_ms
+            << " registration_ms=" << total_registration_ms
+            << " stop_reason=" << stop_reason
+            << " round_elapsed_ms="
+            << automatic_recovery_policy_.RoundElapsedMs(
+                   SteadyNowMicroseconds())
+            << " round_budget_ms="
+            << automatic_recovery_policy_.config().round_timeout_ms
+            << " attempt_elapsed_ms="
+            << automatic_recovery_policy_.AttemptElapsedMs(
+                   SteadyNowMicroseconds())
+            << " attempt_budget_ms="
+            << automatic_recovery_policy_.config().attempt_timeout_ms;
 
   if (best_pose.has_value()) {
     LOG(INFO) << "Auto relocalization candidate selected with fitness "
@@ -1390,8 +1963,8 @@ PCLPointCloudXYZI::ConstPtr Localization::LoadLocalMap(
   return nullptr;
 }
 
-void Localization::UpdateActiveMapSnapshot(
-    std::shared_ptr<const localization_map::MapSnapshot> snapshot) {
+Localization::PreparedActiveMapSnapshot Localization::PrepareActiveMapSnapshot(
+    std::shared_ptr<const localization_map::MapSnapshot> snapshot) const {
   PCLPointCloudXYZI::ConstPtr ground_source;
   if (snapshot && snapshot->ground_cloud && !snapshot->ground_cloud->empty()) {
     ground_source = snapshot->ground_cloud;
@@ -1399,23 +1972,34 @@ void Localization::UpdateActiveMapSnapshot(
     ground_source = snapshot->registration_cloud;
   }
 
-  PCLPointCloudXYZI::Ptr flattened;
-  pcl::KdTreeFLANN<PCLPointXYZI>::Ptr tree;
+  PreparedActiveMapSnapshot prepared;
+  prepared.snapshot = std::move(snapshot);
   if (ground_source && !ground_source->empty()) {
-    flattened.reset(new PCLPointCloudXYZI(*ground_source));
-    for (auto& point : *flattened) {
+    prepared.ground_xy_cloud.reset(new PCLPointCloudXYZI(*ground_source));
+    for (auto& point : *prepared.ground_xy_cloud) {
       point.z = 0.0F;
     }
-    tree.reset(new pcl::KdTreeFLANN<PCLPointXYZI>());
-    tree->setInputCloud(flattened);
+    prepared.ground_xy_kdtree.reset(new pcl::KdTreeFLANN<PCLPointXYZI>());
+    prepared.ground_xy_kdtree->setInputCloud(prepared.ground_xy_cloud);
   }
+  return prepared;
+}
 
+void Localization::ApplyActiveMapSnapshot(
+    PreparedActiveMapSnapshot prepared) {
   std::lock_guard<std::mutex> lock(mutex_map_snapshot_);
-  active_map_snapshot_ = std::move(snapshot);
-  active_ground_xy_cloud_ = std::move(flattened);
-  active_ground_xy_kdtree_ = std::move(tree);
+  active_map_snapshot_ = std::move(prepared.snapshot);
+  active_ground_xy_cloud_ = std::move(prepared.ground_xy_cloud);
+  active_ground_xy_kdtree_ = std::move(prepared.ground_xy_kdtree);
   last_map_request_error_.clear();
   map_request_unavailable_without_coverage_ = false;
+}
+
+void Localization::UpdateActiveMapSnapshot(
+    std::shared_ptr<const localization_map::MapSnapshot> snapshot) {
+  // Normal tracking keeps the same all-in-one behaviour: prepare locally and
+  // publish immediately.
+  ApplyActiveMapSnapshot(PrepareActiveMapSnapshot(std::move(snapshot)));
 }
 
 NavStateData Localization::IntegrateImuMeasures(

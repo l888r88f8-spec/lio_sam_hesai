@@ -29,7 +29,11 @@ class DataStreamWatchdog {
   void RecordImu(std::uint64_t stamp_us);
   void RecordImu(std::uint64_t stamp_us, std::uint64_t arrival_us);
   [[nodiscard]] bool IsImuStalled(std::uint64_t now_us) const;
+  // Consumes pending observation/anomaly flags. Diagnostics uses this once.
   [[nodiscard]] StreamHealth Evaluate(std::uint64_t now_us) const;
+  // Non-consuming live snapshot for recovery gating. It must not clear
+  // pending_observation/jump/rollback state that the health timer owns.
+  [[nodiscard]] StreamHealth Peek(std::uint64_t now_us) const;
 
  private:
   struct Channel {
@@ -47,6 +51,7 @@ class DataStreamWatchdog {
                                       std::uint64_t now_us,
                                       std::uint64_t stall_timeout_us);
   [[nodiscard]] double RateHz(const Channel& channel) const;
+  [[nodiscard]] StreamHealth BuildHealth(std::uint64_t now_us) const;
 
   const Config config_;
   mutable std::mutex mutex_;

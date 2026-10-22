@@ -581,6 +581,57 @@ TEST(SlamConfig, RejectsExtrapolationBeyondResultTimeout) {
       std::invalid_argument);
 }
 
+TEST(SlamConfig, AutomaticRecoveryBudgetsHaveDefaultsAndAreValidated) {
+  const SlamConfig defaults = LoadLocalization();
+  EXPECT_EQ(defaults.localization.localization.auto_relocalization_round_timeout_ms,
+            1000);
+  EXPECT_EQ(
+      defaults.localization.localization.auto_relocalization_attempt_timeout_ms,
+      5000);
+  EXPECT_EQ(
+      defaults.localization.localization.auto_relocalization_retry_cooldown_ms,
+      2000);
+  EXPECT_EQ(
+      defaults.localization.localization.auto_relocalization_max_source_age_ms,
+      500);
+
+  const SlamConfig overridden = LoadLocalization(
+      {rclcpp::Parameter("localization.auto_relocalization_round_timeout_ms",
+                         1200),
+       rclcpp::Parameter("localization.auto_relocalization_attempt_timeout_ms",
+                         6000),
+       rclcpp::Parameter("localization.auto_relocalization_retry_cooldown_ms",
+                         2500),
+       rclcpp::Parameter("localization.auto_relocalization_max_source_age_ms",
+                         400)});
+  EXPECT_EQ(overridden.localization.localization
+                .auto_relocalization_round_timeout_ms,
+            1200);
+  EXPECT_EQ(overridden.localization.localization
+                .auto_relocalization_attempt_timeout_ms,
+            6000);
+
+  EXPECT_THROW(
+      LoadLocalization(
+          {rclcpp::Parameter("localization.auto_relocalization_round_timeout_ms",
+                             0)}),
+      std::invalid_argument);
+  EXPECT_THROW(
+      LoadLocalization(
+          {rclcpp::Parameter("localization.auto_relocalization_attempt_timeout_ms",
+                             999)}),
+      std::invalid_argument);
+  EXPECT_THROW(
+      LoadLocalization(
+          {rclcpp::Parameter("localization.auto_relocalization_retry_cooldown_ms",
+                             0)}),
+      std::invalid_argument);
+  EXPECT_THROW(
+      LoadLocalization({rclcpp::Parameter(
+          "localization.auto_relocalization_max_source_age_ms", 0)}),
+      std::invalid_argument);
+}
+
 int main(int argc, char** argv) {
   rclcpp::init(argc, argv);
   ::testing::InitGoogleTest(&argc, argv);

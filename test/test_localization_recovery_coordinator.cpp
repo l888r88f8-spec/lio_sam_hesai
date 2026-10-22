@@ -74,7 +74,7 @@ TEST(LocalizationRecoveryCoordinator,
     EXPECT_TRUE(first_worker.automatic_relocalization_requested());
     EXPECT_TRUE(first_worker.owns_automatic_initialization());
     first_worker.RecordInitializationResult(false);
-    EXPECT_TRUE(first_worker.waiting_for_automatic_request());
+    EXPECT_FALSE(first_worker.waiting_for_automatic_request());
   }
 
   for (int i = 0; i < 3; ++i) {
@@ -86,9 +86,9 @@ TEST(LocalizationRecoveryCoordinator,
   }
   EXPECT_EQ(request_count, 1);
   {
-    auto waiting_worker = control.BeginWorkerAttempt();
-    EXPECT_FALSE(waiting_worker.automatic_relocalization_requested());
-    EXPECT_TRUE(waiting_worker.waiting_for_automatic_request());
+    auto retry_worker = control.BeginWorkerAttempt();
+    EXPECT_FALSE(retry_worker.automatic_relocalization_requested());
+    EXPECT_FALSE(retry_worker.waiting_for_automatic_request());
   }
 
   auto stalled = poor_tracking;
@@ -115,7 +115,7 @@ TEST(LocalizationRecoveryCoordinator,
     EXPECT_TRUE(recovered_worker.automatic_relocalization_requested());
     EXPECT_TRUE(recovered_worker.owns_automatic_initialization());
     recovered_worker.RecordInitializationResult(false);
-    EXPECT_TRUE(recovered_worker.waiting_for_automatic_request());
+    EXPECT_FALSE(recovered_worker.waiting_for_automatic_request());
   }
 
   {

@@ -6,6 +6,7 @@
 #include "common/data_type.h"
 #include "common/slam_config.h"
 #include "imu/pre_integration.h"
+#include "localization_health/automatic_recovery_policy.h"
 #include "localization_health/reinitialization_control.h"
 #include "localization_health/log_throttle.h"
 #include "localization_health/tf_prediction_anchor.h"
@@ -17,6 +18,7 @@
 
 #include <atomic>
 #include <filesystem>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -78,7 +80,12 @@ private:
         kFailed,
     };
 
-    InitializationResult Init(std::uint64_t tf_continuity_epoch);
+    // Automatic rounds use the dedicated steady-clock recovery budget;
+    // manual initialization keeps the legacy frame-processing budget.
+    InitializationResult Init(std::uint64_t tf_continuity_epoch,
+                              bool automatic_round = false);
+
+    [[nodiscard]] bool HasPendingManualInitPose() const;
 
     void LoadScanContextDb();
 
@@ -131,6 +138,20 @@ private:
     void UpdateActiveMapSnapshot(
         std::shared_ptr<const localization_map::MapSnapshot> snapshot);
 
+    // Building the flattened ground cloud/KDTree is the expensive part of
+    // activating a snapshot. Prepare it in a local object, run the last commit
+    // gates, and only then publish it to the active map state.
+    struct PreparedActiveMapSnapshot {
+        std::shared_ptr<const localization_map::MapSnapshot> snapshot;
+        PCLPointCloudXYZI::Ptr ground_xy_cloud;
+        pcl::KdTreeFLANN<PCLPointXYZI>::Ptr ground_xy_kdtree;
+    };
+
+    [[nodiscard]] PreparedActiveMapSnapshot PrepareActiveMapSnapshot(
+        std::shared_ptr<const localization_map::MapSnapshot> snapshot) const;
+
+    void ApplyActiveMapSnapshot(PreparedActiveMapSnapshot prepared);
+
     [[nodiscard]] NavStateData IntegrateImuMeasures(const NavStateData& last_nav_state) const;
     // Integrates the localization-internal relative state. This state is not a
     // ROS odom frame and must never reach TF or a ROS frame ID.
@@ -181,6 +202,7 @@ private:
 
     std::atomic_bool has_init_{false};
     localization_health::ReinitializationControl reinitialization_control_;
+    localization_health::AutomaticRecoveryPolicy automatic_recovery_policy_;
     std::atomic_bool map_ready_{false};
     std::atomic<double> map_preparation_duration_ms_{0.0};
 
@@ -201,12 +223,32 @@ private:
     bool force_local_map_rebuild_{false};
 
     std::optional<Mat4d> init_pose_optional_;
-    std::mutex mutex_init_pose_optional_;
+    mutable std::mutex mutex_init_pose_optional_;
 
     relocalization::ScanContext scan_context_;
     bool scan_context_db_loaded_{false};
     std::optional<Mat4d> consistency_ref_pose_;
-    int consistency_hit_count_{0};
+    localization_health::AutomaticSeedLifecycle seed_lifecycle_;
+
+    // Candidate seed selected by Scan Context, revalidated on the next newer
+    // lidar frame without rerunning Scan Context. Cleared on manual priority,
+    // attempt expiry and replay epoch changes. Only early-accepted or fully
+    // consistency-qualified candidates are ever stored here.
+    struct AutomaticSeed {
+        EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
+        Mat4d pose = Mat4d::Identity();
+        TimeStampUs source_timestamp_us{0U};
+        std::uint64_t epoch{0U};
+        float fitness{std::numeric_limits<float>::infinity()};
+        localization_health::SeedQualification qualification{
+            localization_health::SeedQualification::kNone};
+        bool early_accepted{false};
+        int consistency_hit{0};
+        int consistency_required{0};
+    };
+    std::optional<AutomaticSeed> automatic_seed_;
+    std::uint64_t automatic_attempt_manual_generation_{0U};
 
     // Localization worker-thread-only logging state. Kept out of shared
     // fields so diagnostic throttling cannot race with System.
