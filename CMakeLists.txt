@@ -369,6 +369,8 @@ if(BUILD_TESTING)
     test/test_frame_processing_watchdog.cpp
     src/runtime/frame_processing_watchdog.cpp)
   target_include_directories(test_frame_processing_watchdog PRIVATE include)
+  ament_add_gtest(test_log_throttle test/test_log_throttle.cpp)
+  target_include_directories(test_log_throttle PRIVATE include)
   ament_add_gtest(test_unified_parameter_schema
     test/test_unified_parameter_schema.cpp)
   ament_add_gtest(test_coordinate_contract_surface

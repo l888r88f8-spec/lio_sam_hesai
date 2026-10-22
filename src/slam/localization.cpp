@@ -9,6 +9,8 @@
 #include <filesystem>
 #include <iomanip>
 #include <limits>
+#include <sstream>
+#include <string>
 
 #include <g2o/core/sparse_optimizer.h>
 
@@ -35,6 +37,34 @@ std::uint64_t SteadyNowMicroseconds() {
   const auto elapsed = std::chrono::steady_clock::now().time_since_epoch();
   return static_cast<std::uint64_t>(
       std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count());
+}
+
+const char* BoolString(bool value) { return value ? "true" : "false"; }
+
+std::string Vec3ForLog(const Vec3d& value, int precision = 6) {
+  std::ostringstream out;
+  out << std::fixed << std::setprecision(precision) << "[" << value.x() << ","
+      << value.y() << "," << value.z() << "]";
+  return out.str();
+}
+
+double YawFromRotation(const Mat3d& rotation) {
+  return std::atan2(rotation(1, 0), rotation(0, 0));
+}
+
+std::string TransformForLog(const Mat4d& transform, int precision = 6) {
+  std::ostringstream out;
+  out << std::fixed << std::setprecision(precision)
+      << "xyz=" << Vec3ForLog(transform.block<3, 1>(0, 3), precision)
+      << ",yaw_rad=" << YawFromRotation(transform.block<3, 3>(0, 0));
+  return out.str();
+}
+
+double MillisecondsSince(std::uint64_t start_us, std::uint64_t end_us) {
+  if (end_us <= start_us) {
+    return 0.0;
+  }
+  return static_cast<double>(end_us - start_us) / 1000.0;
 }
 
 // Manifest path for a configured tiled root, or nullopt when the root does
@@ -106,11 +136,16 @@ Localization::Localization(System* system_ptr,
 void Localization::SetInitPose(const MapTLidar& map_T_lidar) {
   [[maybe_unused]] auto manual_initialization =
       reinitialization_control_.BeginManualInitialization();
-  std::lock_guard<std::mutex> lg(mutex_init_pose_optional_);
-  // RViz/System provides map_T_lidar, while registration consumes the
-  // deskewed IMU-frame cloud and therefore uses map_T_imu internally.
-  init_pose_optional_ = MapLidarPoseToMapImuPose(map_T_lidar);
-  has_init_ = false;
+  {
+    std::lock_guard<std::mutex> lg(mutex_init_pose_optional_);
+    // RViz/System provides map_T_lidar, while registration consumes the
+    // deskewed IMU-frame cloud and therefore uses map_T_imu internally.
+    init_pose_optional_ = MapLidarPoseToMapImuPose(map_T_lidar);
+    has_init_ = false;
+  }
+  LOG(INFO) << "LOC_INIT manual_request "
+            << TransformForLog(map_T_lidar.Matrix())
+            << " action=start_manual_initialization";
 }
 
 void Localization::RequestAutomaticRelocalization() {
@@ -269,6 +304,8 @@ std::shared_ptr<RegistrationInterface> Localization::CreateMatcher() const {
 void Localization::InitMatcher() { matcher_ = CreateMatcher(); }
 
 bool Localization::DiscardTimedOutFrameIfNeeded(std::uint64_t now_us) {
+  const char* stage = current_timeout_stage_;
+  current_timeout_stage_ = "frame";
   if (!frame_processing_watchdog_.Exceeded(now_us)) {
     return false;
   }
@@ -287,11 +324,25 @@ bool Localization::DiscardTimedOutFrameIfNeeded(std::uint64_t now_us) {
   need_update_local_map_ = true;
   force_local_map_rebuild_ = true;
   delta_pose_ = Mat4d::Identity();
-  LOG(WARNING) << "Drop overdue localization frame.";
+  const auto snapshot = frame_processing_watchdog_.Snapshot();
+  LOG(WARNING) << "LOC_TIMEOUT stage=" << stage
+               << " action=drop overdue_frame"
+               << " frame_ts_us=" << curr_time_us_
+               << " elapsed_ms="
+               << static_cast<double>(snapshot.last_duration_us) / 1000.0
+               << " budget_ms="
+               << static_cast<double>(system_ptr_->FrameProcessingTimeoutUs()) /
+                      1000.0
+               << " Drop overdue localization frame.";
   return true;
 }
 
 bool Localization::DiscardTimedOutFrameIfNeeded() {
+  return DiscardTimedOutFrameIfNeeded("post_load_local_map");
+}
+
+bool Localization::DiscardTimedOutFrameIfNeeded(const char* stage) {
+  current_timeout_stage_ = stage;
   return DiscardTimedOutFrameIfNeeded(
       runtime::FrameProcessingWatchdog::SteadyNowMicroseconds());
 }
@@ -341,8 +392,14 @@ void Localization::UpdateTfPredictionAnchor(
 
 Localization::InitializationResult Localization::Init(
     std::uint64_t tf_continuity_epoch) {
+  const std::uint64_t init_start_us = SteadyNowMicroseconds();
+  const Vec3d bg_before = last_nav_state_.bg_;
+  const Vec3d ba_before = last_nav_state_.ba_;
+  const Vec3d local_bg_before = last_local_state_.bg_;
+  const Vec3d local_ba_before = last_local_state_.ba_;
   Mat4d init_pose;
   bool has_manual_init_pose = false;
+  bool manual_init_logged = false;
   int result_consistency_hit = 0;
   int result_consistency_required = 0;
   {
@@ -354,6 +411,14 @@ Localization::InitializationResult Localization::Init(
       consistency_ref_pose_.reset();
       consistency_hit_count_ = 0;
     }
+  }
+  if (has_manual_init_pose) {
+    LOG(INFO) << "LOC_INIT candidate_selected source=manual frame_ts_us="
+              << curr_time_us_
+              << " consistency=not_required elapsed_ms="
+              << MillisecondsSince(init_start_us, SteadyNowMicroseconds())
+              << " not_initialized=true";
+    manual_init_logged = true;
   }
 
   if (!has_manual_init_pose) {
@@ -367,6 +432,15 @@ Localization::InitializationResult Localization::Init(
     float auto_fitness = std::numeric_limits<float>::infinity();
     const auto auto_pose = TryAutoRelocalize(&auto_fitness);
     if (!auto_pose.has_value()) {
+      if (init_failure_throttle_.ShouldLog(SteadyNowMicroseconds())) {
+        LOG(WARNING) << "LOC_INIT rejected stage=scan_context"
+                     << " source=automatic frame_ts_us=" << curr_time_us_
+                     << " fitness_sq_dist=" << auto_fitness
+                     << " elapsed_ms="
+                     << MillisecondsSince(init_start_us,
+                                          SteadyNowMicroseconds())
+                     << " reason=no_candidate";
+      }
       consistency_ref_pose_.reset();
       consistency_hit_count_ = 0;
       return InitializationResult::kFailed;
@@ -382,15 +456,28 @@ Localization::InitializationResult Localization::Init(
         consistency_hit_count_ = 0;
       }
     }
+    if (has_manual_init_pose && !manual_init_logged) {
+      LOG(INFO) << "LOC_INIT candidate_selected source=manual frame_ts_us="
+                << curr_time_us_
+                << " consistency=not_required elapsed_ms="
+                << MillisecondsSince(init_start_us, SteadyNowMicroseconds())
+                << " not_initialized=true manual_pose_replaced_auto_candidate=true";
+      manual_init_logged = true;
+    }
 
     if (!has_manual_init_pose &&
         ShouldEarlyAcceptRelocalization(
             auto_fitness,
             config_->localization.localization.sc_accept_fitness)) {
-      LOG(INFO) << "Auto relocalization accepted early with fitness "
-                << auto_fitness << " (< "
+      LOG(INFO) << "LOC_INIT candidate_selected source=automatic mode=early"
+                << " frame_ts_us=" << curr_time_us_
+                << " fitness_sq_dist=" << auto_fitness
+                << " accept_threshold="
                 << config_->localization.localization.sc_accept_fitness
-                << ").";
+                << " elapsed_ms="
+                << MillisecondsSince(init_start_us, SteadyNowMicroseconds())
+                << " not_initialized=true"
+                << " (Auto relocalization candidate selected early)";
       init_pose = auto_pose.value();
       consistency_ref_pose_.reset();
       consistency_hit_count_ = 0;
@@ -422,11 +509,30 @@ Localization::InitializationResult Localization::Init(
       }
 
       if (consistency_hit_count_ < required_frames) {
-        LOG(INFO) << "Auto relocalization consistency "
-                  << consistency_hit_count_ << "/" << required_frames;
+        if (init_pending_throttle_.ShouldLog(SteadyNowMicroseconds())) {
+          LOG(INFO) << "LOC_INIT consistency_pending source=automatic"
+                    << " frame_ts_us=" << curr_time_us_
+                    << " fitness_sq_dist=" << auto_fitness
+                    << " hit=" << consistency_hit_count_
+                    << " required=" << required_frames
+                    << " elapsed_ms="
+                    << MillisecondsSince(init_start_us,
+                                         SteadyNowMicroseconds())
+                    << " action=wait_for_more_frames"
+                    << " Auto relocalization consistency "
+                    << consistency_hit_count_ << "/" << required_frames;
+        }
         return InitializationResult::kAutomaticConsistencyPending;
       }
 
+      LOG(INFO) << "LOC_INIT candidate_selected source=automatic"
+                << " mode=consistency frame_ts_us=" << curr_time_us_
+                << " fitness_sq_dist=" << auto_fitness
+                << " hit=" << consistency_hit_count_
+                << " required=" << required_frames
+                << " elapsed_ms="
+                << MillisecondsSince(init_start_us, SteadyNowMicroseconds())
+                << " not_initialized=true";
       init_pose = auto_pose.value();
       result_consistency_hit = consistency_hit_count_;
       result_consistency_required = required_frames;
@@ -434,6 +540,8 @@ Localization::InitializationResult Localization::Init(
       consistency_hit_count_ = 0;
     }
   }
+
+  const char* init_source = has_manual_init_pose ? "manual" : "automatic";
 
   // Auto candidates each use a temporary matcher; start final initialization
   // with a fresh local-map matcher for both automatic and manual poses.
@@ -454,9 +562,15 @@ Localization::InitializationResult Localization::Init(
       last_map_request_error_ = initial_map.error;
       map_request_unavailable_without_coverage_ = true;
     }
-    LOG(WARNING) << "Initial local map is empty, please check localization map "
-                    "path and initialization pose. "
-                 << initial_map.error;
+    if (init_failure_throttle_.ShouldLog(SteadyNowMicroseconds())) {
+      LOG(WARNING) << "LOC_INIT rejected stage=load_local_map source="
+                   << init_source << " frame_ts_us=" << curr_time_us_
+                   << " elapsed_ms="
+                   << MillisecondsSince(init_start_us, SteadyNowMicroseconds())
+                   << " reason=empty_local_map error=" << initial_map.error
+                   << " Initial local map is empty, please check localization "
+                      "map path and initialization pose.";
+    }
     return InitializationResult::kFailed;
   }
 
@@ -466,9 +580,17 @@ Localization::InitializationResult Localization::Init(
   const float fitness_score = matcher_->GetFitnessScore(2.0);
 
   if (!success || fitness_score >= 1.0) {
-    LOG(WARNING) << "Initial registration failed. "
-                 << "Please try to continue initialization and give a better "
-                    "initial pose.";
+    if (init_failure_throttle_.ShouldLog(SteadyNowMicroseconds())) {
+      LOG(WARNING) << "LOC_INIT rejected stage=registration source="
+                   << init_source << " frame_ts_us=" << curr_time_us_
+                   << " match_ok=" << BoolString(success)
+                   << " fitness_sq_dist=" << fitness_score
+                   << " elapsed_ms="
+                   << MillisecondsSince(init_start_us, SteadyNowMicroseconds())
+                   << " reason=registration_failed"
+                   << " Initial registration failed. Please try to continue "
+                      "initialization and give a better initial pose.";
+    }
     return InitializationResult::kFailed;
   }
 
@@ -518,6 +640,7 @@ Localization::InitializationResult Localization::Init(
       VoxelGridCloud(curr_cloud_cluster_ptr_->ordered_cloud_, 0.5), init_pose);
   const auto initialization_commit_now_us =
       runtime::FrameProcessingWatchdog::SteadyNowMicroseconds();
+  current_timeout_stage_ = "init_commit";
   if (DiscardTimedOutFrameIfNeeded(initialization_commit_now_us)) {
     return InitializationResult::kFailed;
   }
@@ -531,6 +654,24 @@ Localization::InitializationResult Localization::Init(
   last_local_state_ = initialized_local_state;
   CacheResultToSystem(init_result, tf_continuity_epoch);
   UpdateCurrentLidarCloud(*initialized_lidar_cloud);
+
+  LOG(INFO) << "LOC_INIT commit accepted source=" << init_source
+            << " frame_ts_us=" << curr_time_us_
+            << " map_T_lidar=" << TransformForLog(init_result.map_T_lidar.Matrix())
+            << " fitness_sq_dist=" << fitness_score
+            << " consistency=" << result_consistency_hit << "/"
+            << result_consistency_required
+            << " elapsed_ms="
+            << MillisecondsSince(init_start_us, SteadyNowMicroseconds())
+            << " bg_before=" << Vec3ForLog(bg_before)
+            << " ba_before=" << Vec3ForLog(ba_before)
+            << " bg_after=" << Vec3ForLog(last_nav_state_.bg_)
+            << " ba_after=" << Vec3ForLog(last_nav_state_.ba_)
+            << " local_bg_before=" << Vec3ForLog(local_bg_before)
+            << " local_ba_before=" << Vec3ForLog(local_ba_before)
+            << " local_bg_after=" << Vec3ForLog(last_local_state_.bg_)
+            << " local_ba_after=" << Vec3ForLog(last_local_state_.ba_)
+            << " bias_policy=preserved_from_last_nav_state";
 
   return InitializationResult::kInitialized;
 }
@@ -716,8 +857,17 @@ void Localization::Run() {
     }
 
     if (curr_cloud_cluster_ptr_->imu_data_.size() < 2) {
-      LOG(WARNING) << "Skip localization frame due to insufficient IMU data: "
-                   << curr_cloud_cluster_ptr_->imu_data_.size();
+      if (imu_skip_throttle_.ShouldLog(SteadyNowMicroseconds())) {
+        LOG(WARNING) << "LOC_TRACK skip_frame stage=imu_insufficient"
+                     << " frame_ts_us=" << curr_time_us_
+                     << " frame_ts_s="
+                     << static_cast<double>(curr_time_us_) *
+                            kMicroseconds2Seconds
+                     << " imu_samples="
+                     << curr_cloud_cluster_ptr_->imu_data_.size()
+                     << " action=skip_frame"
+                     << " Skip localization frame due to insufficient IMU data.";
+      }
       complete_frame_without_timeout();
       continue;
     }
@@ -731,7 +881,19 @@ void Localization::Run() {
     }
     if (need_update_local_map_) {
       if (!local_map || local_map->empty()) {
-        LOG(WARNING) << "Skip localization frame because local map is empty.";
+        if (local_map_skip_throttle_.ShouldLog(SteadyNowMicroseconds())) {
+          LOG(WARNING) << "LOC_TRACK skip_frame stage=local_map_empty"
+                       << " frame_ts_us=" << curr_time_us_
+                       << " frame_ts_s="
+                       << static_cast<double>(curr_time_us_) *
+                              kMicroseconds2Seconds
+                       << " local_map_points="
+                       << (local_map ? local_map->size() : 0U)
+                       << " force_local_map_rebuild="
+                       << BoolString(force_local_map_rebuild)
+                       << " action=skip_frame"
+                       << " Skip localization frame because local map is empty.";
+        }
         complete_frame_without_timeout();
         continue;
       }
@@ -787,12 +949,36 @@ void Localization::Run() {
     // Performing pointcloud registration.
     // Use the predicted pose as the initial pose.
     Mat4d match_pose = predict_nav_state.Pose();
+    const std::size_t ordered_point_count =
+        curr_cloud_cluster_ptr_->ordered_cloud_.size();
+    const std::size_t planar_point_count =
+        curr_cloud_cluster_ptr_->planar_cloud_.size();
+    const std::size_t local_map_point_count =
+        local_map ? local_map->size() : 0U;
+    const std::uint64_t match_start_us = SteadyNowMicroseconds();
     const bool match_success =
         matcher_->Match(curr_cloud_cluster_ptr_, match_pose);
-    if (DiscardTimedOutFrameIfNeeded()) {
+    const double match_elapsed_ms =
+        MillisecondsSince(match_start_us, SteadyNowMicroseconds());
+    if (DiscardTimedOutFrameIfNeeded("match")) {
       continue;
     }
     if (!match_success) {
+      if (match_failure_throttle_.ShouldLog(SteadyNowMicroseconds())) {
+        LOG(WARNING) << "LOC_TRACK match_failed frame_ts_us=" << curr_time_us_
+                     << " frame_ts_s="
+                     << static_cast<double>(curr_time_us_) *
+                            kMicroseconds2Seconds
+                     << " match_elapsed_ms=" << match_elapsed_ms
+                     << " predicted_map_T_imu="
+                     << TransformForLog(predict_nav_state.Pose())
+                     << " ordered_points=" << ordered_point_count
+                     << " planar_points=" << planar_point_count
+                     << " local_map_points=" << local_map_point_count
+                     << " imu_samples="
+                     << curr_cloud_cluster_ptr_->imu_data_.size()
+                     << " action=skip_frame";
+      }
       complete_frame_without_timeout();
       continue;
     }
@@ -823,7 +1009,7 @@ void Localization::Run() {
                  << config_->localization.frontend.fusion_method;
     }
 
-    if (DiscardTimedOutFrameIfNeeded()) {
+    if (DiscardTimedOutFrameIfNeeded("fusion")) {
       continue;
     }
 
@@ -836,7 +1022,8 @@ void Localization::Run() {
     result.map_T_lidar = MapTLidar::FromMatrix(MapImuPoseToMapLidarPose(curr_pose));
     result.local_T_imu =
         LocalTImu::FromMatrix(predict_local_state.Pose());
-    result.reg_fitness = matcher_->GetFitnessScore(2.0F);
+    const float tracking_fitness = matcher_->GetFitnessScore(2.0F);
+    result.reg_fitness = tracking_fitness;
     result.consistency_hit = 0;
     result.consistency_required = 0;
     result.is_tracking = true;
@@ -853,10 +1040,42 @@ void Localization::Run() {
         curr_pose);
     const auto tracking_commit_now_us =
         runtime::FrameProcessingWatchdog::SteadyNowMicroseconds();
+    current_timeout_stage_ = "final_commit";
     if (DiscardTimedOutFrameIfNeeded(tracking_commit_now_us)) {
       continue;
     }
     frame_processing_watchdog_.Complete(tracking_commit_now_us, false);
+
+    if (tracking_summary_throttle_.ShouldLog(SteadyNowMicroseconds())) {
+      const Mat4d match_correction =
+          predict_nav_state.Pose().inverse() * match_pose;
+      const double correction_translation_m =
+          match_correction.block<3, 1>(0, 3).norm();
+      const double correction_rotation_rad = std::fabs(
+          Eigen::AngleAxisd(match_correction.block<3, 3>(0, 0)).angle());
+      LOG(INFO) << "LOC_TRACK summary frame_ts_us=" << curr_time_us_
+                << " frame_ts_s="
+                << static_cast<double>(curr_time_us_) * kMicroseconds2Seconds
+                << " map_T_lidar="
+                << TransformForLog(result.map_T_lidar.Matrix())
+                << " v_xyz=" << Vec3ForLog(curr_nav_state.V_)
+                << " bg=" << Vec3ForLog(curr_nav_state.bg_)
+                << " ba=" << Vec3ForLog(curr_nav_state.ba_)
+                << " match_elapsed_ms=" << match_elapsed_ms
+                << " reg_fitness_sq_dist=" << tracking_fitness
+                << " ordered_points=" << ordered_point_count
+                << " planar_points=" << planar_point_count
+                << " local_map_points=" << local_map_point_count
+                << " match_correction_translation_m="
+                << correction_translation_m
+                << " match_correction_rotation_rad="
+                << correction_rotation_rad
+                << " imu_samples="
+                << curr_cloud_cluster_ptr_->imu_data_.size()
+                << " reset_imu_integration="
+                << BoolString(reset_imu_integration);
+    }
+
     UpdateTfPredictionAnchor(curr_nav_state, tf_continuity_epoch);
     CacheResultToSystem(result, tf_continuity_epoch);
     UpdateCurrentLidarCloud(*current_lidar_cloud);
@@ -1101,8 +1320,8 @@ std::optional<Mat4d> Localization::TryAutoRelocalize(
             << ").";
 
   if (best_pose.has_value()) {
-    LOG(INFO) << "Auto relocalization candidate accepted with fitness "
-              << best_fitness << ".";
+    LOG(INFO) << "Auto relocalization candidate selected with fitness "
+              << best_fitness << " (not initialized yet).";
   }
   if (best_fitness_out != nullptr) {
     *best_fitness_out = best_fitness;
@@ -1414,14 +1633,33 @@ void Localization::Optimize(NavStateData& curr_nav_state,
   curr_nav_state.info_ =
       Marginalize(posterior_info, 0, 14).block<15, 15>(15, 15);
 
-  LOG_IF(WARNING, curr_ba_opti.x() > 1.0 || curr_ba_opti.y() > 1.0 ||
-                      curr_ba_opti.z() > 1.0)
-      << "The value of acc bias is too large, and the optimization may "
-         "diverge.";
-  LOG_IF(WARNING, curr_bg_opti.x() > 1.0 || curr_bg_opti.y() > 1.0 ||
-                      curr_bg_opti.z() > 1.0)
-      << "The value of gyro bias is too large, and the optimization may "
-         "diverge.";
+  LogBiasWarningIfNeeded(curr_nav_state);
+}
+
+void Localization::LogBiasWarningIfNeeded(const NavStateData& nav_state) {
+  const bool bg_finite = nav_state.bg_.allFinite();
+  const bool ba_finite = nav_state.ba_.allFinite();
+  const double bg_max_abs =
+      bg_finite ? nav_state.bg_.cwiseAbs().maxCoeff()
+                : std::numeric_limits<double>::infinity();
+  const double ba_max_abs =
+      ba_finite ? nav_state.ba_.cwiseAbs().maxCoeff()
+                : std::numeric_limits<double>::infinity();
+  const bool out_of_range = !bg_finite || !ba_finite ||
+                            bg_max_abs > 1.0 || ba_max_abs > 1.0;
+  if (!out_of_range ||
+      !bias_warning_throttle_.ShouldLog(SteadyNowMicroseconds())) {
+    return;
+  }
+
+  LOG(WARNING) << "LOC_BIAS bias_out_of_range frame_ts_us=" << curr_time_us_
+               << " bg=" << Vec3ForLog(nav_state.bg_)
+               << " ba=" << Vec3ForLog(nav_state.ba_)
+               << " bg_max_abs=" << bg_max_abs
+               << " ba_max_abs=" << ba_max_abs
+               << " bg_finite=" << BoolString(bg_finite)
+               << " ba_finite=" << BoolString(ba_finite)
+               << " threshold=1.0 action=log_only";
 }
 
 std::optional<double> Localization::EstimateMapGroundZ(

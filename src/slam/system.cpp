@@ -9,7 +9,9 @@
 #include <cmath>
 #include <cstdint>
 #include <functional>
+#include <iomanip>
 #include <limits>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -123,6 +125,18 @@ const char* TfHoldReasonString(localization_health::TfHoldReason reason) {
       return "no_anchor";
   }
   return "no_anchor";
+}
+
+const char* HealthLevelString(localization_health::HealthLevel level) {
+  switch (level) {
+    case localization_health::HealthLevel::kOk:
+      return "OK";
+    case localization_health::HealthLevel::kWarn:
+      return "WARN";
+    case localization_health::HealthLevel::kError:
+      return "ERROR";
+  }
+  return "WARN";
 }
 
 }  // namespace
@@ -883,6 +897,7 @@ void System::PublishLocalizationHealth() {
   const double map_preparation_duration_ms =
       localization_ptr_ ? localization_ptr_->MapPreparationDurationMs() : 0.0;
   inputs.now_us = steady_now_us;
+  TimeStampUs last_result_stamp_us = 0U;
   {
     std::lock_guard<std::mutex> lock(mutex_health_result_);
     inputs.has_init = has_health_result_;
@@ -891,6 +906,7 @@ void System::PublishLocalizationHealth() {
     inputs.reg_fitness = last_health_result_fitness_;
     inputs.consistency_hit = last_health_consistency_hit_;
     inputs.consistency_required = last_health_consistency_required_;
+    last_result_stamp_us = last_health_result_stamp_;
     if (has_health_result_ &&
         steady_now_us > last_health_result_arrival_steady_us_) {
       inputs.last_result_age_us =
@@ -922,11 +938,67 @@ void System::PublishLocalizationHealth() {
       request_automatic_relocalization);
   const auto& report = recovery_update.report;
   current_health_covariance_scale_ = report.covariance_scale;
+
+  const char* previous_health_state =
+      last_logged_health_state_.has_value()
+          ? localization_health::ToString(*last_logged_health_state_)
+          : "NONE";
+  const bool health_state_changed =
+      !last_logged_health_state_.has_value() ||
+      *last_logged_health_state_ != report.state;
+  const auto health_log_context = [&] {
+    std::ostringstream out;
+    out << std::fixed << std::setprecision(6)
+        << " state=" << report.reason
+        << " level=" << HealthLevelString(report.level)
+        << " transition_reason=" << report.transition_reason
+        << " reg_fitness_sq_dist=" << inputs.reg_fitness
+        << " health_score=" << report.health_score
+        << " s_fitness=" << report.s_fitness
+        << " s_stream=" << report.s_stream
+        << " s_consistency=" << report.s_consistency
+        << " last_result_age_us=" << inputs.last_result_age_us
+        << " last_result_stamp_us=" << last_result_stamp_us
+        << " lidar_rate_hz=" << inputs.stream.lidar_rate_hz
+        << " imu_rate_hz=" << inputs.stream.imu_rate_hz
+        << " rates_known=" << BoolString(inputs.stream.rates_known)
+        << " lidar_stalled=" << BoolString(inputs.stream.lidar_stalled)
+        << " imu_stalled=" << BoolString(inputs.stream.imu_stalled)
+        << " timestamp_monotonic="
+        << BoolString(inputs.stream.timestamp_monotonic)
+        << " timestamp_jump=" << BoolString(inputs.stream.timestamp_jump)
+        << " tf_pose_stale=" << BoolString(inputs.tf_pose_stale)
+        << " has_init=" << BoolString(inputs.has_init)
+        << " is_tracking=" << BoolString(inputs.is_tracking)
+        << " consistency=" << inputs.consistency_hit << "/"
+        << inputs.consistency_required;
+    return out.str();
+  };
+  if (health_state_changed) {
+    if (report.level == localization_health::HealthLevel::kError) {
+      LOG(WARNING) << "LOC_HEALTH transition " << previous_health_state
+                   << "->" << localization_health::ToString(report.state)
+                   << health_log_context();
+    } else {
+      LOG(INFO) << "LOC_HEALTH transition " << previous_health_state << "->"
+                << localization_health::ToString(report.state)
+                << health_log_context();
+    }
+    last_logged_health_state_ = report.state;
+  }
+  if (health_summary_throttle_.ShouldLog(steady_now_us)) {
+    LOG(INFO) << "LOC_HEALTH summary" << health_log_context();
+  }
+
   if (recovery_update.request_sent) {
     last_auto_relocalization_trigger_ =
         localization_health::ToString(recovery_update.reason);
     LOG(INFO) << "Requesting automatic relocalization due to "
               << last_auto_relocalization_trigger_;
+    LOG(INFO) << "LOC_HEALTH auto_relocalization_request trigger="
+              << last_auto_relocalization_trigger_
+              << " transition_reason=" << report.transition_reason
+              << health_log_context();
   }
 
   diagnostic_msgs::msg::DiagnosticArray diagnostics;

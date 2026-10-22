@@ -658,4 +658,98 @@ TEST(LocalizationStateMachine, ShortTransientHoldDoesNotAffectHealth) {
   EXPECT_DOUBLE_EQ(report.covariance_scale, 1.0);
 }
 
+TEST(LocalizationStateMachine, ReportsExactFitnessTransitionReasons) {
+  auto config = FastConfig();
+  config.degrade_enter_frames = 2;
+  config.recover_frames = 3;
+  LocalizationStateMachine machine(config);
+
+  auto report = machine.Update(HealthyTrackingInput());
+  EXPECT_EQ(report.state, LocalizationState::kRelocalizing);
+  EXPECT_EQ(report.transition_reason, "init_ready");
+
+  report = machine.Update(HealthyTrackingInput());
+  EXPECT_EQ(report.state, LocalizationState::kTracking);
+  EXPECT_EQ(report.transition_reason, "tracking_result_committed");
+
+  auto bad = HealthyTrackingInput();
+  bad.reg_fitness = 0.6F;
+  report = machine.Update(bad);
+  EXPECT_EQ(report.state, LocalizationState::kTracking);
+  EXPECT_EQ(report.transition_reason, "NONE");
+
+  report = machine.Update(bad);
+  EXPECT_EQ(report.state, LocalizationState::kDegraded);
+  EXPECT_EQ(report.transition_reason, "fitness_degraded:2/2");
+
+  report = machine.Update(HealthyTrackingInput());
+  EXPECT_EQ(report.state, LocalizationState::kDegraded);
+  EXPECT_EQ(report.transition_reason, "NONE");
+  report = machine.Update(HealthyTrackingInput());
+  EXPECT_EQ(report.state, LocalizationState::kDegraded);
+  EXPECT_EQ(report.transition_reason, "NONE");
+  report = machine.Update(HealthyTrackingInput());
+  EXPECT_EQ(report.state, LocalizationState::kTracking);
+  EXPECT_EQ(report.transition_reason, "recovered:3/3");
+}
+
+TEST(LocalizationStateMachine, ReportsExactHardFailureTransitionReasons) {
+  auto config = FastConfig();
+  config.degrade_enter_frames = 1;
+  config.lost_enter_frames = 2;
+  auto machine = MakeTrackingMachine(config);
+
+  auto stalled = HealthyTrackingInput();
+  stalled.stream.lidar_stalled = true;
+  auto report = machine.Update(stalled);
+  EXPECT_EQ(report.state, LocalizationState::kDegraded);
+  EXPECT_EQ(report.transition_reason, "hard_failure:lidar_stalled");
+
+  report = machine.Update(stalled);
+  EXPECT_EQ(report.state, LocalizationState::kLost);
+  EXPECT_EQ(report.transition_reason, "hard_failure:lidar_stalled");
+
+  report = machine.Update(HealthyTrackingInput());
+  EXPECT_EQ(report.state, LocalizationState::kRelocalizing);
+  EXPECT_EQ(report.transition_reason, "recovery_healthy");
+}
+
+TEST(LocalizationStateMachine, DistinguishesTfAndResultTimeoutHardFailures) {
+  auto config = FastConfig();
+  config.degrade_enter_frames = 1;
+  config.lost_enter_frames = 1;
+
+  auto tf_machine = MakeTrackingMachine(config);
+  auto stale_tf = HealthyTrackingInput();
+  stale_tf.tf_pose_stale = true;
+  EXPECT_EQ(tf_machine.Update(stale_tf).transition_reason,
+            "hard_failure:tf_pose_stale");
+
+  auto timeout_machine = MakeTrackingMachine(config);
+  auto timed_out = HealthyTrackingInput();
+  timed_out.last_result_age_us = config.result_timeout_us + 1U;
+  EXPECT_EQ(timeout_machine.Update(timed_out).transition_reason,
+            "hard_failure:result_timeout");
+}
+
+TEST(LocalizationStateMachine, ReportsFitnessLostTransitionReason) {
+  auto config = FastConfig();
+  config.degrade_enter_frames = 1;
+  config.lost_enter_frames = 2;
+  auto machine = MakeTrackingMachine(config);
+
+  auto degraded = HealthyTrackingInput();
+  degraded.reg_fitness = 0.6F;
+  EXPECT_EQ(machine.Update(degraded).state, LocalizationState::kDegraded);
+
+  auto lost = HealthyTrackingInput();
+  lost.reg_fitness = 1.1F;
+  auto report = machine.Update(lost);
+  EXPECT_EQ(report.state, LocalizationState::kDegraded);
+  EXPECT_EQ(report.transition_reason, "NONE");
+  report = machine.Update(lost);
+  EXPECT_EQ(report.state, LocalizationState::kLost);
+  EXPECT_EQ(report.transition_reason, "fitness_lost:2/2");
+}
+
 }  // namespace

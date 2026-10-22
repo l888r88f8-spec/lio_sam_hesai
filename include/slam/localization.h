@@ -7,6 +7,7 @@
 #include "common/slam_config.h"
 #include "imu/pre_integration.h"
 #include "localization_health/reinitialization_control.h"
+#include "localization_health/log_throttle.h"
 #include "localization_health/tf_prediction_anchor.h"
 #include "localization_map/map_provider.h"
 #include "registration/registration_interface.h"
@@ -96,6 +97,10 @@ private:
     bool DiscardTimedOutFrameIfNeeded(std::uint64_t now_us);
 
     bool DiscardTimedOutFrameIfNeeded();
+
+    bool DiscardTimedOutFrameIfNeeded(const char* stage);
+
+    void LogBiasWarningIfNeeded(const NavStateData& nav_state);
 
     // Builds a fresh matcher without modifying matcher_. Automatic
     // relocalization uses a fresh instance for each ordered candidate.
@@ -202,6 +207,17 @@ private:
     bool scan_context_db_loaded_{false};
     std::optional<Mat4d> consistency_ref_pose_;
     int consistency_hit_count_{0};
+
+    // Localization worker-thread-only logging state. Kept out of shared
+    // fields so diagnostic throttling cannot race with System.
+    const char* current_timeout_stage_{"frame"};
+    localization_health::SteadyLogThrottle tracking_summary_throttle_{1000000U};
+    localization_health::SteadyLogThrottle match_failure_throttle_{1000000U};
+    localization_health::SteadyLogThrottle init_pending_throttle_{1000000U};
+    localization_health::SteadyLogThrottle init_failure_throttle_{1000000U};
+    localization_health::SteadyLogThrottle bias_warning_throttle_{1000000U};
+    localization_health::SteadyLogThrottle imu_skip_throttle_{1000000U};
+    localization_health::SteadyLogThrottle local_map_skip_throttle_{1000000U};
 };
 
 #endif //FUNNY_LIDAR_SLAM_LOCALIZATION_H

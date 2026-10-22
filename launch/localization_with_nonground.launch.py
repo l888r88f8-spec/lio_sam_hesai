@@ -15,6 +15,8 @@ def generate_launch_description():
     use_rviz = LaunchConfiguration("use_rviz")
     publish_static_tf = LaunchConfiguration("publish_static_tf")
     rviz_config_file = os.path.join(share_dir, "config", "rviz2.rviz")
+    map_path = LaunchConfiguration("map_path")
+    auto_relocalization = LaunchConfiguration("auto_relocalization")
 
     params_declare = DeclareLaunchArgument(
         "params_file",
@@ -32,13 +34,27 @@ def generate_launch_description():
     )
     use_rviz_declare = DeclareLaunchArgument(
         "use_rviz",
-        default_value="true",
+        default_value="false",
         description="Launch RViz if true.",
     )
     publish_static_tf_declare = DeclareLaunchArgument(
         "publish_static_tf",
         default_value="true",
         description="Publish base_link->lidar and base_link->imu static transforms.",
+    )
+    map_path_declare = DeclareLaunchArgument(
+        "map_path",
+        default_value="/home/robot/map/hesai_outdoor_yifu/tiled",
+        description="Select path.",
+    )
+    auto_relocalization_declare = DeclareLaunchArgument(
+        "auto_relocalization",
+        default_value="true",
+        description=(
+            "Enable Scan Context automatic relocalization for the localization "
+            "node. Web-managed launches set this to false for maps without a "
+            "scan context database so a manual initial pose is required."
+        ),
     )
     colorized_output = SetEnvironmentVariable(
         "RCUTILS_COLORIZED_OUTPUT",
@@ -78,7 +94,14 @@ def generate_launch_description():
             package="lio_sam_hesai",
             executable="lio_sam_hesai_relocalization",
             name="lio_sam_hesai_relocalization",
-            parameters=[parameter_file, {"use_sim_time": use_sim}],
+            parameters=[
+                parameter_file,
+                {
+                    "localization.map_path": map_path,
+                    "localization.auto_relocalization": auto_relocalization,
+                    "use_sim_time": use_sim,
+                },
+            ],
             output="screen",
             emulate_tty=True,
         ),
@@ -114,6 +137,8 @@ def generate_launch_description():
             use_sim_declare,
             use_rviz_declare,
             publish_static_tf_declare,
+            map_path_declare,
+            auto_relocalization_declare,
             colorized_output,
         ]
         + nodes

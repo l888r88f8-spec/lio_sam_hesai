@@ -60,7 +60,10 @@ struct HealthReport {
   double s_stream = 0.0;
   double s_consistency = 0.0;
   double covariance_scale = 1.0;
+  // reason remains the current state name for compatibility. This field
+  // records the exact branch that caused the most recent transition, or NONE.
   std::string reason;
+  std::string transition_reason{"NONE"};
 };
 
 inline double DiagnosticFitnessForPublication(float reg_fitness,

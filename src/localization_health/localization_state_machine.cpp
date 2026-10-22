@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
+#include <string>
 
 namespace localization_health {
 namespace {
@@ -13,6 +14,21 @@ double Clamp(double value, double lower, double upper) {
 
 bool IsPositiveFinite(double value) {
   return std::isfinite(value) && value > 0.0;
+}
+
+std::string CountedReason(const char* kind, int count, int required) {
+  return std::string(kind) + ":" + std::to_string(count) + "/" +
+         std::to_string(required);
+}
+
+std::string HardFailureReason(const HealthInputs& input) {
+  if (input.stream.lidar_stalled) {
+    return "hard_failure:lidar_stalled";
+  }
+  if (input.tf_pose_stale) {
+    return "hard_failure:tf_pose_stale";
+  }
+  return "hard_failure:result_timeout";
 }
 
 }  // namespace
@@ -37,31 +53,38 @@ LocalizationStateMachine::LocalizationStateMachine(const Config& config)
 }
 
 HealthReport LocalizationStateMachine::Update(const HealthInputs& input) {
+  std::string transition_reason{"NONE"};
   switch (state_) {
     case LocalizationState::kInit:
       if (input.has_imu_init && input.map_ready) {
         state_ = LocalizationState::kRelocalizing;
+        transition_reason = "init_ready";
         ClearCounters();
       }
       break;
     case LocalizationState::kRelocalizing:
       if (input.has_new_result && input.has_init && input.is_tracking) {
         state_ = LocalizationState::kTracking;
+        transition_reason = "tracking_result_committed";
         ClearCounters();
       }
       break;
     case LocalizationState::kTracking:
       if (IsHardFailure(input)) {
         state_ = LocalizationState::kDegraded;
+        transition_reason = HardFailureReason(input);
         ClearCounters();
       } else {
         bool enter_degraded = false;
+        bool fitness_triggered = false;
+        bool stream_triggered = false;
         if (input.has_new_result) {
           if (IsFitnessBad(input.reg_fitness,
                            config_.degraded_fitness_thres)) {
             ++degrade_frames_;
             enter_degraded =
                 degrade_frames_ >= config_.degrade_enter_frames;
+            fitness_triggered = enter_degraded;
           } else {
             degrade_frames_ = 0;
           }
@@ -69,15 +92,25 @@ HealthReport LocalizationStateMachine::Update(const HealthInputs& input) {
         if (input.has_new_stream_observation) {
           if (IsStreamWarn(input)) {
             ++stream_degrade_frames_;
-            enter_degraded =
-                enter_degraded ||
+            const bool stream_threshold_reached =
                 stream_degrade_frames_ >= config_.degrade_enter_frames;
+            enter_degraded = enter_degraded || stream_threshold_reached;
+            stream_triggered = stream_threshold_reached;
           } else {
             stream_degrade_frames_ = 0;
           }
         }
         if (enter_degraded) {
           state_ = LocalizationState::kDegraded;
+          if (fitness_triggered) {
+            transition_reason = CountedReason(
+                "fitness_degraded", degrade_frames_,
+                config_.degrade_enter_frames);
+          } else if (stream_triggered) {
+            transition_reason = CountedReason(
+                "stream_degraded", stream_degrade_frames_,
+                config_.degrade_enter_frames);
+          }
           ClearCounters();
         }
       }
@@ -85,6 +118,7 @@ HealthReport LocalizationStateMachine::Update(const HealthInputs& input) {
     case LocalizationState::kDegraded:
       if (IsHardFailure(input)) {
         state_ = LocalizationState::kLost;
+        transition_reason = HardFailureReason(input);
         ClearCounters();
       } else {
         if (input.has_new_result) {
@@ -93,6 +127,8 @@ HealthReport LocalizationStateMachine::Update(const HealthInputs& input) {
             recover_frames_ = 0;
             if (lost_frames_ >= config_.lost_enter_frames) {
               state_ = LocalizationState::kLost;
+              transition_reason = CountedReason(
+                  "fitness_lost", lost_frames_, config_.lost_enter_frames);
               ClearCounters();
             }
           } else {
@@ -101,6 +137,8 @@ HealthReport LocalizationStateMachine::Update(const HealthInputs& input) {
               ++recover_frames_;
               if (recover_frames_ >= config_.recover_frames) {
                 state_ = LocalizationState::kTracking;
+                transition_reason = CountedReason(
+                    "recovered", recover_frames_, config_.recover_frames);
                 ClearCounters();
               }
             } else {
@@ -117,6 +155,7 @@ HealthReport LocalizationStateMachine::Update(const HealthInputs& input) {
     case LocalizationState::kLost:
       if (IsRecoveryHealthy(input)) {
         state_ = LocalizationState::kRelocalizing;
+        transition_reason = "recovery_healthy";
         ClearCounters();
       }
       break;
@@ -150,6 +189,7 @@ HealthReport LocalizationStateMachine::Update(const HealthInputs& input) {
               config_.max_covariance_scale);
   }
   report.reason = ToString(state_);
+  report.transition_reason = std::move(transition_reason);
   return report;
 }
 

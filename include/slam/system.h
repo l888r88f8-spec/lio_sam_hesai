@@ -30,6 +30,7 @@
 #include "lidar/pointcloud_cluster.h"
 #include "localization_health/data_stream_watchdog.h"
 #include "localization_health/localization_recovery_coordinator.h"
+#include "localization_health/log_throttle.h"
 #include "localization_health/tf_continuity_controller.h"
 #include "localization_health/tf_prediction_anchor.h"
 #include "runtime/thread_runtime_controller.h"
@@ -228,6 +229,9 @@ class System : public rclcpp::Node {
   bool has_new_health_result_ = false;
   double current_health_covariance_scale_ = 1.0;
   std::string last_auto_relocalization_trigger_{"none"};
+  // Only the System timer thread touches these logging fields.
+  std::optional<localization_health::LocalizationState> last_logged_health_state_;
+  localization_health::SteadyLogThrottle health_summary_throttle_{1000000U};
 };
 
 #endif  // FUNNY_LIDAR_SLAM_SYSTEM_H

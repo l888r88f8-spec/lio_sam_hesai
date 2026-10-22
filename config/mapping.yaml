@@ -7,7 +7,7 @@
       imu_topic: "/imu"                                  # IMU data in
       gps_topic: "odometry/gps"                          # GPS odometry topic from navsat out
 
-    # 包内节点间协议话题（下游通常不需要消费）
+    # 包内节点间协议话题
     pipeline_topic:
       cloud_info: "lio_sam/deskew/cloud_info"
       feature_cloud_info: "lio_sam/feature/cloud_info"
@@ -94,7 +94,7 @@
       ground_resolution: 0.1                             # 自动导出全局地面地图时的下采样分辨率，0表示不额外下采样
       save_tiled_map: true                               # 按瓦片导出地图
       tiled_map:
-        tile_size_m: 30.0
+        tile_size_m: 40.0
         output_subdirectory: "tiled"
         overview_resolution_m: 5.0
       align_ground_to_zero: false                        # 保存地图PCD时整体平移Z，使地面接近map.z=0
