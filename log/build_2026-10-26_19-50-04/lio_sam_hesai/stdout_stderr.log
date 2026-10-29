@@ -1,0 +1,20 @@
+[ 16%] Building CXX object CMakeFiles/lio_sam_hesai_dufomap_native.dir/src/common/dufomap_backend.cpp.o
+[ 16%] Built target gtest_main
+[ 33%] Built target lio_sam_hesai__cpp
+[ 33%] Built target gtest
+[ 66%] Built target lio_sam_hesai__rosidl_typesupport_cpp
+In file included from /home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/geometry/intersects.hpp:48,
+                 from /home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/map/predicate/spatial.hpp:49,
+                 from /home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/map/octree/octree.hpp:57,
+                 from /home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/map/octree/octree_map.hpp:47,
+                 from /home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/map/ufomap.hpp:63,
+                 from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:13:
+/home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/geometry/helper.hpp: In function ‘constexpr std::pair<float, float> ufo::getInterval(const ufo::AABB&, ufo::Point)’:
+/home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/geometry/helper.hpp:174:77: note: parameter passing for argument of type ‘std::pair<float, float>’ when C++17 is enabled changed to match C++14 in GCC 10.1
+  174 | constexpr std::pair<float, float> getInterval(AABB const& aabb, Point axis) noexcept
+      |                                                                             ^~~~~~~~
+[ 83%] Linking CXX static library liblio_sam_hesai_dufomap_native.a
+[ 83%] Built target lio_sam_hesai_dufomap_native
+Consolidate compiler generated dependencies of target test_online_dufomap
+[ 83%] Building CXX object CMakeFiles/test_online_dufomap.dir/test/test_online_dufomap.cpp.o
+[ 83%] Linking CXX executable test_online_dufomap

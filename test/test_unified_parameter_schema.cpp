@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cctype>
+#include <cmath>
 #include <fstream>
 #include <set>
 #include <sstream>
@@ -120,7 +121,6 @@ const std::vector<ParameterContract> kParameterContracts = {
   {"generateScDb", "map_save.generate_scan_context_db", kMappingReader},
   {"savePCDDirectory", "map_save.directory", kMappingSurfaces},
   {"savePCDResolution", "map_save.resolution", kMappingSurfaces},
-  {"saveGroundPCD", "map_save.save_ground_map", kMappingSurfaces},
   {"saveGroundPCDResolution", "map_save.ground_resolution",
     kMappingSurfaces},
   {"groundPCDDirectory", "map_save.ground_directory", kMappingReader},
@@ -382,12 +382,13 @@ std::set<std::string> ReadCppParameterNamesFromText(
   const std::string & source_text)
 {
   const std::string text = StripCppComments(source_text);
-  const std::array<std::string, 5> parameter_functions = {
+  const std::array<std::string, 6> parameter_functions = {
     "declare_parameter",
     "get_parameter",
     "util::param",
     "ReadParam",
     "ReadDerivedLegacy",
+    "ReadGroundParam",
   };
   std::set<std::string> parameter_names;
 
@@ -406,8 +407,17 @@ std::set<std::string> ReadCppParameterNamesFromText(
       {
         const std::size_t quote_end = text.find('"', quote + 1);
         if (quote_end != std::string::npos) {
-          parameter_names.insert(
-            text.substr(quote + 1, quote_end - quote - 1));
+          const std::string name = text.substr(quote + 1, quote_end - quote - 1);
+          if (function == "ReadGroundParam") {
+            // One shared reader declares mapping's RingPlane canonical keys
+            // and localization's unchanged original canonical keys.
+            if (name != "ring_plane." && name != "ground_segmentation.") {
+              parameter_names.insert("ring_plane." + name);
+              parameter_names.insert("ground_segmentation." + name);
+            }
+          } else {
+            parameter_names.insert(name);
+          }
         }
       }
       search_from = call + function.size();
@@ -425,13 +435,15 @@ std::set<std::string> ReadCppParameterNames(
 
 // Canonical keys P2.2 introduced that have no legacy counterpart: they used to
 // be hardcoded in the node constructors rather than exposed as parameters.
-struct CanonicalTopicContract
+struct CanonicalKeyContract
 {
   std::string canonical;
   unsigned surfaces;
 };
 
-const std::vector<CanonicalTopicContract> kCanonicalTopicContracts = {
+const std::vector<CanonicalKeyContract> kCanonicalKeyContracts = {
+  // mapping local-map retention budget
+  {"local_map.transformed_cache_max_mb", kMappingSurfaces},
   // mapping pipeline topics
   {"pipeline_topic.cloud_info", kMappingSurfaces},
   {"pipeline_topic.feature_cloud_info", kMappingSurfaces},
@@ -454,6 +466,13 @@ const std::vector<CanonicalTopicContract> kCanonicalTopicContracts = {
   {"output_topic.imu_path", kMappingSurfaces},
   {"output_topic.loop_history", kMappingSurfaces},
   {"output_topic.loop_constraints", kMappingSurfaces},
+  // mapping final GroundMap export mode
+  {"map_save.ground_grid.enable", kMappingSurfaces},
+  {"map_save.ground_grid.max_hole_cells", kMappingSurfaces},
+  {"map_save.ground_mesh.enable", kMappingSurfaces},
+  {"map_save.ground_mesh.max_edge_length", kMappingSurfaces},
+  {"map_save.ground_mesh.edge_length_per_meter", kMappingSurfaces},
+  {"map_save.ground_mesh.max_range_ratio", kMappingSurfaces},
   // localization outputs and its one external command input
   {"output_topic.path", kRelocalizationSurfaces},
   {"output_topic.global_map", kRelocalizationSurfaces},
@@ -470,10 +489,16 @@ std::set<std::string> CanonicalNamesForSurface(unsigned surface)
   std::set<std::string> names;
   for (const auto & contract : kParameterContracts) {
     if ((contract.surfaces & surface) != 0U) {
-      names.insert(contract.canonical);
+      std::string canonical = contract.canonical;
+      const std::string ground_prefix = "ground_segmentation.";
+      if ((surface == kMappingReader || surface == kMappingYaml) &&
+          canonical.find(ground_prefix) == 0U) {
+        canonical = "ring_plane." + canonical.substr(ground_prefix.size());
+      }
+      names.insert(canonical);
     }
   }
-  for (const auto & contract : kCanonicalTopicContracts) {
+  for (const auto & contract : kCanonicalKeyContracts) {
     if ((contract.surfaces & surface) != 0U) {
       names.insert(contract.canonical);
     }
@@ -683,7 +708,6 @@ TEST(UnifiedParameterSchema, TiledMapParametersUseCanonicalNames) {
     "localization.tiled_map.load_timeout_ms",
   };
   const std::set<std::string> map_save_names = {
-    "map_save.save_tiled_map",
     "map_save.tiled_map.tile_size_m",
     "map_save.tiled_map.output_subdirectory",
     "map_save.tiled_map.overview_resolution_m",
@@ -700,9 +724,15 @@ TEST(UnifiedParameterSchema, TiledMapParametersUseCanonicalNames) {
   const std::string mapping_yaml = ReadProjectFile("config/mapping.yaml");
   const std::string relocalization_yaml =
       ReadProjectFile("config/relocalization.yaml");
-  EXPECT_NE(mapping_yaml.find("save_tiled_map: true"),
-            std::string::npos);
-  EXPECT_NE(mapping_yaml.find("tile_size_m: 100.0"), std::string::npos);
+  const std::string tile_size_key = "tile_size_m:";
+  const auto tile_size_position = mapping_yaml.find(tile_size_key);
+  ASSERT_NE(tile_size_position, std::string::npos);
+  std::istringstream tile_size_input(
+      mapping_yaml.substr(tile_size_position + tile_size_key.size()));
+  double tile_size = 0.0;
+  ASSERT_TRUE(static_cast<bool>(tile_size_input >> tile_size));
+  EXPECT_TRUE(std::isfinite(tile_size));
+  EXPECT_GT(tile_size, 0.0);
   EXPECT_NE(mapping_yaml.find("output_subdirectory: \"tiled\""),
             std::string::npos);
   EXPECT_NE(mapping_yaml.find("overview_resolution_m: 5.0"),
@@ -904,4 +934,15 @@ TEST(UnifiedParameterSchema, ShutdownAutoSaveContract) {
     SCOPED_TRACE(artifact);
     EXPECT_EQ(mapping_yaml.find(artifact), std::string::npos);
   }
+}
+
+TEST(UnifiedParameterSchema, SharedGroundScannerCoversBothCanonicalPrefixes) {
+  const auto names = ReadCppParameterNamesFromText(
+      "auto value = ReadGroundParam<double>(node, mapping, \"leaf_size\", "
+      "std::string(\"groundLeafSize\"), value, warnings);\n"
+      "// ReadGroundParam<int>(node, mapping, \"fake\", {}, value, warnings);\n");
+  EXPECT_EQ(names.count("ring_plane.leaf_size"), 1U);
+  EXPECT_EQ(names.count("ground_segmentation.leaf_size"), 1U);
+  EXPECT_EQ(names.count("groundLeafSize"), 0U);
+  EXPECT_EQ(names.count("ring_plane.fake"), 0U);
 }

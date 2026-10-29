@@ -1,0 +1,1059 @@
+[0.000000] (-) TimerEvent: {}
+[0.000236] (lio_sam_hesai) JobQueued: {'identifier': 'lio_sam_hesai', 'dependencies': OrderedDict()}
+[0.000923] (lio_sam_hesai) JobStarted: {'identifier': 'lio_sam_hesai'}
+[0.013826] (lio_sam_hesai) JobProgress: {'identifier': 'lio_sam_hesai', 'progress': 'cmake'}
+[0.015857] (lio_sam_hesai) JobProgress: {'identifier': 'lio_sam_hesai', 'progress': 'build'}
+[0.017492] (lio_sam_hesai) JobProgress: {'identifier': 'lio_sam_hesai', 'progress': "build target 'test_online_dufomap'"}
+[0.017589] (lio_sam_hesai) Command: {'cmd': ['/usr/bin/cmake', '--build', '/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai', '--target', 'test_online_dufomap', '--', '-j8', '-l8'], 'cwd': '/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai', 'env': OrderedDict([('USER', 'robot'), ('SHLVL', '0'), ('LD_LIBRARY_PATH', '/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/aarch64-linux-gnu:/opt/ros/humble/opt/openvdb_vendor/lib:/opt/ros/humble/lib'), ('VIPSHOME', '/target'), ('DSH_SESSION_ID', 'session-2930570e-64b9-426b-a86e-9673f3110efc'), ('HOME', '/home/robot'), ('ROS_PYTHON_VERSION', '3'), ('PAGER', 'cat'), ('NO_COLOR', '1'), ('ROS_DISTRO', 'humble'), ('LOGNAME', 'robot'), ('_', '/usr/bin/colcon'), ('ROS_VERSION', '2'), ('TERM', 'dumb'), ('ROS_LOCALHOST_ONLY', '0'), ('PATH', '/home/robot/.codex/tmp/arg0-linux/codex-arg0ZUNSZc:/home/robot/.vscode-server/cli/servers/Stable-e646868227c3e3a9e3f24277c8c7220be42c0be7/server/bin/remote-cli:/home/robot/.local/bin:/opt/ros/humble/bin:/home/robot/.local/share/pnpm:/home/robot/.cargo/bin:/home/robot/.nvm/versions/node/v24.21.0/bin:/home/robot/.opencode/bin:/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/home/robot/.vscode-server/extensions/openai.chatgpt-26.1021.22027-linux-arm64/bin/linux-aarch64'), ('LANG', 'en_US.UTF-8'), ('AMENT_PREFIX_PATH', '/opt/ros/humble'), ('DSH_HOME', '/home/robot/.dsh'), ('SHELL', '/bin/bash'), ('DSH_SHELL', '1'), ('GIT_PAGER', 'cat'), ('PWD', '/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai'), ('PYTHONPATH', '/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages'), ('COLCON', '1'), ('CMAKE_PREFIX_PATH', '/opt/ros/humble')]), 'shell': False}
+[0.078162] (lio_sam_hesai) StdoutLine: {'line': b'-- Found glog    (include: /usr/include, library: /usr/lib/aarch64-linux-gnu/libglog.so)\n'}
+[0.080658] (lio_sam_hesai) StdoutLine: {'line': b'-- Searching for g2o ...\n'}
+[0.080981] (lio_sam_hesai) StdoutLine: {'line': b'-- Found g2o headers in: /opt/ros/humble/include\n'}
+[0.081111] (lio_sam_hesai) StdoutLine: {'line': b'-- Found libg2o: /opt/ros/humble/lib/aarch64-linux-gnu/libg2o_csparse_extension.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_core.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_stuff.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_types_slam2d.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_types_slam3d.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_solver_cholmod.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_solver_pcg.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_solver_csparse.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_solver_eigen.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_incremental.so\n'}
+[0.081321] (lio_sam_hesai) StdoutLine: {'line': b'-- Found ament_cmake: 1.3.14 (/opt/ros/humble/share/ament_cmake/cmake)\n'}
+[0.099408] (-) TimerEvent: {}
+[0.199752] (-) TimerEvent: {}
+[0.300176] (-) TimerEvent: {}
+[0.303107] (lio_sam_hesai) StdoutLine: {'line': b'-- Found rosidl_default_generators: 1.2.1 (/opt/ros/humble/share/rosidl_default_generators/cmake)\n'}
+[0.307447] (lio_sam_hesai) StdoutLine: {'line': b'-- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c\n'}
+[0.315555] (lio_sam_hesai) StdoutLine: {'line': b'-- Found rosidl_adapter: 3.1.8 (/opt/ros/humble/share/rosidl_adapter/cmake)\n'}
+[0.383231] (lio_sam_hesai) StdoutLine: {'line': b'-- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp\n'}
+[0.400258] (-) TimerEvent: {}
+[0.424002] (lio_sam_hesai) StdoutLine: {'line': b'-- Found rclcpp: 16.0.18 (/opt/ros/humble/share/rclcpp/cmake)\n'}
+[0.475718] (lio_sam_hesai) StdoutLine: {'line': b'-- Found rmw_implementation_cmake: 6.1.2 (/opt/ros/humble/share/rmw_implementation_cmake/cmake)\n'}
+[0.477375] (lio_sam_hesai) StdoutLine: {'line': b'-- Found rmw_fastrtps_cpp: 6.2.10 (/opt/ros/humble/share/rmw_fastrtps_cpp/cmake)\n'}
+[0.500366] (-) TimerEvent: {}
+[0.600679] (-) TimerEvent: {}
+[0.637480] (lio_sam_hesai) StdoutLine: {'line': b"-- Using RMW implementation 'rmw_fastrtps_cpp' as default\n"}
+[0.700818] (-) TimerEvent: {}
+[0.707303] (lio_sam_hesai) StdoutLine: {'line': b'-- Found rclpy: 3.3.21 (/opt/ros/humble/share/rclpy/cmake)\n'}
+[0.707675] (lio_sam_hesai) StdoutLine: {'line': b'-- Found cv_bridge: 3.2.1 (/opt/ros/humble/share/cv_bridge/cmake)\n'}
+[0.761231] (lio_sam_hesai) StdoutLine: {'line': b'-- Found nav_msgs: 4.9.1 (/opt/ros/humble/share/nav_msgs/cmake)\n'}
+[0.785124] (lio_sam_hesai) StdoutLine: {'line': b'-- Found diagnostic_msgs: 4.9.1 (/opt/ros/humble/share/diagnostic_msgs/cmake)\n'}
+[0.800895] (-) TimerEvent: {}
+[0.802031] (lio_sam_hesai) StdoutLine: {'line': b'-- Found visualization_msgs: 4.9.1 (/opt/ros/humble/share/visualization_msgs/cmake)\n'}
+[0.829059] (lio_sam_hesai) StdoutLine: {'line': b'-- Found pcl_conversions: 2.4.5 (/opt/ros/humble/share/pcl_conversions/cmake)\n'}
+[0.881714] (lio_sam_hesai) StdoutLine: {'line': b'-- Eigen found (include: /usr/include/eigen3, version: 3.4.0)\n'}
+[0.901042] (-) TimerEvent: {}
+[0.930895] (lio_sam_hesai) StdoutLine: {'line': b'-- FLANN found (include: /usr/include, lib: /usr/lib/aarch64-linux-gnu/libflann_cpp.so)\n'}
+[1.001237] (-) TimerEvent: {}
+[1.101594] (-) TimerEvent: {}
+[1.202014] (-) TimerEvent: {}
+[1.302398] (-) TimerEvent: {}
+[1.402778] (-) TimerEvent: {}
+[1.405592] (lio_sam_hesai) StdoutLine: {'line': b'-- OpenNI found (version: 1.5.4.0, include: /usr/include/ni, lib: /usr/lib/libOpenNI.so;libusb::libusb)\n'}
+[1.417090] (lio_sam_hesai) StdoutLine: {'line': b'-- OpenNI2 found (version: 2.2.0.33, include: /usr/include/openni2, lib: /usr/lib/aarch64-linux-gnu/libOpenNI2.so;libusb::libusb)\n'}
+[1.502944] (-) TimerEvent: {}
+[1.603368] (-) TimerEvent: {}
+[1.664278] (lio_sam_hesai) StdoutLine: {'line': b'-- Eigen found (include: /usr/include/eigen3, version: 3.4.0)\n'}
+[1.676100] (lio_sam_hesai) StdoutLine: {'line': b'-- OpenNI found (version: 1.5.4.0, include: /usr/include/ni, lib: /usr/lib/libOpenNI.so;libusb::libusb)\n'}
+[1.687149] (lio_sam_hesai) StdoutLine: {'line': b'-- OpenNI2 found (version: 2.2.0.33, include: /usr/include/openni2, lib: /usr/lib/aarch64-linux-gnu/libOpenNI2.so;libusb::libusb)\n'}
+[1.703541] (-) TimerEvent: {}
+[1.803937] (-) TimerEvent: {}
+[1.904359] (-) TimerEvent: {}
+[1.926444] (lio_sam_hesai) StdoutLine: {'line': b'-- Found Qhull version 8.0.2\n'}
+[2.004521] (-) TimerEvent: {}
+[2.104903] (-) TimerEvent: {}
+[2.167060] (lio_sam_hesai) StdoutLine: {'line': b'-- OpenNI found (version: 1.5.4.0, include: /usr/include/ni, lib: /usr/lib/libOpenNI.so;libusb::libusb)\n'}
+[2.205061] (-) TimerEvent: {}
+[2.305460] (-) TimerEvent: {}
+[2.403222] (lio_sam_hesai) StdoutLine: {'line': b'-- Found tf2: 0.25.19 (/opt/ros/humble/share/tf2/cmake)\n'}
+[2.405542] (-) TimerEvent: {}
+[2.409081] (lio_sam_hesai) StdoutLine: {'line': b'-- Found tf2_geometry_msgs: 0.25.19 (/opt/ros/humble/share/tf2_geometry_msgs/cmake)\n'}
+[2.413803] (lio_sam_hesai) StdoutLine: {'line': b'-- Found eigen3_cmake_module: 0.1.1 (/opt/ros/humble/share/eigen3_cmake_module/cmake)\n'}
+[2.415793] (lio_sam_hesai) StdoutLine: {'line': b'-- Ensuring Eigen3 include directory is part of orocos-kdl CMake target\n'}
+[2.505712] (-) TimerEvent: {}
+[2.525852] (lio_sam_hesai) StdoutLine: {'line': b'-- Found tf2_sensor_msgs: 0.25.19 (/opt/ros/humble/share/tf2_sensor_msgs/cmake)\n'}
+[2.531706] (lio_sam_hesai) StdoutLine: {'line': b'-- Found tf2_eigen: 0.25.19 (/opt/ros/humble/share/tf2_eigen/cmake)\n'}
+[2.541573] (lio_sam_hesai) StderrLine: {'line': b'CMake Warning (dev) at CMakeLists.txt:38 (find_package):\n'}
+[2.542012] (lio_sam_hesai) StderrLine: {'line': b'  Policy CMP0074 is not set: find_package uses <PackageName>_ROOT variables.\n'}
+[2.542303] (lio_sam_hesai) StderrLine: {'line': b'  Run "cmake --help-policy CMP0074" for policy details.  Use the cmake_policy\n'}
+[2.542557] (lio_sam_hesai) StderrLine: {'line': b'  command to set the policy and suppress this warning.\n'}
+[2.542826] (lio_sam_hesai) StderrLine: {'line': b'\n'}
+[2.543074] (lio_sam_hesai) StderrLine: {'line': b'  CMake variable PCL_ROOT is set to:\n'}
+[2.543316] (lio_sam_hesai) StderrLine: {'line': b'\n'}
+[2.543547] (lio_sam_hesai) StderrLine: {'line': b'    /usr\n'}
+[2.543775] (lio_sam_hesai) StderrLine: {'line': b'\n'}
+[2.544000] (lio_sam_hesai) StderrLine: {'line': b'  For compatibility, CMake is ignoring the variable.\n'}
+[2.544230] (lio_sam_hesai) StderrLine: {'line': b'This warning is for project developers.  Use -Wno-dev to suppress it.\n'}
+[2.544457] (lio_sam_hesai) StderrLine: {'line': b'\n'}
+[2.562148] (lio_sam_hesai) StdoutLine: {'line': b'-- Found pluginlib: 5.1.3 (/opt/ros/humble/share/pluginlib/cmake)\n'}
+[2.582175] (lio_sam_hesai) StdoutLine: {'line': b'-- Found rviz_common: 11.2.26 (/opt/ros/humble/share/rviz_common/cmake)\n'}
+[2.586464] (lio_sam_hesai) StdoutLine: {'line': b"-- Setting assimp_DIR to: '/opt/ros/humble/share/rviz_assimp_vendor/cmake/../../../opt/rviz_assimp_vendor/lib/cmake/assimp-4.1'\n"}
+[2.592545] (lio_sam_hesai) StdoutLine: {'line': b"-- Setting OGRE_DIR to: '/opt/ros/humble/share/rviz_ogre_vendor/cmake/../../../opt/rviz_ogre_vendor/lib/OGRE/cmake'\n"}
+[2.594196] (lio_sam_hesai) StdoutLine: {'line': b'-- Found OGRE\n'}
+[2.594401] (lio_sam_hesai) StdoutLine: {'line': b'--   static     : OFF\n'}
+[2.594589] (lio_sam_hesai) StdoutLine: {'line': b'--   components : HLMS;MeshLodGenerator;Overlay;Paging;Property;RTShaderSystem;Terrain;Volume\n'}
+[2.594743] (lio_sam_hesai) StdoutLine: {'line': b'--   plugins    : Plugin_BSPSceneManager;Plugin_OctreeSceneManager;Plugin_PCZSceneManager;Plugin_ParticleFX;RenderSystem_GL;RenderSystem_GL3Plus;Codec_STBI\n'}
+[2.595130] (lio_sam_hesai) StdoutLine: {'line': b'--   media      : /opt/ros/humble/opt/rviz_ogre_vendor/share/OGRE/Media\n'}
+[2.595372] (lio_sam_hesai) StdoutLine: {'line': b'-- OGRE_LIBRARIES: OgreHLMS;OgreMeshLodGenerator;OgreOverlay;OgrePaging;OgreProperty;OgreRTShaderSystem;OgreTerrain;OgreVolume;OgreMain\n'}
+[2.595644] (lio_sam_hesai) StdoutLine: {'line': b'-- OGRE_LIBRARY_DIRS: /opt/ros/humble/opt/rviz_ogre_vendor/lib\n'}
+[2.595883] (lio_sam_hesai) StdoutLine: {'line': b'-- OGRE_PLUGINS: Plugin_BSPSceneManager;Plugin_OctreeSceneManager;Plugin_PCZSceneManager;Plugin_ParticleFX;RenderSystem_GL;RenderSystem_GL3Plus;Codec_STBI\n'}
+[2.596117] (lio_sam_hesai) StdoutLine: {'line': b'-- OGRE_PLUGIN_DIR: /opt/ros/humble/opt/rviz_ogre_vendor/lib/OGRE\n'}
+[2.596346] (lio_sam_hesai) StdoutLine: {'line': b'-- rviz_ogre_vendor::OgreOverlay for IMPORTED_LOCATION_RELEASE: /opt/ros/humble/opt/rviz_ogre_vendor/lib/libOgreOverlay.so\n'}
+[2.596573] (lio_sam_hesai) StdoutLine: {'line': b'-- rviz_ogre_vendor::OgreOverlay for IMPORTED_LOCATION_DEBUG: /opt/ros/humble/opt/rviz_ogre_vendor/lib/libOgreOverlay.so\n'}
+[2.596799] (lio_sam_hesai) StdoutLine: {'line': b'-- rviz_ogre_vendor::OgreMain for IMPORTED_LOCATION_RELEASE: /opt/ros/humble/opt/rviz_ogre_vendor/lib/libOgreMain.so\n'}
+[2.597023] (lio_sam_hesai) StdoutLine: {'line': b'-- rviz_ogre_vendor::OgreMain for IMPORTED_LOCATION_DEBUG: /opt/ros/humble/opt/rviz_ogre_vendor/lib/libOgreMain.so\n'}
+[2.598987] (lio_sam_hesai) StdoutLine: {'line': b'-- Could not find freeimage library\n'}
+[2.605782] (-) TimerEvent: {}
+[2.692720] (lio_sam_hesai) StdoutLine: {'line': b'-- library: /usr/lib/aarch64-linux-gnu/libcurl.so\n'}
+[2.705963] (-) TimerEvent: {}
+[2.719615] (lio_sam_hesai) StdoutLine: {'line': b'-- Found GTSAM include directory: /usr/local/include\n'}
+[2.720181] (lio_sam_hesai) StdoutLine: {'line': b'-- Found GTSAM unstable include directory: /usr/local/include\n'}
+[2.720481] (lio_sam_hesai) StdoutLine: {'line': b'-- Found GTSAM libraries: /usr/local/lib/libgtsam.so;/usr/local/lib/libgtsam_unstable.so\n'}
+[2.806149] (-) TimerEvent: {}
+[2.906498] (-) TimerEvent: {}
+[3.006847] (-) TimerEvent: {}
+[3.107254] (-) TimerEvent: {}
+[3.207684] (-) TimerEvent: {}
+[3.292410] (lio_sam_hesai) StdoutLine: {'line': b'-- Found ament_cmake_ros: 0.10.0 (/opt/ros/humble/share/ament_cmake_ros/cmake)\n'}
+[3.307774] (-) TimerEvent: {}
+[3.408082] (-) TimerEvent: {}
+[3.508501] (-) TimerEvent: {}
+[3.608887] (-) TimerEvent: {}
+[3.709274] (-) TimerEvent: {}
+[3.796453] (lio_sam_hesai) StdoutLine: {'line': b'-- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c\n'}
+[3.809462] (-) TimerEvent: {}
+[3.909862] (-) TimerEvent: {}
+[4.010328] (-) TimerEvent: {}
+[4.110775] (-) TimerEvent: {}
+[4.211219] (-) TimerEvent: {}
+[4.311859] (-) TimerEvent: {}
+[4.412595] (-) TimerEvent: {}
+[4.508927] (lio_sam_hesai) StdoutLine: {'line': b'-- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp\n'}
+[4.512661] (-) TimerEvent: {}
+[4.548611] (lio_sam_hesai) StdoutLine: {'line': b'-- Found python_cmake_module: 0.10.0 (/opt/ros/humble/share/python_cmake_module/cmake)\n'}
+[4.588937] (lio_sam_hesai) StdoutLine: {'line': b'-- Using PYTHON_EXECUTABLE: /usr/bin/python3\n'}
+[4.589339] (lio_sam_hesai) StdoutLine: {'line': b'-- Using PYTHON_INCLUDE_DIRS: /usr/include/python3.10\n'}
+[4.589468] (lio_sam_hesai) StdoutLine: {'line': b'-- Using PYTHON_LIBRARIES: /usr/lib/aarch64-linux-gnu/libpython3.10.so\n'}
+[4.612827] (-) TimerEvent: {}
+[4.713210] (-) TimerEvent: {}
+[4.813616] (-) TimerEvent: {}
+[4.914117] (-) TimerEvent: {}
+[5.014521] (-) TimerEvent: {}
+[5.110658] (lio_sam_hesai) StdoutLine: {'line': b'-- Found ament_lint_auto: 0.12.15 (/opt/ros/humble/share/ament_lint_auto/cmake)\n'}
+[5.112017] (lio_sam_hesai) StdoutLine: {'line': b"-- Found gtest sources under '/opt/ros/humble/src/gtest_vendor': C++ tests using 'Google Test' will be built\n"}
+[5.114566] (-) TimerEvent: {}
+[5.214812] (-) TimerEvent: {}
+[5.298263] (lio_sam_hesai) StdoutLine: {'line': b"-- Added test 'copyright' to check source files copyright and LICENSE\n"}
+[5.314916] (-) TimerEvent: {}
+[5.415239] (-) TimerEvent: {}
+[5.515631] (-) TimerEvent: {}
+[5.616028] (-) TimerEvent: {}
+[5.631054] (lio_sam_hesai) StdoutLine: {'line': b"-- Added test 'cppcheck' to perform static code analysis on C / C++ code\n"}
+[5.644639] (lio_sam_hesai) StdoutLine: {'line': b'-- Configured cppcheck include dirs: /home/robot/slam_ws/src/lio_sam_hesai/include;/home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam;$<BUILD_INTERFACE:/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_generator_c>;$<BUILD_INTERFACE:/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_typesupport_fastrtps_c>;$<BUILD_INTERFACE:/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_typesupport_introspection_c>;$<BUILD_INTERFACE:/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_generator_cpp>;$<BUILD_INTERFACE:/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_typesupport_fastrtps_cpp>;$<BUILD_INTERFACE:/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_typesupport_introspection_cpp>;/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_generator_c;/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_generator_py;/home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/arm64;/home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include;/home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/compat;/home/robot/slam_ws/src/lio_sam_hesai/third_party/patchworkpp/cpp/common/include;/home/robot/slam_ws/src/lio_sam_hesai/third_party/patchworkpp/cpp/patchworkpp/include\n'}
+[5.644967] (lio_sam_hesai) StdoutLine: {'line': b'-- Configured cppcheck exclude dirs and/or files: \n'}
+[5.716187] (-) TimerEvent: {}
+[5.816585] (-) TimerEvent: {}
+[5.916971] (-) TimerEvent: {}
+[5.983225] (lio_sam_hesai) StdoutLine: {'line': b"-- Added test 'cpplint' to check C / C++ code against the Google style\n"}
+[5.983685] (lio_sam_hesai) StdoutLine: {'line': b'-- Configured cpplint exclude dirs and/or files: \n'}
+[6.017130] (-) TimerEvent: {}
+[6.025580] (lio_sam_hesai) StdoutLine: {'line': b"-- Added test 'flake8' to check Python code syntax and style conventions\n"}
+[6.114157] (lio_sam_hesai) StdoutLine: {'line': b"-- Added test 'lint_cmake' to check CMake code style\n"}
+[6.117187] (-) TimerEvent: {}
+[6.157138] (lio_sam_hesai) StdoutLine: {'line': b"-- Added test 'pep257' to check Python code against some of the docstring style conventions in PEP 257\n"}
+[6.217387] (-) TimerEvent: {}
+[6.317747] (-) TimerEvent: {}
+[6.418117] (-) TimerEvent: {}
+[6.491627] (lio_sam_hesai) StdoutLine: {'line': b"-- Added test 'uncrustify' to check C / C++ code style\n"}
+[6.492050] (lio_sam_hesai) StdoutLine: {'line': b'-- Configured uncrustify additional arguments: \n'}
+[6.518261] (-) TimerEvent: {}
+[6.535161] (lio_sam_hesai) StdoutLine: {'line': b"-- Added test 'xmllint' to check XML markup files\n"}
+[6.538244] (lio_sam_hesai) StdoutLine: {'line': b'-- Configuring done\n'}
+[6.618459] (-) TimerEvent: {}
+[6.718919] (-) TimerEvent: {}
+[6.819379] (-) TimerEvent: {}
+[6.919839] (-) TimerEvent: {}
+[7.020304] (-) TimerEvent: {}
+[7.120754] (-) TimerEvent: {}
+[7.221112] (-) TimerEvent: {}
+[7.321469] (-) TimerEvent: {}
+[7.421849] (-) TimerEvent: {}
+[7.517160] (lio_sam_hesai) StdoutLine: {'line': b'-- Generating done\n'}
+[7.522020] (-) TimerEvent: {}
+[7.622376] (-) TimerEvent: {}
+[7.722784] (-) TimerEvent: {}
+[7.823205] (-) TimerEvent: {}
+[7.867009] (lio_sam_hesai) StdoutLine: {'line': b'-- Build files have been written to: /home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai\n'}
+[7.923385] (-) TimerEvent: {}
+[8.023962] (-) TimerEvent: {}
+[8.039504] (lio_sam_hesai) StdoutLine: {'line': b'Consolidate compiler generated dependencies of target gtest\n'}
+[8.039969] (lio_sam_hesai) StdoutLine: {'line': b'Consolidate compiler generated dependencies of target gtest_main\n'}
+[8.040313] (lio_sam_hesai) StdoutLine: {'line': b'Consolidate compiler generated dependencies of target lio_sam_hesai_dufomap_native\n'}
+[8.060900] (lio_sam_hesai) StdoutLine: {'line': b'[ 33%] Built target gtest\n'}
+[8.061338] (lio_sam_hesai) StdoutLine: {'line': b'[ 33%] Built target lio_sam_hesai_dufomap_native\n'}
+[8.061471] (lio_sam_hesai) StdoutLine: {'line': b'[ 33%] Generating C++ code for ROS interfaces\n'}
+[8.061583] (lio_sam_hesai) StdoutLine: {'line': b'[ 50%] Built target gtest_main\n'}
+[8.124097] (-) TimerEvent: {}
+[8.224447] (-) TimerEvent: {}
+[8.324823] (-) TimerEvent: {}
+[8.425205] (-) TimerEvent: {}
+[8.525554] (-) TimerEvent: {}
+[8.625888] (-) TimerEvent: {}
+[8.726211] (-) TimerEvent: {}
+[8.826575] (-) TimerEvent: {}
+[8.897230] (lio_sam_hesai) StdoutLine: {'line': b'[ 50%] Built target lio_sam_hesai__cpp\n'}
+[8.918535] (lio_sam_hesai) StdoutLine: {'line': b'[ 66%] Generating C++ type support dispatch for ROS interfaces\n'}
+[8.926645] (-) TimerEvent: {}
+[9.026951] (-) TimerEvent: {}
+[9.127398] (-) TimerEvent: {}
+[9.227865] (-) TimerEvent: {}
+[9.328297] (-) TimerEvent: {}
+[9.428723] (-) TimerEvent: {}
+[9.529342] (-) TimerEvent: {}
+[9.622468] (lio_sam_hesai) StdoutLine: {'line': b'Consolidate compiler generated dependencies of target lio_sam_hesai__rosidl_typesupport_cpp\n'}
+[9.629454] (-) TimerEvent: {}
+[9.645140] (lio_sam_hesai) StdoutLine: {'line': b'[ 66%] Building CXX object CMakeFiles/lio_sam_hesai__rosidl_typesupport_cpp.dir/rosidl_typesupport_cpp/lio_sam_hesai/srv/save_map_options__type_support.cpp.o\n'}
+[9.645615] (lio_sam_hesai) StdoutLine: {'line': b'[ 66%] Building CXX object CMakeFiles/lio_sam_hesai__rosidl_typesupport_cpp.dir/rosidl_typesupport_cpp/lio_sam_hesai/msg/cloud_info__type_support.cpp.o\n'}
+[9.729649] (-) TimerEvent: {}
+[9.830868] (-) TimerEvent: {}
+[9.931318] (-) TimerEvent: {}
+[10.031939] (-) TimerEvent: {}
+[10.132357] (-) TimerEvent: {}
+[10.187075] (lio_sam_hesai) StdoutLine: {'line': b'[ 83%] Linking CXX shared library liblio_sam_hesai__rosidl_typesupport_cpp.so\n'}
+[10.232554] (-) TimerEvent: {}
+[10.274266] (lio_sam_hesai) StdoutLine: {'line': b'[ 83%] Built target lio_sam_hesai__rosidl_typesupport_cpp\n'}
+[10.310088] (lio_sam_hesai) StdoutLine: {'line': b'Consolidate compiler generated dependencies of target test_online_dufomap\n'}
+[10.332728] (-) TimerEvent: {}
+[10.336228] (lio_sam_hesai) StdoutLine: {'line': b'[ 83%] Building CXX object CMakeFiles/test_online_dufomap.dir/test/test_online_dufomap.cpp.o\n'}
+[10.339087] (lio_sam_hesai) StdoutLine: {'line': b'[100%] Building CXX object CMakeFiles/test_online_dufomap.dir/src/common/online_dufomap.cpp.o\n'}
+[10.432897] (-) TimerEvent: {}
+[10.533302] (-) TimerEvent: {}
+[10.633696] (-) TimerEvent: {}
+[10.734108] (-) TimerEvent: {}
+[10.834511] (-) TimerEvent: {}
+[10.934921] (-) TimerEvent: {}
+[11.035334] (-) TimerEvent: {}
+[11.135751] (-) TimerEvent: {}
+[11.236164] (-) TimerEvent: {}
+[11.336594] (-) TimerEvent: {}
+[11.437011] (-) TimerEvent: {}
+[11.537447] (-) TimerEvent: {}
+[11.637867] (-) TimerEvent: {}
+[11.738295] (-) TimerEvent: {}
+[11.838692] (-) TimerEvent: {}
+[11.939092] (-) TimerEvent: {}
+[12.039486] (-) TimerEvent: {}
+[12.139889] (-) TimerEvent: {}
+[12.240312] (-) TimerEvent: {}
+[12.340728] (-) TimerEvent: {}
+[12.441127] (-) TimerEvent: {}
+[12.541534] (-) TimerEvent: {}
+[12.641941] (-) TimerEvent: {}
+[12.742413] (-) TimerEvent: {}
+[12.842825] (-) TimerEvent: {}
+[12.943223] (-) TimerEvent: {}
+[13.043654] (-) TimerEvent: {}
+[13.144110] (-) TimerEvent: {}
+[13.244541] (-) TimerEvent: {}
+[13.344945] (-) TimerEvent: {}
+[13.445378] (-) TimerEvent: {}
+[13.545816] (-) TimerEvent: {}
+[13.646267] (-) TimerEvent: {}
+[13.746712] (-) TimerEvent: {}
+[13.847174] (-) TimerEvent: {}
+[13.947664] (-) TimerEvent: {}
+[14.048071] (-) TimerEvent: {}
+[14.148488] (-) TimerEvent: {}
+[14.248913] (-) TimerEvent: {}
+[14.349332] (-) TimerEvent: {}
+[14.449776] (-) TimerEvent: {}
+[14.550203] (-) TimerEvent: {}
+[14.650640] (-) TimerEvent: {}
+[14.751081] (-) TimerEvent: {}
+[14.851582] (-) TimerEvent: {}
+[14.952138] (-) TimerEvent: {}
+[15.052576] (-) TimerEvent: {}
+[15.153008] (-) TimerEvent: {}
+[15.253446] (-) TimerEvent: {}
+[15.353930] (-) TimerEvent: {}
+[15.454403] (-) TimerEvent: {}
+[15.554838] (-) TimerEvent: {}
+[15.655240] (-) TimerEvent: {}
+[15.755681] (-) TimerEvent: {}
+[15.856160] (-) TimerEvent: {}
+[15.956616] (-) TimerEvent: {}
+[16.057039] (-) TimerEvent: {}
+[16.157449] (-) TimerEvent: {}
+[16.257854] (-) TimerEvent: {}
+[16.358289] (-) TimerEvent: {}
+[16.458713] (-) TimerEvent: {}
+[16.559129] (-) TimerEvent: {}
+[16.659544] (-) TimerEvent: {}
+[16.759976] (-) TimerEvent: {}
+[16.816767] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:26:22: error: \xe2\x80\x98DufomapConfig\xe2\x80\x99 has not been declared in \xe2\x80\x98lio_sam_hesai\xe2\x80\x99\n'}
+[16.817350] (lio_sam_hesai) StderrLine: {'line': b'   26 | using lio_sam_hesai::DufomapConfig;\n'}
+[16.817510] (lio_sam_hesai) StderrLine: {'line': b'      |                      ^~~~~~~~~~~~~\n'}
+[16.860160] (-) TimerEvent: {}
+[16.895425] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp: In function \xe2\x80\x98std::shared_ptr<sensor_msgs::msg::PointCloud2_<std::allocator<void> > > {anonymous}::MakeCloud(const std::vector<lio_sam_hesai::DufomapPoint>&)\xe2\x80\x99:\n'}
+[16.895969] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:59:8: error: \xe2\x80\x98toROSMsg\xe2\x80\x99 is not a member of \xe2\x80\x98pcl\xe2\x80\x99\n'}
+[16.896119] (lio_sam_hesai) StderrLine: {'line': b'   59 |   pcl::toROSMsg(cloud, *message);\n'}
+[16.896236] (lio_sam_hesai) StderrLine: {'line': b'      |        ^~~~~~~~\n'}
+[16.960332] (-) TimerEvent: {}
+[17.060793] (-) TimerEvent: {}
+[17.161212] (-) TimerEvent: {}
+[17.261659] (-) TimerEvent: {}
+[17.362132] (-) TimerEvent: {}
+[17.441123] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.443335] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.445270] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.446024] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h: In instantiation of \xe2\x80\x98static bool std::__equal<_BoolType>::equal(_II1, _II1, _II2) [with _II1 = const lio_sam_hesai::DufomapPoint*; _II2 = const lio_sam_hesai::DufomapPoint*; bool _BoolType = false]\xe2\x80\x99:\n'}
+[17.446214] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1211:43:   required from \xe2\x80\x98bool std::__equal_aux1(_II1, _II1, _II2) [with _II1 = const lio_sam_hesai::DufomapPoint*; _II2 = const lio_sam_hesai::DufomapPoint*]\xe2\x80\x99\n'}
+[17.446335] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1219:31:   required from \xe2\x80\x98bool std::__equal_aux(_II1, _II1, _II2) [with _II1 = __gnu_cxx::__normal_iterator<const lio_sam_hesai::DufomapPoint*, std::vector<lio_sam_hesai::DufomapPoint> >; _II2 = __gnu_cxx::__normal_iterator<const lio_sam_hesai::DufomapPoint*, std::vector<lio_sam_hesai::DufomapPoint> >]\xe2\x80\x99\n'}
+[17.446456] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1556:30:   required from \xe2\x80\x98bool std::equal(_II1, _II1, _II2) [with _II1 = __gnu_cxx::__normal_iterator<const lio_sam_hesai::DufomapPoint*, std::vector<lio_sam_hesai::DufomapPoint> >; _II2 = __gnu_cxx::__normal_iterator<const lio_sam_hesai::DufomapPoint*, std::vector<lio_sam_hesai::DufomapPoint> >]\xe2\x80\x99\n'}
+[17.446570] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_vector.h:1894:21:   required from \xe2\x80\x98bool std::operator==(const std::vector<_Tp, _Alloc>&, const std::vector<_Tp, _Alloc>&) [with _Tp = lio_sam_hesai::DufomapPoint; _Alloc = std::allocator<lio_sam_hesai::DufomapPoint>]\xe2\x80\x99\n'}
+[17.446677] (lio_sam_hesai) StderrLine: {'line': b'/opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:1527:11:   required from \xe2\x80\x98testing::AssertionResult testing::internal::CmpHelperEQ(const char*, const char*, const T1&, const T2&) [with T1 = std::vector<lio_sam_hesai::DufomapPoint>; T2 = std::vector<lio_sam_hesai::DufomapPoint>]\xe2\x80\x99\n'}
+[17.446797] (lio_sam_hesai) StderrLine: {'line': b'/opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:1554:23:   required from \xe2\x80\x98static testing::AssertionResult testing::internal::EqHelper::Compare(const char*, const char*, const T1&, const T2&) [with T1 = std::vector<lio_sam_hesai::DufomapPoint>; T2 = std::vector<lio_sam_hesai::DufomapPoint>; typename std::enable_if<((! std::is_integral<_Tp>::value) || (! std::is_pointer<_Dp>::value))>::type* <anonymous> = 0]\xe2\x80\x99\n'}
+[17.446907] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:203:3:   required from here\n'}
+[17.447004] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: error: no match for \xe2\x80\x98operator==\xe2\x80\x99 (operand types are \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 and \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99)\n'}
+[17.447105] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.447201] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.447296] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/bits/stl_algobase.h:64,\n'}
+[17.447391] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/memory:63,\n'}
+[17.447486] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.447582] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.447693] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_pair.h:466:5: note: candidate: \xe2\x80\x98template<class _T1, class _T2> constexpr bool std::operator==(const std::pair<_T1, _T2>&, const std::pair<_T1, _T2>&)\xe2\x80\x99\n'}
+[17.447801] (lio_sam_hesai) StderrLine: {'line': b'  466 |     operator==(const pair<_T1, _T2>& __x, const pair<_T1, _T2>& __y)\n'}
+[17.447898] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.447993] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_pair.h:466:5: note:   template argument deduction/substitution failed:\n'}
+[17.448087] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.448182] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.448275] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.448371] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98const std::pair<_T1, _T2>\xe2\x80\x99\n'}
+[17.448468] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.448763] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.448885] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/bits/stl_algobase.h:67,\n'}
+[17.448990] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/memory:63,\n'}
+[17.449085] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.449181] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.449275] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_iterator.h:420:5: note: candidate: \xe2\x80\x98template<class _Iterator> constexpr bool std::operator==(const std::reverse_iterator<_Iterator>&, const std::reverse_iterator<_Iterator>&)\xe2\x80\x99\n'}
+[17.449391] (lio_sam_hesai) StderrLine: {'line': b'  420 |     operator==(const reverse_iterator<_Iterator>& __x,\n'}
+[17.449490] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.449585] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_iterator.h:420:5: note:   template argument deduction/substitution failed:\n'}
+[17.449680] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.449771] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.449862] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.449955] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98const std::reverse_iterator<_Iterator>\xe2\x80\x99\n'}
+[17.450072] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.450167] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.450261] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/bits/stl_algobase.h:67,\n'}
+[17.450357] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/memory:63,\n'}
+[17.450452] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.450544] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.450638] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_iterator.h:459:5: note: candidate: \xe2\x80\x98template<class _IteratorL, class _IteratorR> constexpr bool std::operator==(const std::reverse_iterator<_Iterator>&, const std::reverse_iterator<_IteratorR>&)\xe2\x80\x99\n'}
+[17.450755] (lio_sam_hesai) StderrLine: {'line': b'  459 |     operator==(const reverse_iterator<_IteratorL>& __x,\n'}
+[17.450849] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.450943] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_iterator.h:459:5: note:   template argument deduction/substitution failed:\n'}
+[17.451038] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.451129] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.451222] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.451331] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98const std::reverse_iterator<_Iterator>\xe2\x80\x99\n'}
+[17.451428] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.451523] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.451617] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/bits/stl_algobase.h:67,\n'}
+[17.451713] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/memory:63,\n'}
+[17.451809] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.451904] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.451999] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_iterator.h:1585:5: note: candidate: \xe2\x80\x98template<class _IteratorL, class _IteratorR> constexpr bool std::operator==(const std::move_iterator<_IteratorL>&, const std::move_iterator<_IteratorR>&)\xe2\x80\x99\n'}
+[17.452097] (lio_sam_hesai) StderrLine: {'line': b' 1585 |     operator==(const move_iterator<_IteratorL>& __x,\n'}
+[17.452189] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.452282] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_iterator.h:1585:5: note:   template argument deduction/substitution failed:\n'}
+[17.452375] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.452468] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.452559] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.452665] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98const std::move_iterator<_IteratorL>\xe2\x80\x99\n'}
+[17.452761] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.452854] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.452948] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/bits/stl_algobase.h:67,\n'}
+[17.453041] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/memory:63,\n'}
+[17.453133] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.453223] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.453316] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_iterator.h:1648:5: note: candidate: \xe2\x80\x98template<class _Iterator> constexpr bool std::operator==(const std::move_iterator<_IteratorL>&, const std::move_iterator<_IteratorL>&)\xe2\x80\x99\n'}
+[17.453436] (lio_sam_hesai) StderrLine: {'line': b' 1648 |     operator==(const move_iterator<_Iterator>& __x,\n'}
+[17.453532] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.453624] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_iterator.h:1648:5: note:   template argument deduction/substitution failed:\n'}
+[17.453718] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.453811] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.453904] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.454077] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98const std::move_iterator<_IteratorL>\xe2\x80\x99\n'}
+[17.454219] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.454359] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.454477] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:64,\n'}
+[17.454594] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.454711] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.454832] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/allocator.h:218:5: note: candidate: \xe2\x80\x98template<class _T1, class _T2> bool std::operator==(const std::allocator<_Tp1>&, const std::allocator<_T2>&)\xe2\x80\x99\n'}
+[17.454952] (lio_sam_hesai) StderrLine: {'line': b'  218 |     operator==(const allocator<_T1>&, const allocator<_T2>&)\n'}
+[17.455066] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.455182] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/allocator.h:218:5: note:   template argument deduction/substitution failed:\n'}
+[17.455296] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.455388] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.455483] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.455576] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98const std::allocator<_Tp1>\xe2\x80\x99\n'}
+[17.455675] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.455768] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.455863] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/tuple:39,\n'}
+[17.455956] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/bits/unique_ptr.h:37,\n'}
+[17.456050] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/memory:76,\n'}
+[17.456227] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.456364] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.456505] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/array:276:5: note: candidate: \xe2\x80\x98template<class _Tp, long unsigned int _Nm> bool std::operator==(const std::array<_Tp, _Nm>&, const std::array<_Tp, _Nm>&)\xe2\x80\x99\n'}
+[17.456647] (lio_sam_hesai) StderrLine: {'line': b'  276 |     operator==(const array<_Tp, _Nm>& __one, const array<_Tp, _Nm>& __two)\n'}
+[17.456781] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.456899] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/array:276:5: note:   template argument deduction/substitution failed:\n'}
+[17.457016] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.457130] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.457244] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.457360] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98const std::array<_Tp, _Nm>\xe2\x80\x99\n'}
+[17.457474] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.457570] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.457664] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/bits/unique_ptr.h:37,\n'}
+[17.457757] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/memory:76,\n'}
+[17.457849] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.457941] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.458059] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/tuple:1524:5: note: candidate: \xe2\x80\x98template<class ... _TElements, class ... _UElements> constexpr bool std::operator==(const std::tuple<_Tps ...>&, const std::tuple<_UTypes ...>&)\xe2\x80\x99\n'}
+[17.458176] (lio_sam_hesai) StderrLine: {'line': b' 1524 |     operator==(const tuple<_TElements...>& __t,\n'}
+[17.458273] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.458363] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/tuple:1524:5: note:   template argument deduction/substitution failed:\n'}
+[17.458455] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.458562] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.458658] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.458752] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98const std::tuple<_Tps ...>\xe2\x80\x99\n'}
+[17.458846] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.458938] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.459030] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:76,\n'}
+[17.459123] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.459215] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.459352] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/unique_ptr.h:753:5: note: candidate: \xe2\x80\x98template<class _Tp, class _Dp, class _Up, class _Ep> bool std::operator==(const std::unique_ptr<_Tp, _Dp>&, const std::unique_ptr<_Up, _Ep>&)\xe2\x80\x99\n'}
+[17.459473] (lio_sam_hesai) StderrLine: {'line': b'  753 |     operator==(const unique_ptr<_Tp, _Dp>& __x,\n'}
+[17.459592] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.459707] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/unique_ptr.h:753:5: note:   template argument deduction/substitution failed:\n'}
+[17.459820] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.459970] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.460086] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.460204] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98const std::unique_ptr<_Tp, _Dp>\xe2\x80\x99\n'}
+[17.460323] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.460438] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.460551] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:76,\n'}
+[17.460647] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.460741] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.460836] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/unique_ptr.h:760:5: note: candidate: \xe2\x80\x98template<class _Tp, class _Dp> bool std::operator==(const std::unique_ptr<_Tp, _Dp>&, std::nullptr_t)\xe2\x80\x99\n'}
+[17.460932] (lio_sam_hesai) StderrLine: {'line': b'  760 |     operator==(const unique_ptr<_Tp, _Dp>& __x, nullptr_t) noexcept\n'}
+[17.461026] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.461117] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/unique_ptr.h:760:5: note:   template argument deduction/substitution failed:\n'}
+[17.461301] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.461422] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.461542] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.461660] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98const std::unique_ptr<_Tp, _Dp>\xe2\x80\x99\n'}
+[17.461796] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.461929] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.462070] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:76,\n'}
+[17.462186] (-) TimerEvent: {}
+[17.462237] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.462355] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.462471] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/unique_ptr.h:767:5: note: candidate: \xe2\x80\x98template<class _Tp, class _Dp> bool std::operator==(std::nullptr_t, const std::unique_ptr<_Tp, _Dp>&)\xe2\x80\x99\n'}
+[17.462568] (lio_sam_hesai) StderrLine: {'line': b'  767 |     operator==(nullptr_t, const unique_ptr<_Tp, _Dp>& __x) noexcept\n'}
+[17.462660] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.462753] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/unique_ptr.h:767:5: note:   template argument deduction/substitution failed:\n'}
+[17.462845] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.462936] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.463028] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.463121] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98const std::unique_ptr<_Tp, _Dp>\xe2\x80\x99\n'}
+[17.463231] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.463325] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.463429] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/iosfwd:40,\n'}
+[17.463536] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/bits/shared_ptr.h:52,\n'}
+[17.463632] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/memory:77,\n'}
+[17.463725] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.463852] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.463971] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/postypes.h:222:5: note: candidate: \xe2\x80\x98template<class _StateT> bool std::operator==(const std::fpos<_StateT>&, const std::fpos<_StateT>&)\xe2\x80\x99\n'}
+[17.464091] (lio_sam_hesai) StderrLine: {'line': b'  222 |     operator==(const fpos<_StateT>& __lhs, const fpos<_StateT>& __rhs)\n'}
+[17.464204] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.464317] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/postypes.h:222:5: note:   template argument deduction/substitution failed:\n'}
+[17.464431] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.464543] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.464699] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.464813] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98const std::fpos<_StateT>\xe2\x80\x99\n'}
+[17.464929] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.465040] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.465132] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/bits/shared_ptr.h:53,\n'}
+[17.465226] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/memory:77,\n'}
+[17.465319] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.465413] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.465506] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/shared_ptr_base.h:1410:5: note: candidate: \xe2\x80\x98template<class _Tp1, class _Tp2, __gnu_cxx::_Lock_policy _Lp> bool std::operator==(const std::__shared_ptr<_Tp1, _Lp>&, const std::__shared_ptr<_Tp2, _Lp>&)\xe2\x80\x99\n'}
+[17.465690] (lio_sam_hesai) StderrLine: {'line': b' 1410 |     operator==(const __shared_ptr<_Tp1, _Lp>& __a,\n'}
+[17.465815] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.465931] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/shared_ptr_base.h:1410:5: note:   template argument deduction/substitution failed:\n'}
+[17.466085] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.466203] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.466320] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.466434] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98const std::__shared_ptr<_Tp1, _Lp>\xe2\x80\x99\n'}
+[17.466570] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.466687] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.466802] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/bits/shared_ptr.h:53,\n'}
+[17.466912] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/memory:77,\n'}
+[17.467005] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.467098] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.467191] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/shared_ptr_base.h:1416:5: note: candidate: \xe2\x80\x98template<class _Tp, __gnu_cxx::_Lock_policy _Lp> bool std::operator==(const std::__shared_ptr<_Tp, _Lp>&, std::nullptr_t)\xe2\x80\x99\n'}
+[17.467289] (lio_sam_hesai) StderrLine: {'line': b' 1416 |     operator==(const __shared_ptr<_Tp, _Lp>& __a, nullptr_t) noexcept\n'}
+[17.467398] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.467489] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/shared_ptr_base.h:1416:5: note:   template argument deduction/substitution failed:\n'}
+[17.467582] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.467675] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.467765] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.467856] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98const std::__shared_ptr<_Tp, _Lp>\xe2\x80\x99\n'}
+[17.467949] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.468041] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.468132] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/bits/shared_ptr.h:53,\n'}
+[17.468236] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/memory:77,\n'}
+[17.468368] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.468482] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.468597] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/shared_ptr_base.h:1436:5: note: candidate: \xe2\x80\x98template<class _Tp, __gnu_cxx::_Lock_policy _Lp> bool std::operator==(std::nullptr_t, const std::__shared_ptr<_Tp, _Lp>&)\xe2\x80\x99\n'}
+[17.468712] (lio_sam_hesai) StderrLine: {'line': b' 1436 |     operator==(nullptr_t, const __shared_ptr<_Tp, _Lp>& __a) noexcept\n'}
+[17.468825] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.468952] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/shared_ptr_base.h:1436:5: note:   template argument deduction/substitution failed:\n'}
+[17.469069] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.469181] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.469294] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.469405] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98const std::__shared_ptr<_Tp, _Lp>\xe2\x80\x99\n'}
+[17.469528] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.469639] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.469732] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:77,\n'}
+[17.469825] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.469917] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.470024] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/shared_ptr.h:437:5: note: candidate: \xe2\x80\x98template<class _Tp, class _Up> bool std::operator==(const std::shared_ptr<_Tp>&, const std::shared_ptr<_Tp>&)\xe2\x80\x99\n'}
+[17.470122] (lio_sam_hesai) StderrLine: {'line': b'  437 |     operator==(const shared_ptr<_Tp>& __a, const shared_ptr<_Up>& __b) noexcept\n'}
+[17.470217] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.470307] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/shared_ptr.h:437:5: note:   template argument deduction/substitution failed:\n'}
+[17.470398] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.470489] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.470580] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.470669] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98const std::shared_ptr<_Tp>\xe2\x80\x99\n'}
+[17.470763] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.470852] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.470942] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:77,\n'}
+[17.471032] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.471122] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.471211] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/shared_ptr.h:443:5: note: candidate: \xe2\x80\x98template<class _Tp> bool std::operator==(const std::shared_ptr<_Tp>&, std::nullptr_t)\xe2\x80\x99\n'}
+[17.471303] (lio_sam_hesai) StderrLine: {'line': b'  443 |     operator==(const shared_ptr<_Tp>& __a, nullptr_t) noexcept\n'}
+[17.471394] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.471484] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/shared_ptr.h:443:5: note:   template argument deduction/substitution failed:\n'}
+[17.471574] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.471756] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.471892] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.472014] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98const std::shared_ptr<_Tp>\xe2\x80\x99\n'}
+[17.472131] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.472245] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.472357] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:77,\n'}
+[17.472487] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.472603] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.472728] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/shared_ptr.h:464:5: note: candidate: \xe2\x80\x98template<class _Tp> bool std::operator==(std::nullptr_t, const std::shared_ptr<_Tp>&)\xe2\x80\x99\n'}
+[17.472842] (lio_sam_hesai) StderrLine: {'line': b'  464 |     operator==(nullptr_t, const shared_ptr<_Tp>& __a) noexcept\n'}
+[17.472963] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.473058] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/shared_ptr.h:464:5: note:   template argument deduction/substitution failed:\n'}
+[17.473150] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.473238] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.473325] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.473417] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98const std::shared_ptr<_Tp>\xe2\x80\x99\n'}
+[17.473510] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.473599] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.473689] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/bits/basic_string.h:48,\n'}
+[17.473781] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/string:55,\n'}
+[17.473869] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/bits/locale_classes.h:40,\n'}
+[17.473961] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/bits/ios_base.h:41,\n'}
+[17.474089] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/ios:42,\n'}
+[17.474182] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/ostream:38,\n'}
+[17.474330] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:58,\n'}
+[17.474465] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.474580] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/string_view:535:5: note: candidate: \xe2\x80\x98template<class _CharT, class _Traits> constexpr bool std::operator==(std::basic_string_view<_CharT, _Traits>, std::basic_string_view<_CharT, _Traits>)\xe2\x80\x99\n'}
+[17.474698] (lio_sam_hesai) StderrLine: {'line': b'  535 |     operator==(basic_string_view<_CharT, _Traits> __x,\n'}
+[17.474813] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.474927] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/string_view:535:5: note:   template argument deduction/substitution failed:\n'}
+[17.475041] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.475156] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.475265] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.475378] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98std::basic_string_view<_CharT, _Traits>\xe2\x80\x99\n'}
+[17.475490] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.475582] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.475691] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/bits/basic_string.h:48,\n'}
+[17.475782] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/string:55,\n'}
+[17.475877] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/bits/locale_classes.h:40,\n'}
+[17.475969] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/bits/ios_base.h:41,\n'}
+[17.476062] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/ios:42,\n'}
+[17.476152] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/ostream:38,\n'}
+[17.476243] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:58,\n'}
+[17.476340] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.476432] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/string_view:541:5: note: candidate: \xe2\x80\x98template<class _CharT, class _Traits> constexpr bool std::operator==(std::basic_string_view<_CharT, _Traits>, std::__type_identity_t<std::basic_string_view<_CharT, _Traits> >)\xe2\x80\x99\n'}
+[17.476529] (lio_sam_hesai) StderrLine: {'line': b'  541 |     operator==(basic_string_view<_CharT, _Traits> __x,\n'}
+[17.476621] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.476714] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/string_view:541:5: note:   template argument deduction/substitution failed:\n'}
+[17.476806] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.476896] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.476987] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.477077] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98std::basic_string_view<_CharT, _Traits>\xe2\x80\x99\n'}
+[17.477302] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.477424] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.477542] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/bits/basic_string.h:48,\n'}
+[17.477656] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/string:55,\n'}
+[17.477767] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/bits/locale_classes.h:40,\n'}
+[17.477891] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/bits/ios_base.h:41,\n'}
+[17.478025] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/ios:42,\n'}
+[17.478144] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/ostream:38,\n'}
+[17.478279] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:58,\n'}
+[17.478411] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.478510] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/string_view:564:5: note: candidate: \xe2\x80\x98template<class _CharT, class _Traits> constexpr bool std::operator==(std::__type_identity_t<std::basic_string_view<_CharT, _Traits> >, std::basic_string_view<_CharT, _Traits>)\xe2\x80\x99\n'}
+[17.478611] (lio_sam_hesai) StderrLine: {'line': b'  564 |     operator==(__type_identity_t<basic_string_view<_CharT, _Traits>> __x,\n'}
+[17.478704] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.478795] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/string_view:564:5: note:   template argument deduction/substitution failed:\n'}
+[17.478901] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.479002] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.479095] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.479187] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98std::basic_string_view<_CharT, _Traits>\xe2\x80\x99\n'}
+[17.479281] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.479372] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.479463] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/string:55,\n'}
+[17.479554] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/bits/locale_classes.h:40,\n'}
+[17.479646] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/bits/ios_base.h:41,\n'}
+[17.479752] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/ios:42,\n'}
+[17.479844] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/ostream:38,\n'}
+[17.479934] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:58,\n'}
+[17.480025] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.480114] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/basic_string.h:6226:5: note: candidate: \xe2\x80\x98template<class _CharT, class _Traits, class _Alloc> bool std::operator==(const std::__cxx11::basic_string<_CharT, _Traits, _Allocator>&, const std::__cxx11::basic_string<_CharT, _Traits, _Allocator>&)\xe2\x80\x99\n'}
+[17.480211] (lio_sam_hesai) StderrLine: {'line': b' 6226 |     operator==(const basic_string<_CharT, _Traits, _Alloc>& __lhs,\n'}
+[17.480302] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.480394] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/basic_string.h:6226:5: note:   template argument deduction/substitution failed:\n'}
+[17.480488] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.480579] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.480670] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.480761] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98const std::__cxx11::basic_string<_CharT, _Traits, _Allocator>\xe2\x80\x99\n'}
+[17.480857] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.480947] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.481038] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/string:55,\n'}
+[17.481127] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/bits/locale_classes.h:40,\n'}
+[17.481219] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/bits/ios_base.h:41,\n'}
+[17.481309] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/ios:42,\n'}
+[17.481398] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/ostream:38,\n'}
+[17.481488] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:58,\n'}
+[17.481579] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.481683] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/basic_string.h:6234:5: note: candidate: \xe2\x80\x98template<class _CharT> typename __gnu_cxx::__enable_if<std::__is_char<_Tp>::__value, bool>::__type std::operator==(const std::__cxx11::basic_string<_CharT>&, const std::__cxx11::basic_string<_CharT>&)\xe2\x80\x99\n'}
+[17.481780] (lio_sam_hesai) StderrLine: {'line': b' 6234 |     operator==(const basic_string<_CharT>& __lhs,\n'}
+[17.481871] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.481960] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/basic_string.h:6234:5: note:   template argument deduction/substitution failed:\n'}
+[17.482082] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.482177] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.482268] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.482359] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98const std::__cxx11::basic_string<_CharT>\xe2\x80\x99\n'}
+[17.482453] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.482542] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.482633] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/string:55,\n'}
+[17.482722] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/bits/locale_classes.h:40,\n'}
+[17.482812] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/bits/ios_base.h:41,\n'}
+[17.482915] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/ios:42,\n'}
+[17.483005] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/ostream:38,\n'}
+[17.483095] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:58,\n'}
+[17.483185] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.483275] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/basic_string.h:6248:5: note: candidate: \xe2\x80\x98template<class _CharT, class _Traits, class _Alloc> bool std::operator==(const std::__cxx11::basic_string<_CharT, _Traits, _Allocator>&, const _CharT*)\xe2\x80\x99\n'}
+[17.483371] (lio_sam_hesai) StderrLine: {'line': b' 6248 |     operator==(const basic_string<_CharT, _Traits, _Alloc>& __lhs,\n'}
+[17.483462] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.483552] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/basic_string.h:6248:5: note:   template argument deduction/substitution failed:\n'}
+[17.483643] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.483732] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.483821] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.483909] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98const std::__cxx11::basic_string<_CharT, _Traits, _Allocator>\xe2\x80\x99\n'}
+[17.484003] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.484094] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.484198] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/string:55,\n'}
+[17.484298] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/bits/locale_classes.h:40,\n'}
+[17.484389] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/bits/ios_base.h:41,\n'}
+[17.484478] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/ios:42,\n'}
+[17.484568] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/ostream:38,\n'}
+[17.484656] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:58,\n'}
+[17.484747] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.484838] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/basic_string.h:6289:5: note: candidate: \xe2\x80\x98template<class _CharT, class _Traits, class _Alloc> bool std::operator==(const _CharT*, const std::__cxx11::basic_string<_CharT, _Traits, _Allocator>&)\xe2\x80\x99\n'}
+[17.484935] (lio_sam_hesai) StderrLine: {'line': b' 6289 |     operator==(const _CharT* __lhs,\n'}
+[17.485028] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.485117] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/basic_string.h:6289:5: note:   template argument deduction/substitution failed:\n'}
+[17.485207] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.485296] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.485386] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.485477] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   mismatched types \xe2\x80\x98const _CharT*\xe2\x80\x99 and \xe2\x80\x98lio_sam_hesai::DufomapPoint\xe2\x80\x99\n'}
+[17.485572] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.485664] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.485754] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/bits/locale_facets.h:48,\n'}
+[17.485845] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/bits/basic_ios.h:37,\n'}
+[17.485937] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/ios:44,\n'}
+[17.486044] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/ostream:38,\n'}
+[17.486136] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:58,\n'}
+[17.486227] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.486319] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/streambuf_iterator.h:226:5: note: candidate: \xe2\x80\x98template<class _CharT, class _Traits> bool std::operator==(const std::istreambuf_iterator<_CharT, _Traits>&, const std::istreambuf_iterator<_CharT, _Traits>&)\xe2\x80\x99\n'}
+[17.486425] (lio_sam_hesai) StderrLine: {'line': b'  226 |     operator==(const istreambuf_iterator<_CharT, _Traits>& __a,\n'}
+[17.486520] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.486610] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/streambuf_iterator.h:226:5: note:   template argument deduction/substitution failed:\n'}
+[17.486699] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.486790] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.486880] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.486971] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98const std::istreambuf_iterator<_CharT, _Traits>\xe2\x80\x99\n'}
+[17.487078] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.487170] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.487262] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/vector:67,\n'}
+[17.487351] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:60,\n'}
+[17.487440] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.487544] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_vector.h:1892:5: note: candidate: \xe2\x80\x98template<class _Tp, class _Alloc> bool std::operator==(const std::vector<_Tp, _Alloc>&, const std::vector<_Tp, _Alloc>&)\xe2\x80\x99\n'}
+[17.487639] (lio_sam_hesai) StderrLine: {'line': b' 1892 |     operator==(const vector<_Tp, _Alloc>& __x, const vector<_Tp, _Alloc>& __y)\n'}
+[17.487732] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.487823] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_vector.h:1892:5: note:   template argument deduction/substitution failed:\n'}
+[17.487952] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.488045] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.488138] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.488230] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98const std::vector<_Tp, _Alloc>\xe2\x80\x99\n'}
+[17.488321] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.488412] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.488501] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/functional:59,\n'}
+[17.488591] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/pstl/glue_algorithm_defs.h:13,\n'}
+[17.488683] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/algorithm:74,\n'}
+[17.488774] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/internal/gtest-port.h:264,\n'}
+[17.488864] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/internal/gtest-internal.h:40,\n'}
+[17.488973] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:62,\n'}
+[17.489064] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.489156] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/std_function.h:718:5: note: candidate: \xe2\x80\x98template<class _Res, class ... _Args> bool std::operator==(const std::function<_Res(_ArgTypes ...)>&, std::nullptr_t)\xe2\x80\x99\n'}
+[17.489249] (lio_sam_hesai) StderrLine: {'line': b'  718 |     operator==(const function<_Res(_Args...)>& __f, nullptr_t) noexcept\n'}
+[17.489341] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.489429] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/std_function.h:718:5: note:   template argument deduction/substitution failed:\n'}
+[17.489520] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.489610] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.489715] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.489814] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98const std::function<_Res(_ArgTypes ...)>\xe2\x80\x99\n'}
+[17.489904] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.490008] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.490105] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/functional:59,\n'}
+[17.490200] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/pstl/glue_algorithm_defs.h:13,\n'}
+[17.490293] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/algorithm:74,\n'}
+[17.490433] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/internal/gtest-port.h:264,\n'}
+[17.490570] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/internal/gtest-internal.h:40,\n'}
+[17.490708] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:62,\n'}
+[17.490822] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.490933] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/std_function.h:725:5: note: candidate: \xe2\x80\x98template<class _Res, class ... _Args> bool std::operator==(std::nullptr_t, const std::function<_Res(_ArgTypes ...)>&)\xe2\x80\x99\n'}
+[17.491049] (lio_sam_hesai) StderrLine: {'line': b'  725 |     operator==(nullptr_t, const function<_Res(_Args...)>& __f) noexcept\n'}
+[17.491170] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.491287] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/std_function.h:725:5: note:   template argument deduction/substitution failed:\n'}
+[17.491404] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.491518] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.491631] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.491723] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98const std::function<_Res(_ArgTypes ...)>\xe2\x80\x99\n'}
+[17.491816] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.491906] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.491998] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/unordered_map:47,\n'}
+[17.492089] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/functional:61,\n'}
+[17.492178] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/pstl/glue_algorithm_defs.h:13,\n'}
+[17.492269] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/algorithm:74,\n'}
+[17.492359] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/internal/gtest-port.h:264,\n'}
+[17.492468] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/internal/gtest-internal.h:40,\n'}
+[17.492560] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:62,\n'}
+[17.492652] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.492758] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/unordered_map.h:2134:5: note: candidate: \xe2\x80\x98template<class _Key1, class _Tp1, class _Hash1, class _Pred1, class _Alloc1> bool std::operator==(const std::unordered_map<_Key1, _Tp1, _Hash1, _Pred1, _Alloc1>&, const std::unordered_map<_Key1, _Tp1, _Hash1, _Pred1, _Alloc1>&)\xe2\x80\x99\n'}
+[17.492864] (lio_sam_hesai) StderrLine: {'line': b' 2134 |     operator==(const unordered_map<_Key, _Tp, _Hash, _Pred, _Alloc>& __x,\n'}
+[17.492958] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.493049] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/unordered_map.h:2134:5: note:   template argument deduction/substitution failed:\n'}
+[17.493141] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.493233] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.493324] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.493414] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98const std::unordered_map<_Key1, _Tp1, _Hash1, _Pred1, _Alloc1>\xe2\x80\x99\n'}
+[17.493522] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.493614] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.493704] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/unordered_map:47,\n'}
+[17.493796] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/functional:61,\n'}
+[17.493886] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/pstl/glue_algorithm_defs.h:13,\n'}
+[17.493978] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/algorithm:74,\n'}
+[17.494098] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/internal/gtest-port.h:264,\n'}
+[17.494195] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/internal/gtest-internal.h:40,\n'}
+[17.494289] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:62,\n'}
+[17.494380] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.494470] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/unordered_map.h:2148:5: note: candidate: \xe2\x80\x98template<class _Key1, class _Tp1, class _Hash1, class _Pred1, class _Alloc1> bool std::operator==(const std::unordered_multimap<_Key1, _Tp1, _Hash1, _Pred1, _Alloc1>&, const std::unordered_multimap<_Key1, _Tp1, _Hash1, _Pred1, _Alloc1>&)\xe2\x80\x99\n'}
+[17.494626] (lio_sam_hesai) StderrLine: {'line': b' 2148 |     operator==(const unordered_multimap<_Key, _Tp, _Hash, _Pred, _Alloc>& __x,\n'}
+[17.494747] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.494861] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/unordered_map.h:2148:5: note:   template argument deduction/substitution failed:\n'}
+[17.494974] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.495086] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.495216] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.495328] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98const std::unordered_multimap<_Key1, _Tp1, _Hash1, _Pred1, _Alloc1>\xe2\x80\x99\n'}
+[17.495524] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.495652] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.495766] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/map:61,\n'}
+[17.495878] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/internal/gtest-internal.h:58,\n'}
+[17.495993] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:62,\n'}
+[17.496107] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.496220] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_map.h:1463:5: note: candidate: \xe2\x80\x98template<class _Key, class _Tp, class _Compare, class _Alloc> bool std::operator==(const std::map<_Key, _Tp, _Compare, _Allocator>&, const std::map<_Key, _Tp, _Compare, _Allocator>&)\xe2\x80\x99\n'}
+[17.496357] (lio_sam_hesai) StderrLine: {'line': b' 1463 |     operator==(const map<_Key, _Tp, _Compare, _Alloc>& __x,\n'}
+[17.496471] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.496584] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_map.h:1463:5: note:   template argument deduction/substitution failed:\n'}
+[17.496696] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.496806] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.496898] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.496991] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98const std::map<_Key, _Tp, _Compare, _Allocator>\xe2\x80\x99\n'}
+[17.497184] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.497308] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.497424] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/map:62,\n'}
+[17.497539] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/internal/gtest-internal.h:58,\n'}
+[17.497650] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:62,\n'}
+[17.497761] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.497874] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_multimap.h:1128:5: note: candidate: \xe2\x80\x98template<class _Key, class _Tp, class _Compare, class _Alloc> bool std::operator==(const std::multimap<_Key, _Tp, _Compare, _Allocator>&, const std::multimap<_Key, _Tp, _Compare, _Allocator>&)\xe2\x80\x99\n'}
+[17.498008] (lio_sam_hesai) StderrLine: {'line': b' 1128 |     operator==(const multimap<_Key, _Tp, _Compare, _Alloc>& __x,\n'}
+[17.498160] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.498285] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_multimap.h:1128:5: note:   template argument deduction/substitution failed:\n'}
+[17.498419] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.498533] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.498645] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.498759] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98const std::multimap<_Key, _Tp, _Compare, _Allocator>\xe2\x80\x99\n'}
+[17.498904] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.499042] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.499156] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/set:61,\n'}
+[17.499270] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/internal/gtest-internal.h:59,\n'}
+[17.499385] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:62,\n'}
+[17.499508] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.499649] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_set.h:985:5: note: candidate: \xe2\x80\x98template<class _Key, class _Compare, class _Alloc> bool std::operator==(const std::set<_Key, _Compare, _Allocator>&, const std::set<_Key, _Compare, _Allocator>&)\xe2\x80\x99\n'}
+[17.499773] (lio_sam_hesai) StderrLine: {'line': b'  985 |     operator==(const set<_Key, _Compare, _Alloc>& __x,\n'}
+[17.499885] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.499997] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_set.h:985:5: note:   template argument deduction/substitution failed:\n'}
+[17.500110] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.500221] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.500332] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.500464] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98const std::set<_Key, _Compare, _Allocator>\xe2\x80\x99\n'}
+[17.500578] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.500689] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.500799] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/set:62,\n'}
+[17.500890] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/internal/gtest-internal.h:59,\n'}
+[17.500981] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:62,\n'}
+[17.501073] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.501165] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_multiset.h:971:5: note: candidate: \xe2\x80\x98template<class _Key, class _Compare, class _Alloc> bool std::operator==(const std::multiset<_Key, _Compare, _Allocator>&, const std::multiset<_Key, _Compare, _Allocator>&)\xe2\x80\x99\n'}
+[17.501260] (lio_sam_hesai) StderrLine: {'line': b'  971 |     operator==(const multiset<_Key, _Compare, _Alloc>& __x,\n'}
+[17.501353] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.501442] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_multiset.h:971:5: note:   template argument deduction/substitution failed:\n'}
+[17.501533] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.501622] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.501712] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.501891] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98const std::multiset<_Key, _Compare, _Allocator>\xe2\x80\x99\n'}
+[17.502072] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.502192] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.502307] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/eigen3/Eigen/Core:50,\n'}
+[17.502421] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/pcl-1.12/pcl/memory.h:48,\n'}
+[17.502534] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/pcl-1.12/pcl/PCLPointField.h:3,\n'}
+[17.502648] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/pcl-1.12/pcl/conversions.h:46,\n'}
+[17.502796] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:14:\n'}
+[17.502909] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/complex:464:5: note: candidate: \xe2\x80\x98template<class _Tp> constexpr bool std::operator==(const std::complex<_Tp>&, const std::complex<_Tp>&)\xe2\x80\x99\n'}
+[17.503025] (lio_sam_hesai) StderrLine: {'line': b'  464 |     operator==(const complex<_Tp>& __x, const complex<_Tp>& __y)\n'}
+[17.503120] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.503211] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/complex:464:5: note:   template argument deduction/substitution failed:\n'}
+[17.503303] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.503393] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.503485] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.503577] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98const std::complex<_Tp>\xe2\x80\x99\n'}
+[17.503670] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.503759] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.503848] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/eigen3/Eigen/Core:50,\n'}
+[17.503938] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/pcl-1.12/pcl/memory.h:48,\n'}
+[17.504027] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/pcl-1.12/pcl/PCLPointField.h:3,\n'}
+[17.504115] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/pcl-1.12/pcl/conversions.h:46,\n'}
+[17.504219] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:14:\n'}
+[17.504324] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/complex:469:5: note: candidate: \xe2\x80\x98template<class _Tp> constexpr bool std::operator==(const std::complex<_Tp>&, const _Tp&)\xe2\x80\x99\n'}
+[17.504421] (lio_sam_hesai) StderrLine: {'line': b'  469 |     operator==(const complex<_Tp>& __x, const _Tp& __y)\n'}
+[17.504514] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.504604] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/complex:469:5: note:   template argument deduction/substitution failed:\n'}
+[17.504731] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.504843] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.504955] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.505068] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98const std::complex<_Tp>\xe2\x80\x99\n'}
+[17.505212] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.505324] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.505436] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/eigen3/Eigen/Core:50,\n'}
+[17.505565] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/pcl-1.12/pcl/memory.h:48,\n'}
+[17.505675] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/pcl-1.12/pcl/PCLPointField.h:3,\n'}
+[17.505782] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/pcl-1.12/pcl/conversions.h:46,\n'}
+[17.505893] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:14:\n'}
+[17.505999] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/complex:475:5: note: candidate: \xe2\x80\x98template<class _Tp> constexpr bool std::operator==(const _Tp&, const std::complex<_Tp>&)\xe2\x80\x99\n'}
+[17.506104] (lio_sam_hesai) StderrLine: {'line': b'  475 |     operator==(const _Tp& __x, const complex<_Tp>& __y)\n'}
+[17.506196] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.506283] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/complex:475:5: note:   template argument deduction/substitution failed:\n'}
+[17.506380] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.506479] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.506574] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.506669] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98const std::complex<_Tp>\xe2\x80\x99\n'}
+[17.506764] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.506855] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.506945] (lio_sam_hesai) StderrLine: {'line': b'In file included from /home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/online_dufomap.h:9,\n'}
+[17.507036] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:20:\n'}
+[17.507454] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/optional:1045:5: note: candidate: \xe2\x80\x98template<class _Tp, class _Up> constexpr std::__optional_eq_t<_Tp, _Up> std::operator==(const std::optional<_Tp>&, const std::optional<_Up>&)\xe2\x80\x99\n'}
+[17.507668] (lio_sam_hesai) StderrLine: {'line': b' 1045 |     operator==(const optional<_Tp>& __lhs, const optional<_Up>& __rhs)\n'}
+[17.507799] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.507919] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/optional:1045:5: note:   template argument deduction/substitution failed:\n'}
+[17.508038] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.508154] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.508266] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.508378] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98const std::optional<_Tp>\xe2\x80\x99\n'}
+[17.508514] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.508617] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.508724] (lio_sam_hesai) StderrLine: {'line': b'In file included from /home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/online_dufomap.h:9,\n'}
+[17.508818] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:20:\n'}
+[17.508910] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/optional:1105:5: note: candidate: \xe2\x80\x98template<class _Tp> constexpr bool std::operator==(const std::optional<_Tp>&, std::nullopt_t)\xe2\x80\x99\n'}
+[17.509003] (lio_sam_hesai) StderrLine: {'line': b' 1105 |     operator==(const optional<_Tp>& __lhs, nullopt_t) noexcept\n'}
+[17.509097] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.509186] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/optional:1105:5: note:   template argument deduction/substitution failed:\n'}
+[17.509277] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.509366] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.509468] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.509561] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98const std::optional<_Tp>\xe2\x80\x99\n'}
+[17.509653] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.509744] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.509886] (lio_sam_hesai) StderrLine: {'line': b'In file included from /home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/online_dufomap.h:9,\n'}
+[17.510025] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:20:\n'}
+[17.510145] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/optional:1116:5: note: candidate: \xe2\x80\x98template<class _Tp> constexpr bool std::operator==(std::nullopt_t, const std::optional<_Tp>&)\xe2\x80\x99\n'}
+[17.510263] (lio_sam_hesai) StderrLine: {'line': b' 1116 |     operator==(nullopt_t, const optional<_Tp>& __rhs) noexcept\n'}
+[17.510374] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.510485] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/optional:1116:5: note:   template argument deduction/substitution failed:\n'}
+[17.510598] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.510710] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.510822] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.510933] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98const std::optional<_Tp>\xe2\x80\x99\n'}
+[17.511061] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.511183] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.511277] (lio_sam_hesai) StderrLine: {'line': b'In file included from /home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/online_dufomap.h:9,\n'}
+[17.511368] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:20:\n'}
+[17.511456] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/optional:1173:5: note: candidate: \xe2\x80\x98template<class _Tp, class _Up> constexpr std::__optional_eq_t<_Tp, _Up> std::operator==(const std::optional<_Tp>&, const _Up&)\xe2\x80\x99\n'}
+[17.511552] (lio_sam_hesai) StderrLine: {'line': b' 1173 |     operator==(const optional<_Tp>& __lhs, const _Up& __rhs)\n'}
+[17.511661] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.511752] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/optional:1173:5: note:   template argument deduction/substitution failed:\n'}
+[17.511841] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.511928] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.512019] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.512109] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98const std::optional<_Tp>\xe2\x80\x99\n'}
+[17.512197] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.512288] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.512378] (lio_sam_hesai) StderrLine: {'line': b'In file included from /home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/online_dufomap.h:9,\n'}
+[17.512468] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:20:\n'}
+[17.512663] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/optional:1179:5: note: candidate: \xe2\x80\x98template<class _Tp, class _Up> constexpr std::__optional_eq_t<_Up, _Tp> std::operator==(const _Up&, const std::optional<_Tp>&)\xe2\x80\x99\n'}
+[17.512784] (lio_sam_hesai) StderrLine: {'line': b' 1179 |     operator==(const _Up& __lhs, const optional<_Tp>& __rhs)\n'}
+[17.512900] (lio_sam_hesai) StderrLine: {'line': b'      |     ^~~~~~~~\n'}
+[17.513014] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/optional:1179:5: note:   template argument deduction/substitution failed:\n'}
+[17.513127] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/memory:63,\n'}
+[17.513239] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,\n'}
+[17.513369] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.513481] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 is not derived from \xe2\x80\x98const std::optional<_Tp>\xe2\x80\x99\n'}
+[17.513614] (lio_sam_hesai) StderrLine: {'line': b' 1162 |             if (!(*__first1 == *__first2))\n'}
+[17.513726] (lio_sam_hesai) StderrLine: {'line': b'      |                  ~~~~~~~~~~~^~~~~~~~~~~~~\n'}
+[17.513835] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/bits/ios_base.h:46,\n'}
+[17.513927] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/ios:42,\n'}
+[17.514041] (lio_sam_hesai) StderrLine: {'line': b'                 from /usr/include/c++/11/ostream:38,\n'}
+[17.514133] (lio_sam_hesai) StderrLine: {'line': b'                 from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:58,\n'}
+[17.514238] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:\n'}
+[17.514332] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/system_error:362:3: note: candidate: \xe2\x80\x98bool std::operator==(const std::error_code&, const std::error_code&)\xe2\x80\x99\n'}
+[17.514427] (lio_sam_hesai) StderrLine: {'line': b'  362 |   operator==(const error_code& __lhs, const error_code& __rhs) noexcept\n'}
+[17.514518] (lio_sam_hesai) StderrLine: {'line': b'      |   ^~~~~~~~\n'}
+[17.514609] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/system_error:362:32: note:   no known conversion for argument 1 from \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 to \xe2\x80\x98const std::error_code&\xe2\x80\x99\n'}
+[17.514717] (lio_sam_hesai) StderrLine: {'line': b'  362 |   operator==(const error_code& __lhs, const error_code& __rhs) noexcept\n'}
+[17.514809] (lio_sam_hesai) StderrLine: {'line': b'      |              ~~~~~~~~~~~~~~~~~~^~~~~\n'}
+[17.514901] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/system_error:368:3: note: candidate: \xe2\x80\x98bool std::operator==(const std::error_code&, const std::error_condition&)\xe2\x80\x99\n'}
+[17.514995] (lio_sam_hesai) StderrLine: {'line': b'  368 |   operator==(const error_code& __lhs, const error_condition& __rhs) noexcept\n'}
+[17.515100] (lio_sam_hesai) StderrLine: {'line': b'      |   ^~~~~~~~\n'}
+[17.515192] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/system_error:368:32: note:   no known conversion for argument 1 from \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 to \xe2\x80\x98const std::error_code&\xe2\x80\x99\n'}
+[17.515283] (lio_sam_hesai) StderrLine: {'line': b'  368 |   operator==(const error_code& __lhs, const error_condition& __rhs) noexcept\n'}
+[17.515374] (lio_sam_hesai) StderrLine: {'line': b'      |              ~~~~~~~~~~~~~~~~~~^~~~~\n'}
+[17.515464] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/system_error:376:3: note: candidate: \xe2\x80\x98bool std::operator==(const std::error_condition&, const std::error_condition&)\xe2\x80\x99\n'}
+[17.515554] (lio_sam_hesai) StderrLine: {'line': b'  376 |   operator==(const error_condition& __lhs,\n'}
+[17.515645] (lio_sam_hesai) StderrLine: {'line': b'      |   ^~~~~~~~\n'}
+[17.515734] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/system_error:376:37: note:   no known conversion for argument 1 from \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 to \xe2\x80\x98const std::error_condition&\xe2\x80\x99\n'}
+[17.515828] (lio_sam_hesai) StderrLine: {'line': b'  376 |   operator==(const error_condition& __lhs,\n'}
+[17.515919] (lio_sam_hesai) StderrLine: {'line': b'      |              ~~~~~~~~~~~~~~~~~~~~~~~^~~~~\n'}
+[17.516009] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/system_error:408:3: note: candidate: \xe2\x80\x98bool std::operator==(const std::error_condition&, const std::error_code&)\xe2\x80\x99\n'}
+[17.516102] (lio_sam_hesai) StderrLine: {'line': b'  408 |   operator==(const error_condition& __lhs, const error_code& __rhs) noexcept\n'}
+[17.516194] (lio_sam_hesai) StderrLine: {'line': b'      |   ^~~~~~~~\n'}
+[17.516288] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/system_error:408:37: note:   no known conversion for argument 1 from \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 to \xe2\x80\x98const std::error_condition&\xe2\x80\x99\n'}
+[17.516380] (lio_sam_hesai) StderrLine: {'line': b'  408 |   operator==(const error_condition& __lhs, const error_code& __rhs) noexcept\n'}
+[17.516473] (lio_sam_hesai) StderrLine: {'line': b'      |              ~~~~~~~~~~~~~~~~~~~~~~~^~~~~\n'}
+[17.516565] (lio_sam_hesai) StderrLine: {'line': b'In file included from /usr/include/c++/11/thread:43,\n'}
+[17.516655] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:10:\n'}
+[17.516745] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/std_thread.h:287:3: note: candidate: \xe2\x80\x98bool std::operator==(std::thread::id, std::thread::id)\xe2\x80\x99\n'}
+[17.516834] (lio_sam_hesai) StderrLine: {'line': b'  287 |   operator==(thread::id __x, thread::id __y) noexcept\n'}
+[17.516921] (lio_sam_hesai) StderrLine: {'line': b'      |   ^~~~~~~~\n'}
+[17.517008] (lio_sam_hesai) StderrLine: {'line': b'/usr/include/c++/11/bits/std_thread.h:287:25: note:   no known conversion for argument 1 from \xe2\x80\x98const lio_sam_hesai::DufomapPoint\xe2\x80\x99 to \xe2\x80\x98std::thread::id\xe2\x80\x99\n'}
+[17.517102] (lio_sam_hesai) StderrLine: {'line': b'  287 |   operator==(thread::id __x, thread::id __y) noexcept\n'}
+[17.517192] (lio_sam_hesai) StderrLine: {'line': b'      |              ~~~~~~~~~~~^~~\n'}
+[17.562403] (-) TimerEvent: {}
+[17.662874] (-) TimerEvent: {}
+[17.763351] (-) TimerEvent: {}
+[17.863779] (-) TimerEvent: {}
+[17.964214] (-) TimerEvent: {}
+[18.064645] (-) TimerEvent: {}
+[18.164161] (lio_sam_hesai) StderrLine: {'line': b'gmake[3]: *** [CMakeFiles/test_online_dufomap.dir/build.make:76: CMakeFiles/test_online_dufomap.dir/test/test_online_dufomap.cpp.o] Error 1\n'}
+[18.165160] (-) TimerEvent: {}
+[18.165275] (lio_sam_hesai) StderrLine: {'line': b'gmake[3]: *** Waiting for unfinished jobs....\n'}
+[18.265395] (-) TimerEvent: {}
+[18.365900] (-) TimerEvent: {}
+[18.466422] (-) TimerEvent: {}
+[18.566901] (-) TimerEvent: {}
+[18.667442] (-) TimerEvent: {}
+[18.768011] (-) TimerEvent: {}
+[18.868605] (-) TimerEvent: {}
+[18.969160] (-) TimerEvent: {}
+[19.069675] (-) TimerEvent: {}
+[19.170164] (-) TimerEvent: {}
+[19.270662] (-) TimerEvent: {}
+[19.371165] (-) TimerEvent: {}
+[19.471645] (-) TimerEvent: {}
+[19.572141] (-) TimerEvent: {}
+[19.672622] (-) TimerEvent: {}
+[19.773121] (-) TimerEvent: {}
+[19.873564] (-) TimerEvent: {}
+[19.974030] (-) TimerEvent: {}
+[20.074449] (-) TimerEvent: {}
+[20.174900] (-) TimerEvent: {}
+[20.275379] (-) TimerEvent: {}
+[20.375866] (-) TimerEvent: {}
+[20.476354] (-) TimerEvent: {}
+[20.576847] (-) TimerEvent: {}
+[20.677340] (-) TimerEvent: {}
+[20.777803] (-) TimerEvent: {}
+[20.878282] (-) TimerEvent: {}
+[20.978785] (-) TimerEvent: {}
+[21.079270] (-) TimerEvent: {}
+[21.179755] (-) TimerEvent: {}
+[21.280233] (-) TimerEvent: {}
+[21.380675] (-) TimerEvent: {}
+[21.481138] (-) TimerEvent: {}
+[21.581633] (-) TimerEvent: {}
+[21.682134] (-) TimerEvent: {}
+[21.782584] (-) TimerEvent: {}
+[21.883023] (-) TimerEvent: {}
+[21.983467] (-) TimerEvent: {}
+[22.083918] (-) TimerEvent: {}
+[22.184321] (-) TimerEvent: {}
+[22.284728] (-) TimerEvent: {}
+[22.385126] (-) TimerEvent: {}
+[22.485523] (-) TimerEvent: {}
+[22.585929] (-) TimerEvent: {}
+[22.686347] (-) TimerEvent: {}
+[22.786757] (-) TimerEvent: {}
+[22.887149] (-) TimerEvent: {}
+[22.987545] (-) TimerEvent: {}
+[23.087952] (-) TimerEvent: {}
+[23.188358] (-) TimerEvent: {}
+[23.288753] (-) TimerEvent: {}
+[23.389161] (-) TimerEvent: {}
+[23.489551] (-) TimerEvent: {}
+[23.589950] (-) TimerEvent: {}
+[23.690367] (-) TimerEvent: {}
+[23.790795] (-) TimerEvent: {}
+[23.891222] (-) TimerEvent: {}
+[23.991660] (-) TimerEvent: {}
+[24.092068] (-) TimerEvent: {}
+[24.192496] (-) TimerEvent: {}
+[24.292896] (-) TimerEvent: {}
+[24.393300] (-) TimerEvent: {}
+[24.493702] (-) TimerEvent: {}
+[24.594128] (-) TimerEvent: {}
+[24.694549] (-) TimerEvent: {}
+[24.794951] (-) TimerEvent: {}
+[24.895350] (-) TimerEvent: {}
+[24.918328] (lio_sam_hesai) StderrLine: {'line': b'gmake[2]: *** [CMakeFiles/Makefile2:1467: CMakeFiles/test_online_dufomap.dir/all] Error 2\n'}
+[24.919318] (lio_sam_hesai) StderrLine: {'line': b'gmake[1]: *** [CMakeFiles/Makefile2:1474: CMakeFiles/test_online_dufomap.dir/rule] Error 2\n'}
+[24.919933] (lio_sam_hesai) StderrLine: {'line': b'gmake: *** [Makefile:738: test_online_dufomap] Error 2\n'}
+[24.926291] (lio_sam_hesai) CommandEnded: {'returncode': 2}
+[24.958540] (lio_sam_hesai) JobEnded: {'identifier': 'lio_sam_hesai', 'rc': 2}
+[24.969604] (-) EventReactorShutdown: {}

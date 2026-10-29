@@ -1,11 +1,22 @@
 #include "utility.hpp"
 #include "ivox_map/ivox_map.h"
+#include "lio_sam/dufomap_backend.h"
+#include "lio_sam/online_dufomap.h"
+#include "common/dufomap_export.h"
+#include "common/keyframe_scan_cache.h"
 #include "common/map_artifact_layout.h"
 #include "common/map_save_resolution.hpp"
 #include "common/save_map_request.h"
+#include "common/transformed_keyframe_cache.h"
 #include "lio_sam/ground_grid_patcher.h"
+#include "lio_sam/ground_grid_processor.h"
+#include "lio_sam/ground_mesh.h"
+#include "lio_sam/ground_ring_policy.h"
+#include "lio_sam/current_ground_segmenter.h"
+#include "lio_sam/ground_segmentation_mode.h"
+#include "lio_sam/ground_projection_cache.h"
+#include "lio_sam/patchworkpp_ground_segmenter.h"
 #include "lio_sam_hesai/msg/cloud_info.hpp"
-#include "lio_sam_hesai/srv/save_map.hpp"
 #include "lio_sam_hesai/srv/save_map_options.hpp"
 #include "localization_map/tile_map_generator.h"
 #include "relocalization/scan_context.h"
@@ -25,10 +36,18 @@
 #include <pcl/segmentation/extract_clusters.h>
 #include <pcl/segmentation/sac_segmentation.h>
 #include <pcl/search/kdtree.h>
+#include <chrono>
+#include <condition_variable>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
+#include <iomanip>
+#include <limits>
+#include <mutex>
+#include <sstream>
 #include <unordered_map>
 #include <cmath>
+#include <unistd.h>
 
 using namespace gtsam;
 
@@ -75,7 +94,7 @@ struct MapExportOutcome
     std::string message;
 };
 
-// HOME is the anchor of the legacy /lio_sam/save_map destination contract.
+// HOME is used by the save_map_options destination validation.
 std::string HomeDirectory()
 {
     const char* home = std::getenv("HOME");
@@ -219,7 +238,6 @@ public:
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubCloudRegisteredRaw;
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pubLoopConstraintEdge;
 
-    rclcpp::Service<lio_sam_hesai::srv::SaveMap>::SharedPtr srvSaveMap;
     rclcpp::Service<lio_sam_hesai::srv::SaveMapOptions>::SharedPtr srvSaveMapOptions;
     rclcpp::Subscription<lio_sam_hesai::msg::CloudInfo>::SharedPtr subCloud;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr subGPS;
@@ -231,6 +249,45 @@ public:
     std::vector<pcl::PointCloud<PointType>::Ptr> cornerCloudKeyFrames;
     std::vector<pcl::PointCloud<PointType>::Ptr> surfCloudKeyFrames;
     std::vector<pcl::PointCloud<PointType>::Ptr> groundCloudKeyFrames;
+
+    // Per-session cache of the selected keyframes' full deskewed scans. It is
+    // populated for every mapping session, lives outside the map destination,
+    // and is retained after the node exits. Ground export inputs use the same
+    // session directory when its export algorithm needs them.
+    std::filesystem::path dufomapCacheDirectory_;
+    std::string dufomapCacheError_;
+    // Complete keyframe scans are written after the mapping lock is released.
+    // A save waits for these pending writes before it asks the worker to
+    // export, so it never observes a half-registered cache.
+    std::string completeScanCacheError_;
+    std::mutex completeScanCacheMutex_;
+    std::condition_variable completeScanCacheCondition_;
+    std::size_t pendingCompleteScanWrites_{0};
+    // One save at a time owns the frozen snapshot and worker export query.
+    std::mutex saveMutex_;
+    std::unique_ptr<lio_sam_hesai::OnlineDufomap> online_dufomap_;
+    // State of the most recent scan that the mapping thread actually
+    // registered. Skipped scans only extrapolate a small IMU-odometry
+    // increment relative to this exact keyframe anchor, so a later loop
+    // correction moves them together with the anchor.
+    int last_processed_anchor_keyframe_{-1};
+    lio_sam_hesai::DufomapPose last_processed_anchor_T_scan_{};
+    lio_sam_hesai::DufomapPose last_processed_fallback_map_T_scan_{};
+    lio_sam_hesai::DufomapPose last_processed_initial_guess_{};
+    bool have_last_processed_{false};
+    bool have_last_processed_initial_guess_{false};
+    std::size_t online_dufomap_skipped_{0};
+    std::size_t online_dufomap_rejected_{0};
+    std::size_t online_dufomap_enqueue_failures_{0};
+    double last_dufomap_health_log_time_{-1.0};
+    std::size_t last_dufomap_logged_dropped_{0};
+    std::size_t last_dufomap_logged_skipped_{0};
+    std::size_t last_dufomap_logged_worker_skipped_{0};
+    std::string last_dufomap_logged_error_;
+    // Kept when the configured worker cannot start, so a save request fails
+    // explicitly instead of silently exporting an unfiltered raw map.
+    std::string online_dufomap_startup_error_;
+    std::string groundExportCacheError_;
     
     pcl::PointCloud<PointType>::Ptr cloudKeyPoses3D;
     pcl::PointCloud<PointTypePose>::Ptr cloudKeyPoses6D;
@@ -253,7 +310,8 @@ public:
     std::vector<PointType> coeffSelSurfVec;
     std::vector<bool> laserCloudOriSurfFlag;
 
-    std::map<int, std::pair<pcl::PointCloud<PointType>, pcl::PointCloud<PointType>>> laserCloudMapContainer;
+    lio_sam_hesai::TransformedKeyframeCache<PointType>
+        transformed_keyframe_cache_;
     pcl::PointCloud<PointType>::Ptr laserCloudCornerFromMap;
     pcl::PointCloud<PointType>::Ptr laserCloudSurfFromMap;
     pcl::PointCloud<PointType>::Ptr laserCloudCornerFromMapDS;
@@ -307,7 +365,12 @@ public:
 
     std::unique_ptr<tf2_ros::TransformBroadcaster> br;
 
-    mapOptimization(const rclcpp::NodeOptions & options) : ParamServer("lio_sam_mapOptimization", options)
+    mapOptimization(const rclcpp::NodeOptions & options)
+        : ParamServer("lio_sam_mapOptimization", options),
+          transformed_keyframe_cache_(
+              static_cast<std::size_t>(
+                  config_.mapping.local_map.transformed_cache_max_mb) *
+              1024U * 1024U)
     {
         ISAM2Params parameters;
         parameters.relinearizeThreshold = 0.1;
@@ -345,31 +408,8 @@ public:
 
         if (config_.mapping.system.mapping_mode)
         {
-            // Legacy service: HOME-relative destination, configured ground and
-            // tiled flags, response limited to the historical bool field.
-            auto legacySaveMapService = [this](const std::shared_ptr<rmw_request_id_t> request_header, const std::shared_ptr<lio_sam_hesai::srv::SaveMap::Request> req, std::shared_ptr<lio_sam_hesai::srv::SaveMap::Response> res) -> void {
-                (void)request_header;
-                std::string error;
-                const auto options = lio_sam_hesai::MakeLegacySaveMapExportOptions(
-                    req->destination,
-                    req->resolution,
-                    req->ground_resolution,
-                    HomeDirectory(),
-                    config_.mapping.map_save.directory,
-                    config_.mapping.map_save.save_ground_map,
-                    config_.mapping.map_save.save_tiled_map,
-                    &error);
-                if (!options)
-                {
-                    RCLCPP_ERROR(get_logger(), "Rejected save_map request: %s", error.c_str());
-                    res->success = false;
-                    return;
-                }
-                res->success = ExportMap(*options).success;
-            };
-
-            // Options service: explicit absolute destination and per-save
-            // ground/tiled toggles, with a text result for the UI.
+            // Explicit absolute destination and per-save ground/tiled toggles,
+            // with a text result for the UI.
             auto optionsSaveMapService = [this](const std::shared_ptr<rmw_request_id_t> request_header, const std::shared_ptr<lio_sam_hesai::srv::SaveMapOptions::Request> req, std::shared_ptr<lio_sam_hesai::srv::SaveMapOptions::Response> res) -> void {
                 (void)request_header;
                 std::string error;
@@ -393,12 +433,11 @@ public:
                 res->message = outcome.message;
             };
 
-            srvSaveMap = create_service<lio_sam_hesai::srv::SaveMap>("lio_sam/save_map", legacySaveMapService);
             srvSaveMapOptions = create_service<lio_sam_hesai::srv::SaveMapOptions>("lio_sam/save_map_options", optionsSaveMapService);
         }
         else
         {
-            RCLCPP_WARN(get_logger(), "mappingMode=false: save_map and save_map_options services disabled");
+            RCLCPP_WARN(get_logger(), "mappingMode=false: save_map_options service disabled");
         }
         pubHistoryKeyFrames = create_publisher<sensor_msgs::msg::PointCloud2>(config_.outputs.loop_history, 1);
         pubIcpKeyFrames = create_publisher<sensor_msgs::msg::PointCloud2>(config_.outputs.loop_history, 1);
@@ -413,16 +452,854 @@ public:
         downSizeFilterICP.setLeafSize(config_.mapping.voxel_filter.mapping_surface_leaf_size, config_.mapping.voxel_filter.mapping_surface_leaf_size, config_.mapping.voxel_filter.mapping_surface_leaf_size);
         downSizeFilterSurroundingKeyPoses.setLeafSize(config_.mapping.local_map.keyframe_density, config_.mapping.local_map.keyframe_density, config_.mapping.local_map.keyframe_density); // for surrounding key poses of scan-to-map optimization
 
+        // Every mapping session keeps its ground-export scan cache outside the
+        // map destination and retains it after node exit. Online DUFOMap has
+        // its own worker cache below this session directory.
+        dufomapCacheDirectory_ = lio_sam_hesai::MakeDufomapSessionDirectory(
+            config_.mapping.dufomap.cache_directory,
+            static_cast<unsigned long>(::getpid()), &dufomapCacheError_);
+        if (dufomapCacheDirectory_.empty())
+        {
+            RCLCPP_ERROR(get_logger(),
+                         "Keyframe scan cache could not be created: %s. "
+                         "Online DUFOMap and cached ground exports will fail "
+                         "until this is fixed.",
+                         dufomapCacheError_.c_str());
+        }
+        else
+        {
+            RCLCPP_INFO(get_logger(), "Keyframe scan cache created in %s",
+                        dufomapCacheDirectory_.c_str());
+        }
+
+        if (config_.mapping.dufomap.enable)
+        {
+            if (dufomapCacheDirectory_.empty())
+            {
+                online_dufomap_startup_error_ =
+                    "online DUFOMap is enabled but the session cache is "
+                    "unavailable: " + dufomapCacheError_;
+                RCLCPP_ERROR(get_logger(), "%s",
+                             online_dufomap_startup_error_.c_str());
+            }
+            else
+            {
+                try
+                {
+                    online_dufomap_ =
+                        std::make_unique<lio_sam_hesai::OnlineDufomap>(
+                            config_.mapping.dufomap,
+                            (dufomapCacheDirectory_ / "online").string());
+                }
+                catch (const std::exception& error)
+                {
+                    online_dufomap_startup_error_ =
+                        std::string("online DUFOMap worker failed to start: ") +
+                        error.what();
+                    RCLCPP_ERROR(get_logger(), "%s",
+                                 online_dufomap_startup_error_.c_str());
+                }
+            }
+        }
+
         allocateMemory();
     }
 
-    // Single export body shared by /lio_sam/save_map and
-    // /lio_sam/save_map_options: both services resolve their request into
-    // lio_sam_hesai::SaveMapExportOptions and land here, so the exported
-    // artifacts and the per-save toggles cannot drift apart.
+    ~mapOptimization() override
+    {
+        // main() joins the loop and visualization threads before the node is
+        // destroyed, so no callback can touch the worker after this reset.
+        online_dufomap_.reset();
+        if (!dufomapCacheDirectory_.empty())
+        {
+            RCLCPP_INFO(get_logger(), "Retaining keyframe scan cache: %s",
+                        dufomapCacheDirectory_.c_str());
+        }
+    }
+
+    lio_sam_hesai::GroundAlgorithm ExportGroundAlgorithm() const
+    {
+        return lio_sam_hesai::SelectGroundAlgorithm(
+            config_.mapping.ground_segmentation.mode,
+            config_.mapping.patchworkpp.mode, lio_sam_hesai::GroundStage::Export);
+    }
+    std::filesystem::path CachedGroundScanPath(std::size_t index) const
+    {
+        return dufomapCacheDirectory_ / "ground_scans" / CachedFullScanPath(index).filename();
+    }
+    std::filesystem::path CachedProjectionPath(std::size_t index) const
+    {
+        auto name = CachedFullScanPath(index).filename();
+        name.replace_extension(".bin");
+        return dufomapCacheDirectory_ / "projection" / name;
+    }
+    bool StoreGroundInputsForExport(std::size_t index, std::string* error)
+    {
+        const auto algorithm = ExportGroundAlgorithm();
+        if (algorithm == lio_sam_hesai::GroundAlgorithm::None)
+            return true;
+        try
+        {
+            if (!groundExportCacheError_.empty())
+                throw std::runtime_error(groundExportCacheError_);
+            if (!dufomapCacheError_.empty())
+                throw std::runtime_error(dufomapCacheError_);
+            if (dufomapCacheDirectory_.empty())
+                throw std::runtime_error("ground export scan cache is unavailable");
+            if (algorithm == lio_sam_hesai::GroundAlgorithm::Current)
+            {
+                if (cloudInfo.cloud_projection_rows !=
+                        static_cast<std::uint32_t>(config_.mapping.lidar.scan_lines) ||
+                    cloudInfo.cloud_projection_columns !=
+                        static_cast<std::uint32_t>(config_.mapping.lidar.horizon_scan))
+                    throw std::runtime_error("source ground projection dimensions do not match mapping configuration");
+                // Projection indices refer to this exact ordered scan. The
+                // online DUFOMap cache stores a different, complete scan.
+                auto projected = pcl::PointCloud<PointType>::Ptr(
+                    new pcl::PointCloud<PointType>());
+                pcl::fromROSMsg(cloudInfo.cloud_deskewed, *projected);
+                std::string write_error;
+                if (!StoreFullScanForExport(index, projected, &write_error))
+                    throw std::runtime_error(write_error);
+                lio_sam_hesai::WriteGroundProjectionFile(
+                    CachedProjectionPath(index),
+                    projected->size(),
+                    cloudInfo.cloud_projection_indices,
+                    config_.mapping.lidar.scan_lines,
+                    config_.mapping.lidar.horizon_scan);
+            }
+            else
+            {
+                if (cloudInfo.cloud_export_scan.fields.empty() ||
+                    cloudInfo.cloud_export_scan.data.empty())
+                    throw std::runtime_error("missing complete pre-projection scan for Patchwork++ export");
+                pcl::PointCloud<PointType> complete;
+                pcl::fromROSMsg(cloudInfo.cloud_export_scan, complete);
+                std::string write_error;
+                if (!SaveCloudBinary(CachedGroundScanPath(index), complete, &write_error))
+                    throw std::runtime_error(write_error);
+            }
+        }
+        catch (const std::exception& exception)
+        {
+            groundExportCacheError_ = exception.what();
+            if (error) *error = groundExportCacheError_;
+            return false;
+        }
+        if (error) error->clear();
+        return true;
+    }
+
+    bool RecomputeExportGround(
+        const pcl::PointCloud<PointTypePose>::Ptr& poses, std::size_t frame_count,
+        const std::string& scan_cache_error, const std::string& ground_cache_error,
+        float ground_resolution, pcl::PointCloud<PointType>::Ptr& ground,
+        std::string* error)
+    {
+        try
+        {
+            if (!scan_cache_error.empty()) throw std::runtime_error(scan_cache_error);
+            if (!ground_cache_error.empty()) throw std::runtime_error(ground_cache_error);
+            if (frame_count == 0 || poses->size() != frame_count)
+                throw std::runtime_error("ground export requires cached keyframes and final poses");
+            const auto algorithm = ExportGroundAlgorithm();
+            std::unique_ptr<lio_sam_hesai::GroundMeshRasterizer> rasterizer;
+            const auto& mesh_config = config_.mapping.map_save.ground_mesh;
+            if (mesh_config.enable)
+            {
+                if (algorithm != lio_sam_hesai::GroundAlgorithm::Current)
+                    throw std::runtime_error(
+                        "ground_mesh requires Current/RingPlane export mode");
+                if (!(ground_resolution > 0.0F))
+                    throw std::runtime_error(
+                        "ground_mesh requires a positive resolved ground_resolution; got " +
+                        std::to_string(ground_resolution));
+                lio_sam_hesai::GroundMeshOptions mesh_options;
+                mesh_options.resolution = ground_resolution;
+                mesh_options.max_edge_length = mesh_config.max_edge_length;
+                mesh_options.edge_length_per_meter =
+                    mesh_config.edge_length_per_meter;
+                mesh_options.max_range_ratio = mesh_config.max_range_ratio;
+                mesh_options.max_slope_deg =
+                    config_.mapping.ground_segmentation.grid_patch.max_slope_deg;
+                mesh_options.max_height_range =
+                    config_.mapping.ground_segmentation.grid_patch.max_height_range;
+                const auto& static_filter = config_.mapping.static_map_filter;
+                if (static_filter.enable && static_filter.voxel_size > 1e-3f &&
+                    static_filter.min_keyframes > 1)
+                    mesh_options.min_keyframe_support =
+                        static_filter.min_keyframes;
+                rasterizer =
+                    std::make_unique<lio_sam_hesai::GroundMeshRasterizer>(
+                        mesh_options);
+            }
+            std::unique_ptr<lio_sam_hesai::PatchworkppGroundSegmenter> patchwork;
+            if (algorithm == lio_sam_hesai::GroundAlgorithm::Patchworkpp)
+                patchwork = std::make_unique<lio_sam_hesai::PatchworkppGroundSegmenter>(
+                    config_.mapping.patchworkpp);
+            const lio_sam_hesai::GroundRingRange output_rings =
+                lio_sam_hesai::normalizeGroundScanRange(
+                    config_.mapping.ground_segmentation.scan_start_index,
+                    config_.mapping.ground_segmentation.scan_end_index,
+                    config_.mapping.lidar.scan_lines);
+            std::vector<pcl::PointCloud<PointType>::Ptr> frames;
+            frames.reserve(frame_count);
+            for (std::size_t index = 0; index < frame_count; ++index)
+            {
+                const auto path = algorithm == lio_sam_hesai::GroundAlgorithm::Current ?
+                    CachedFullScanPath(index) : CachedGroundScanPath(index);
+                pcl::PointCloud<PointType> scan;
+                if (pcl::io::loadPCDFile<PointType>(path.string(), scan) != 0 || scan.empty())
+                    throw std::runtime_error("missing/corrupt ground export scan: " + path.string());
+                auto frame = pcl::PointCloud<PointType>::Ptr(new pcl::PointCloud<PointType>());
+                if (algorithm == lio_sam_hesai::GroundAlgorithm::Current)
+                {
+                    auto indices = lio_sam_hesai::ReadGroundProjectionFile(
+                        CachedProjectionPath(index), scan.size(),
+                        config_.mapping.lidar.scan_lines, config_.mapping.lidar.horizon_scan);
+                    auto result = lio_sam_hesai::SegmentProjectedGround(
+                        config_.mapping.ground_segmentation, scan, indices,
+                        config_.mapping.lidar.scan_lines, config_.mapping.lidar.horizon_scan);
+                    if (rasterizer)
+                    {
+                        const auto& pose = poses->points[index];
+                        const Eigen::Matrix4f map_from_scan =
+                            pcl::getTransformation(pose.x, pose.y, pose.z,
+                                                   pose.roll, pose.pitch,
+                                                   pose.yaw)
+                                .matrix();
+                        rasterizer->AddFrame(
+                            scan, indices, result.classification,
+                            config_.mapping.lidar.scan_lines,
+                            config_.mapping.lidar.horizon_scan, output_rings,
+                            map_from_scan);
+                    }
+                    *frame = std::move(result.ground);
+                }
+                else
+                {
+                    for (const auto point : patchwork->Segment(scan))
+                    {
+                        if (point >= scan.size())
+                            throw std::runtime_error("Patchwork++ returned an invalid export index");
+                        frame->push_back(scan[point]);
+                    }
+                }
+                frames.push_back(std::move(frame));
+            }
+            ground = BuildGroundFromSnapshot(frames, poses);
+            if (rasterizer)
+            {
+                const std::size_t appended =
+                    rasterizer->AppendMissingSamples(ground.get());
+                const auto& statistics = rasterizer->statistics();
+                std::cout << "Ground mesh: frames=" << statistics.frames
+                          << " acceptedTriangles="
+                          << statistics.accepted_triangles
+                          << " rasterizedCells=" << statistics.rasterized_cells
+                          << " appendedSamples=" << appended << std::endl;
+            }
+            return true;
+        }
+        catch (const std::exception& exception)
+        {
+            if (error) *error = std::string("Ground export failed: ") + exception.what();
+            return false;
+        }
+    }
+
+    // DUFOMap evidence is cached per keyframe from the full deskewed scan, not
+    // from the LOAM feature clouds. The file format is ordinary binary PCD so
+    // the offline tool can replay the same dataset.
+    std::filesystem::path CachedFullScanPath(std::size_t index) const
+    {
+        std::ostringstream name;
+        name << std::setw(6) << std::setfill('0') << index << ".pcd";
+        return dufomapCacheDirectory_ / "scans" / name.str();
+    }
+
+    bool StoreFullScanForExport(std::size_t index,
+                                const pcl::PointCloud<PointType>::Ptr& cloud,
+                                std::string* error)
+    {
+        if (!dufomapCacheError_.empty())
+        {
+            if (error != nullptr)
+                *error = dufomapCacheError_;
+            return false;
+        }
+
+        std::string reason;
+        if (dufomapCacheDirectory_.empty())
+        {
+            reason = "Export scan cache directory is not available";
+        }
+        else if (cloud == nullptr || cloud->empty())
+        {
+            reason = "full deskewed scan for keyframe " + std::to_string(index) +
+                     " is empty; map export requires a complete scan";
+        }
+        if (!reason.empty())
+        {
+            dufomapCacheError_ = reason;
+            if (error != nullptr)
+                *error = reason;
+            return false;
+        }
+
+        const std::filesystem::path path = CachedFullScanPath(index);
+        std::error_code filesystem_error;
+        std::filesystem::create_directories(path.parent_path(), filesystem_error);
+        if (filesystem_error)
+        {
+            reason = "cannot create map export scan cache " +
+                     path.parent_path().string() + ": " +
+                     filesystem_error.message();
+        }
+        else
+        {
+            try
+            {
+                if (pcl::io::savePCDFileBinary(path.string(), *cloud) != 0)
+                    reason = "cannot write map export scan cache " + path.string();
+            }
+            catch (const std::exception& exception)
+            {
+                reason = "cannot write map export scan cache " + path.string() +
+                         ": " + exception.what();
+            }
+        }
+
+        if (!reason.empty())
+        {
+            dufomapCacheError_ = reason;
+            if (error != nullptr)
+                *error = reason;
+            return false;
+        }
+        if (error != nullptr)
+            error->clear();
+        return true;
+    }
+
+    std::filesystem::path DufomapCacheDirectory() const
+    {
+        return dufomapCacheDirectory_;
+    }
+
+    // The complete scan cache is intentionally separate from the legacy
+    // RingPlane/Patchwork++ scan directories. A missing or corrupt complete
+    // scan must fail the export; the worker never falls back to features or
+    // to those legacy ground inputs.
+    std::filesystem::path CachedCompleteScanPath(std::size_t index) const
+    {
+        return lio_sam_hesai::KeyframeScanCachePath(
+            dufomapCacheDirectory_ / "keyframe_scans", index);
+    }
+
+    bool StoreCompleteKeyframeScan(
+        std::size_t index,
+        const sensor_msgs::msg::PointCloud2& message,
+        std::string* error)
+    {
+        std::string reason;
+        if (dufomapCacheDirectory_.empty())
+            reason = "complete keyframe scan cache directory is unavailable";
+        else if (message.data.empty())
+            reason = "complete keyframe scan for keyframe " +
+                     std::to_string(index) + " is empty";
+
+        std::vector<lio_sam_hesai::DufomapPoint> points;
+        if (reason.empty())
+        {
+            try
+            {
+                pcl::PointCloud<PointType> cloud;
+                pcl::fromROSMsg(message, cloud);
+                points.reserve(cloud.size());
+                for (const auto& point : cloud.points)
+                    points.push_back(lio_sam_hesai::DufomapPoint{
+                        point.x, point.y, point.z, point.intensity});
+                if (points.empty())
+                    reason = "complete keyframe scan for keyframe " +
+                             std::to_string(index) + " produced no points";
+            }
+            catch (const std::exception& exception)
+            {
+                reason = "cannot convert complete keyframe scan for keyframe " +
+                         std::to_string(index) + ": " + exception.what();
+            }
+        }
+
+        std::filesystem::path path;
+        if (reason.empty())
+        {
+            path = CachedCompleteScanPath(index);
+            std::string write_error;
+            if (!lio_sam_hesai::WriteKeyframeScanCacheFile(
+                    path, index, points, &write_error))
+                reason = write_error;
+        }
+
+        if (!reason.empty())
+        {
+            {
+                std::lock_guard<std::mutex> lock(mtx);
+                completeScanCacheError_ = reason;
+            }
+            if (error != nullptr) *error = reason;
+            return false;
+        }
+
+        // The mapping callback registers the keyframe before this write
+        // completes. Attaching the persisted path must not create a new pose
+        // generation.
+        if (online_dufomap_)
+            online_dufomap_->SetKeyframeScanPath(
+                static_cast<int>(index), path.string());
+        if (error != nullptr) error->clear();
+        return true;
+    }
+
+    void BeginCompleteScanWrite()
+    {
+        std::lock_guard<std::mutex> lock(completeScanCacheMutex_);
+        ++pendingCompleteScanWrites_;
+    }
+
+    void FinishCompleteScanWrite()
+    {
+        {
+            std::lock_guard<std::mutex> lock(completeScanCacheMutex_);
+            if (pendingCompleteScanWrites_ > 0U)
+                --pendingCompleteScanWrites_;
+        }
+        completeScanCacheCondition_.notify_all();
+    }
+
+    bool WaitForPendingCompleteScanWrites(
+        std::chrono::milliseconds timeout, std::string* error)
+    {
+        std::unique_lock<std::mutex> lock(completeScanCacheMutex_);
+        if (!completeScanCacheCondition_.wait_for(
+                lock, timeout, [&] { return pendingCompleteScanWrites_ == 0U; }))
+        {
+            if (error != nullptr)
+                *error = "timed out waiting for complete keyframe scan cache writes";
+            return false;
+        }
+        return true;
+    }
+
+    // Build the unfiltered ground map from the same keyframe/pose snapshot as
+    // the corner/surface export. Ground never enters DUFOMap classification;
+    // this only freezes the poses used by the original patch/flatten/save path
+    // while the backend runs.
+    pcl::PointCloud<PointType>::Ptr BuildGroundFromSnapshot(
+        const std::vector<pcl::PointCloud<PointType>::Ptr>& ground_frames,
+        const pcl::PointCloud<PointTypePose>::Ptr& poses)
+    {
+        pcl::PointCloud<PointType>::Ptr ground(new pcl::PointCloud<PointType>());
+        const bool filter = config_.mapping.static_map_filter.enable &&
+            config_.mapping.static_map_filter.voxel_size > 1e-3f &&
+            config_.mapping.static_map_filter.min_keyframes > 1;
+        std::unordered_map<VoxelIndex, VoxelAcc, VoxelIndexHash> voxels;
+        for (std::size_t index = 0; index < ground_frames.size() && index < poses->size(); ++index)
+        {
+            if (!ground_frames[index]) continue;
+            auto transformed = transformPointCloud(ground_frames[index], &poses->points[index]);
+            if (filter)
+                accumulateVoxelMap(voxels, transformed, index,
+                    config_.mapping.static_map_filter.voxel_size);
+            else *ground += *transformed;
+        }
+        if (filter) ground = voxelMapToCloud(voxels, config_.mapping.static_map_filter.min_keyframes);
+        return ground;
+    }
+
+    std::array<double, 16> PoseMatrix(const PointTypePose& pose) const
+    {
+        const Eigen::Affine3f transform = pcl::getTransformation(
+            pose.x, pose.y, pose.z, pose.roll, pose.pitch, pose.yaw);
+        const Eigen::Matrix4f matrix = transform.matrix();
+        std::array<double, 16> result{};
+        for (int row = 0; row < 4; ++row)
+        {
+            for (int column = 0; column < 4; ++column)
+                result[static_cast<std::size_t>(row * 4 + column)] =
+                    static_cast<double>(matrix(row, column));
+        }
+        return result;
+    }
+
+    lio_sam_hesai::DufomapPose PoseMatrixFromValues(
+        double x, double y, double z, double roll, double pitch, double yaw) const
+    {
+        PointTypePose pose;
+        pose.x = x;
+        pose.y = y;
+        pose.z = z;
+        pose.roll = roll;
+        pose.pitch = pitch;
+        pose.yaw = yaw;
+        return PoseMatrix(pose);
+    }
+
+    lio_sam_hesai::DufomapPose CurrentInitialGuessPose() const
+    {
+        return PoseMatrixFromValues(
+            cloudInfo.initial_guess_x, cloudInfo.initial_guess_y,
+            cloudInfo.initial_guess_z, cloudInfo.initial_guess_roll,
+            cloudInfo.initial_guess_pitch, cloudInfo.initial_guess_yaw);
+    }
+
+    lio_sam_hesai::DufomapPose CurrentLidarMapPose() const
+    {
+        return PoseMatrixFromValues(
+            transformTobeMapped[3], transformTobeMapped[4], transformTobeMapped[5],
+            transformTobeMapped[0], transformTobeMapped[1], transformTobeMapped[2]);
+    }
+
+    static lio_sam_hesai::DufomapPose IdentityPose()
+    {
+        return lio_sam_hesai::DufomapPose{
+            1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+            0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0};
+    }
+
+    static bool PoseToMatrix(const lio_sam_hesai::DufomapPose& pose,
+                             Eigen::Matrix4d* matrix)
+    {
+        if (matrix == nullptr) return false;
+        for (int row = 0; row < 4; ++row)
+        {
+            for (int column = 0; column < 4; ++column)
+            {
+                const double value =
+                    pose[static_cast<std::size_t>(row * 4 + column)];
+                if (!std::isfinite(value)) return false;
+                (*matrix)(row, column) = value;
+            }
+        }
+        return true;
+    }
+
+    static lio_sam_hesai::DufomapPose MatrixToPose(
+        const Eigen::Matrix4d& matrix)
+    {
+        lio_sam_hesai::DufomapPose result{};
+        for (int row = 0; row < 4; ++row)
+        {
+            for (int column = 0; column < 4; ++column)
+                result[static_cast<std::size_t>(row * 4 + column)] =
+                    matrix(row, column);
+        }
+        return result;
+    }
+
+    // A finite homogeneous transform with an orthonormal right-handed
+    // rotation. Every pose used as an anchor or a relative increment passes
+    // this check before it is accepted as DUFOMap evidence.
+    static bool IsRigidPose(const lio_sam_hesai::DufomapPose& pose)
+    {
+        Eigen::Matrix4d matrix;
+        if (!PoseToMatrix(pose, &matrix)) return false;
+        const Eigen::Vector3d bottom = matrix.row(3).head<3>().transpose();
+        if (bottom.norm() > 1e-6 ||
+            std::abs(matrix(3, 3) - 1.0) > 1e-6)
+            return false;
+        const Eigen::Matrix3d rotation = matrix.block<3, 3>(0, 0);
+        if ((rotation.transpose() * rotation - Eigen::Matrix3d::Identity())
+                    .norm() > 1e-3)
+            return false;
+        return std::abs(rotation.determinant() - 1.0) <= 1e-3;
+    }
+
+    static double TranslationNorm(const lio_sam_hesai::DufomapPose& pose)
+    {
+        return std::sqrt(pose[3] * pose[3] + pose[7] * pose[7] +
+                         pose[11] * pose[11]);
+    }
+
+    static double RotationAngleRad(const lio_sam_hesai::DufomapPose& pose)
+    {
+        Eigen::Matrix4d matrix;
+        if (!PoseToMatrix(pose, &matrix)) return std::numeric_limits<double>::infinity();
+        const Eigen::Matrix3d rotation = matrix.block<3, 3>(0, 0);
+        const double cosine = std::min(
+            1.0, std::max(-1.0, (rotation.trace() - 1.0) * 0.5));
+        return std::acos(cosine);
+    }
+
+    static lio_sam_hesai::DufomapPose RelativePose(
+        const lio_sam_hesai::DufomapPose& from,
+        const lio_sam_hesai::DufomapPose& to)
+    {
+        Eigen::Matrix4d from_matrix;
+        Eigen::Matrix4d to_matrix;
+        if (!PoseToMatrix(from, &from_matrix) ||
+            !PoseToMatrix(to, &to_matrix))
+            return lio_sam_hesai::DufomapPose{};
+        return MatrixToPose(from_matrix.inverse() * to_matrix);
+    }
+
+    static lio_sam_hesai::DufomapPose ComposePose(
+        const lio_sam_hesai::DufomapPose& left,
+        const lio_sam_hesai::DufomapPose& right)
+    {
+        Eigen::Matrix4d left_matrix;
+        Eigen::Matrix4d right_matrix;
+        if (!PoseToMatrix(left, &left_matrix) ||
+            !PoseToMatrix(right, &right_matrix))
+            return lio_sam_hesai::DufomapPose{};
+        return MatrixToPose(left_matrix * right_matrix);
+    }
+
+    // A skipped scan may only extrapolate a small, physically plausible
+    // increment. A large jump is a new odometry epoch, not usable evidence.
+    static bool IsSaneRelativeIncrement(
+        const lio_sam_hesai::DufomapPose& relative)
+    {
+        if (!IsRigidPose(relative)) return false;
+        return TranslationNorm(relative) <= 5.0 &&
+               RotationAngleRad(relative) <= M_PI / 3.0;
+    }
+
+    pcl::PointCloud<PointType>::Ptr FilterKeyframeCloud(
+        const pcl::PointCloud<PointType>::Ptr& raw,
+        const std::vector<std::uint8_t>* labels) const
+    {
+        pcl::PointCloud<PointType>::Ptr filtered(new pcl::PointCloud<PointType>());
+        if (!raw) return nullptr;
+        if (labels == nullptr) return raw;
+        if (labels->size() != raw->size())
+        {
+            RCLCPP_ERROR(get_logger(),
+                         "Online DUFOMap label count %zu does not match keyframe cloud %zu",
+                         labels->size(), raw->size());
+            return nullptr;
+        }
+        std::vector<lio_sam_hesai::DufomapPoint> points;
+        points.reserve(raw->size());
+        for (const auto& point : raw->points)
+            points.push_back(lio_sam_hesai::DufomapPoint{
+                point.x, point.y, point.z, point.intensity});
+        const auto kept = lio_sam_hesai::ApplyDufomapLabels(points, labels);
+        filtered->reserve(kept.size());
+        for (const auto& point : kept)
+        {
+            PointType output;
+            output.x = point.x;
+            output.y = point.y;
+            output.z = point.z;
+            output.intensity = point.intensity;
+            filtered->push_back(output);
+        }
+        return filtered;
+    }
+
+    void UpdateOnlineDufomapPoses()
+    {
+        if (!online_dufomap_) return;
+        std::vector<lio_sam_hesai::DufomapPose> poses;
+        poses.reserve(cloudKeyPoses6D->size());
+        for (const auto& pose : cloudKeyPoses6D->points)
+            poses.push_back(PoseMatrix(pose));
+        online_dufomap_->UpdateKeyframePoses(poses);
+    }
+
+    // Rejects any snapshot that cannot be applied to every frozen keyframe.
+    // This runs before a save removes an old artifact or publishes a display
+    // cloud, so a mismatch can never look like a successful empty map.
+    bool ValidateDufomapLabels(
+        const lio_sam_hesai::LabelSnapshot& snapshot,
+        std::size_t required_count,
+        const std::vector<pcl::PointCloud<PointType>::Ptr>& corners,
+        const std::vector<pcl::PointCloud<PointType>::Ptr>& surfs,
+        std::string* error) const
+    {
+        if (snapshot.keyframe_count < required_count ||
+            snapshot.labels.size() < required_count)
+        {
+            if (error != nullptr)
+                *error = "online DUFOMap snapshot covers " +
+                         std::to_string(snapshot.labels.size()) +
+                         " keyframes, but " + std::to_string(required_count) +
+                         " were frozen for export";
+            return false;
+        }
+        for (std::size_t index = 0; index < required_count; ++index)
+        {
+            const std::size_t corner_count =
+                index < corners.size() && corners[index] ? corners[index]->size() : 0U;
+            const std::size_t surf_count =
+                index < surfs.size() && surfs[index] ? surfs[index]->size() : 0U;
+            const auto& labels = snapshot.labels[index];
+            if (labels.corner.size() != corner_count ||
+                labels.surf.size() != surf_count)
+            {
+                if (error != nullptr)
+                {
+                    *error = "online DUFOMap label count mismatch at keyframe " +
+                             std::to_string(index) + " (corner " +
+                             std::to_string(labels.corner.size()) + "/" +
+                             std::to_string(corner_count) + ", surf " +
+                             std::to_string(labels.surf.size()) + "/" +
+                             std::to_string(surf_count) + ")";
+                }
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // Health is logged at most once per few seconds, and only when a counter or
+    // error changed, so a persistent worker failure stays observable without
+    // flooding the mapping log.
+    void MaybeLogOnlineDufomapHealth()
+    {
+        if (!online_dufomap_) return;
+        const double now = timeLaserInfoCur;
+        if (last_dufomap_health_log_time_ >= 0.0 &&
+            now - last_dufomap_health_log_time_ < 5.0)
+            return;
+        last_dufomap_health_log_time_ = now;
+
+        const std::size_t dropped = online_dufomap_->dropped_evidence();
+        const std::size_t worker_skipped = online_dufomap_->skipped_evidence();
+        const std::string error = online_dufomap_->last_error();
+        const bool changed =
+            dropped != last_dufomap_logged_dropped_ ||
+            worker_skipped != last_dufomap_logged_worker_skipped_ ||
+            online_dufomap_skipped_ != last_dufomap_logged_skipped_ ||
+            error != last_dufomap_logged_error_;
+        if (!changed) return;
+
+        RCLCPP_WARN(get_logger(),
+                    "Online DUFOMap health: dropped=%zu skipped=%zu "
+                    "worker_skipped=%zu rejected=%zu enqueue_failures=%zu "
+                    "last_error=%s",
+                    dropped, online_dufomap_skipped_, worker_skipped,
+                    online_dufomap_rejected_, online_dufomap_enqueue_failures_,
+                    error.empty() ? "none" : error.c_str());
+        last_dufomap_logged_dropped_ = dropped;
+        last_dufomap_logged_skipped_ = online_dufomap_skipped_;
+        last_dufomap_logged_worker_skipped_ = worker_skipped;
+        last_dufomap_logged_error_ = error;
+    }
+
+    bool SaveCloudBinary(const std::filesystem::path& path,
+                         const pcl::PointCloud<PointType>& cloud,
+                         std::string* error) const
+    {
+        std::error_code filesystem_error;
+        std::filesystem::create_directories(path.parent_path(), filesystem_error);
+        if (filesystem_error)
+        {
+            if (error != nullptr)
+                *error = "cannot create " + path.parent_path().string() + ": " +
+                         filesystem_error.message();
+            return false;
+        }
+
+        if (cloud.empty())
+        {
+            // PCL's binary writer can report an error for a zero-point cloud.
+            // An empty feature/ground set is a legitimate export result, so
+            // write the canonical empty PCD header explicitly.
+            std::ofstream stream(path, std::ios::binary | std::ios::trunc);
+            stream << "# .PCD v0.7 - Point Cloud Data file format\n"
+                   << "VERSION .7\n"
+                   << "FIELDS x y z intensity\n"
+                   << "SIZE 4 4 4 4\n"
+                   << "TYPE F F F F\n"
+                   << "COUNT 1 1 1 1\n"
+                   << "WIDTH 0\n"
+                   << "HEIGHT 1\n"
+                   << "VIEWPOINT 0 0 0 1 0 0 0\n"
+                   << "POINTS 0\n"
+                   << "DATA binary\n";
+            stream.close();
+            if (!stream.good())
+            {
+                if (error != nullptr)
+                    *error = "cannot write empty point cloud " + path.string();
+                return false;
+            }
+            return true;
+        }
+
+        try
+        {
+            if (pcl::io::savePCDFileBinary(path.string(), cloud) == 0)
+                return true;
+            if (error != nullptr)
+                *error = "cannot write " + path.string();
+        }
+        catch (const std::exception& exception)
+        {
+            if (error != nullptr)
+                *error = "cannot write " + path.string() + ": " + exception.what();
+        }
+        return false;
+    }
+
+    bool WriteCloudBinary(const std::filesystem::path& path,
+                          const pcl::PointCloud<PointType>& cloud,
+                          std::string* error) const
+    {
+        return SaveCloudBinary(path, cloud, error);
+    }
+
+    // Single export body for /lio_sam/save_map_options: the service resolves
+    // its request into lio_sam_hesai::SaveMapExportOptions and lands here.
     MapExportOutcome ExportMap(const lio_sam_hesai::SaveMapExportOptions& options)
     {
+        // A save freezes one worker generation and owns the only export query.
+        std::lock_guard<std::mutex> save_lock(saveMutex_);
         MapExportOutcome outcome;
+        // DUFOMap is an online property. A disabled configuration publishes
+        // and saves exactly the original keyframe map.
+        const bool dufomapEnabled = config_.mapping.dufomap.enable;
+        const bool groundGridEnabled =
+            config_.mapping.map_save.ground_grid.enable;
+        const float groundRes = lio_sam_hesai::ResolveMapSaveResolution(
+            options.ground_resolution, config_.mapping.map_save.ground_resolution);
+        const bool recomputeGround = options.save_ground_map &&
+            ExportGroundAlgorithm() != lio_sam_hesai::GroundAlgorithm::None;
+        const bool groundMeshEnabled = options.save_ground_map &&
+            config_.mapping.map_save.ground_mesh.enable;
+        if (groundMeshEnabled &&
+            ExportGroundAlgorithm() != lio_sam_hesai::GroundAlgorithm::Current)
+        {
+            outcome.message =
+                "map_save.ground_mesh.enable requires Current/RingPlane "
+                "export mode; got an unsupported ground export mode";
+            RCLCPP_ERROR(get_logger(), "%s", outcome.message.c_str());
+            return outcome;
+        }
+        if (groundMeshEnabled && !(groundRes > 0.0F))
+        {
+            outcome.message =
+                "map_save.ground_mesh.enable requires a positive resolved "
+                "ground_resolution; got " +
+                std::to_string(groundRes);
+            RCLCPP_ERROR(get_logger(), "%s", outcome.message.c_str());
+            return outcome;
+        }
+        const bool deferFinalWrites = dufomapEnabled || recomputeGround ||
+            groundMeshEnabled ||
+            (options.save_ground_map && groundGridEnabled);
+        if (options.save_ground_map && groundGridEnabled &&
+            !(groundRes > 0.0f))
+        {
+            outcome.message =
+                "map_save.ground_grid.enable requires a positive resolved "
+                "ground_resolution; got " +
+                std::to_string(groundRes);
+            RCLCPP_ERROR(get_logger(), "%s", outcome.message.c_str());
+            return outcome;
+        }
         const std::string saveMapDirectory = options.directory.string();
         std::cout << "****************************************************" << std::endl;
         std::cout << "Saving map to pcd files ..." << std::endl;
@@ -456,7 +1333,8 @@ public:
         // Remove the artifacts a previous save could have written, and nothing
         // else: unrelated files in the destination directory survive.
         std::string artifactError;
-        if (!lio_sam_hesai::RemovePriorMapArtifacts(*saveLayout, &artifactError))
+        if (!deferFinalWrites &&
+            !lio_sam_hesai::RemovePriorMapArtifacts(*saveLayout, &artifactError))
         {
             outcome.message = artifactError;
             RCLCPP_ERROR(get_logger(), "%s", outcome.message.c_str());
@@ -473,36 +1351,224 @@ public:
             new pcl::PointCloud<PointTypePose>());
         std::vector<pcl::PointCloud<PointType>::Ptr> cornerKeyFramesSnapshot;
         std::vector<pcl::PointCloud<PointType>::Ptr> surfKeyFramesSnapshot;
+        std::vector<pcl::PointCloud<PointType>::Ptr> groundKeyFramesSnapshot;
+        std::size_t keyFrameCount = 0;
+        std::size_t groundFrameCount = 0;
+        std::string scanCacheErrorSnapshot;
+        std::string groundCacheErrorSnapshot;
+        std::string completeCacheErrorSnapshot;
+        std::string onlineDufomapErrorSnapshot;
+        lio_sam_hesai::DufomapSnapshotRequest dufomapRequest{};
+        bool haveDufomapRequest = false;
         {
             std::lock_guard<std::mutex> lock(mtx);
+            scanCacheErrorSnapshot = dufomapCacheError_;
+            groundCacheErrorSnapshot = groundExportCacheError_;
+            completeCacheErrorSnapshot = completeScanCacheError_;
+            onlineDufomapErrorSnapshot = online_dufomap_startup_error_;
             *keyPoses3DSnapshot = *cloudKeyPoses3D;
             *keyPoses6DSnapshot = *cloudKeyPoses6D;
-            const std::size_t keyFrameCount = std::min(
+            // Keep the historical corner/surface keyframe count. Ground is an
+            // independent, optional stream: a session without ground must not
+            // truncate the feature map to zero, and a shorter ground history
+            // must not hide later corner/surface keyframes.
+            keyFrameCount = std::min(
                 std::min(keyPoses3DSnapshot->size(), keyPoses6DSnapshot->size()),
                 std::min(cornerCloudKeyFrames.size(), surfCloudKeyFrames.size()));
+            groundFrameCount =
+                std::min(keyFrameCount, groundCloudKeyFrames.size());
             keyPoses3DSnapshot->resize(keyFrameCount);
             keyPoses6DSnapshot->resize(keyFrameCount);
             cornerKeyFramesSnapshot.assign(cornerCloudKeyFrames.begin(),
                                            cornerCloudKeyFrames.begin() + keyFrameCount);
             surfKeyFramesSnapshot.assign(surfCloudKeyFrames.begin(),
                                          surfCloudKeyFrames.begin() + keyFrameCount);
+            groundKeyFramesSnapshot.assign(
+                groundCloudKeyFrames.begin(),
+                groundCloudKeyFrames.begin() + groundFrameCount);
+            // Capture the worker request under the same lock as the poses and
+            // keyframe clouds. A loop correction that arrives after this point
+            // must not hand back labels from a newer generation.
+            if (dufomapEnabled && online_dufomap_)
+            {
+                dufomapRequest =
+                    online_dufomap_->CaptureRequest(keyFrameCount);
+                haveDufomapRequest = true;
+            }
         }
 
-        // Save key frame transformations from the same snapshot used below.
-        if (pcl::io::savePCDFileBinary(save_layout.Trajectory().string(), *keyPoses3DSnapshot) != 0 &&
-            failure.empty())
-            failure = "Failed to save " + save_layout.Trajectory().string();
-        if (pcl::io::savePCDFileBinary(save_layout.Transformations().string(), *keyPoses6DSnapshot) != 0 &&
-            failure.empty())
-            failure = "Failed to save " + save_layout.Transformations().string();
+        // Do not hold mtx while waiting for the online worker. The keyframes,
+        // poses, and exact snapshot generation are already frozen; any failure
+        // here returns before a prior map artifact is touched.
+        std::shared_ptr<const lio_sam_hesai::LabelSnapshot> dufomapLabels;
+        std::shared_ptr<const lio_sam_hesai::KeyframeScanExport>
+            completeScanExport;
+        if (dufomapEnabled)
+        {
+            std::string pendingWriteError;
+            if (!WaitForPendingCompleteScanWrites(std::chrono::seconds(30),
+                                                  &pendingWriteError))
+            {
+                outcome.message = pendingWriteError;
+                RCLCPP_ERROR(get_logger(), "%s", outcome.message.c_str());
+                return outcome;
+            }
+            {
+                std::lock_guard<std::mutex> lock(mtx);
+                completeCacheErrorSnapshot = completeScanCacheError_;
+            }
+            if (!completeCacheErrorSnapshot.empty())
+            {
+                outcome.message = completeCacheErrorSnapshot;
+                RCLCPP_ERROR(get_logger(), "%s", outcome.message.c_str());
+                return outcome;
+            }
+            if (!online_dufomap_)
+            {
+                outcome.message = onlineDufomapErrorSnapshot.empty()
+                    ? "online DUFOMap is enabled but the worker is unavailable"
+                    : onlineDufomapErrorSnapshot;
+                RCLCPP_ERROR(get_logger(), "%s", outcome.message.c_str());
+                return outcome;
+            }
+            if (!haveDufomapRequest)
+            {
+                outcome.message =
+                    "online DUFOMap snapshot request was not captured with the frozen keyframes";
+                RCLCPP_ERROR(get_logger(), "%s", outcome.message.c_str());
+                return outcome;
+            }
+            const auto labels = online_dufomap_->Barrier(
+                dufomapRequest, std::chrono::seconds(30));
+            if (!labels.has_value())
+            {
+                outcome.message = "online DUFOMap save barrier failed: " +
+                                  online_dufomap_->last_error();
+                RCLCPP_ERROR(get_logger(), "%s", outcome.message.c_str());
+                return outcome;
+            }
+            dufomapLabels = *labels;
+            if (dufomapLabels->keyframe_generation !=
+                dufomapRequest.keyframe_generation)
+            {
+                outcome.message =
+                    "online DUFOMap snapshot generation advanced during save "
+                    "(requested " +
+                    std::to_string(dufomapRequest.keyframe_generation) +
+                    ", received " +
+                    std::to_string(dufomapLabels->keyframe_generation) +
+                    "); refusing to mix old map poses with new labels";
+                RCLCPP_ERROR(get_logger(), "%s", outcome.message.c_str());
+                return outcome;
+            }
+            std::string labelError;
+            if (!ValidateDufomapLabels(*dufomapLabels, keyFrameCount,
+                                       cornerKeyFramesSnapshot,
+                                       surfKeyFramesSnapshot, &labelError))
+            {
+                outcome.message = labelError;
+                RCLCPP_ERROR(get_logger(), "%s", outcome.message.c_str());
+                return outcome;
+            }
+
+            // The complete-scan query happens before any prior artifact is
+            // removed. A missing/corrupt cache or generation change therefore
+            // leaves the previous map untouched.
+            std::vector<int> completeScanIndices;
+            completeScanIndices.reserve(keyFrameCount);
+            for (std::size_t index = 0; index < keyFrameCount; ++index)
+                completeScanIndices.push_back(static_cast<int>(index));
+            if (!completeScanIndices.empty())
+            {
+                const auto exported = online_dufomap_->ExportKeyframeScans(
+                    dufomapRequest, completeScanIndices, std::chrono::seconds(30));
+                if (!exported.has_value())
+                {
+                    outcome.message =
+                        "online DUFOMap complete keyframe scan export failed: " +
+                        online_dufomap_->last_error();
+                    RCLCPP_ERROR(get_logger(), "%s", outcome.message.c_str());
+                    return outcome;
+                }
+                completeScanExport = *exported;
+                if (completeScanExport->keyframe_generation !=
+                    dufomapRequest.keyframe_generation)
+                {
+                    outcome.message =
+                        "online DUFOMap complete scan export returned a newer "
+                        "generation; refusing to mix it with the frozen poses";
+                    RCLCPP_ERROR(get_logger(), "%s", outcome.message.c_str());
+                    return outcome;
+                }
+                // The backend may have integrated more evidence since the
+                // first barrier. Use the feature labels paired with the full
+                // scan query so all exported maps use the same evidence.
+                dufomapLabels = completeScanExport->feature_labels;
+                if (!dufomapLabels ||
+                    dufomapLabels->keyframe_generation !=
+                        completeScanExport->keyframe_generation ||
+                    dufomapLabels->evidence_sequence !=
+                        completeScanExport->evidence_sequence ||
+                    !ValidateDufomapLabels(*dufomapLabels, keyFrameCount,
+                                           cornerKeyFramesSnapshot,
+                                           surfKeyFramesSnapshot, &labelError))
+                {
+                    outcome.message = labelError.empty()
+                        ? "online DUFOMap complete scan export has no matching feature labels"
+                        : labelError;
+                    RCLCPP_ERROR(get_logger(), "%s", outcome.message.c_str());
+                    return outcome;
+                }
+            }
+            else
+            {
+                auto emptyExport =
+                    std::make_shared<lio_sam_hesai::KeyframeScanExport>();
+                emptyExport->keyframe_generation =
+                    dufomapRequest.keyframe_generation;
+                emptyExport->evidence_sequence =
+                    dufomapLabels->evidence_sequence;
+                completeScanExport = std::move(emptyExport);
+            }
+        }
+
+        auto saveTrajectory = [&]() {
+            // Save key frame transformations from the same snapshot used below.
+            if (pcl::io::savePCDFileBinary(save_layout.Trajectory().string(), *keyPoses3DSnapshot) != 0 &&
+                failure.empty())
+                failure = "Failed to save " + save_layout.Trajectory().string();
+            if (pcl::io::savePCDFileBinary(save_layout.Transformations().string(), *keyPoses6DSnapshot) != 0 &&
+                failure.empty())
+                failure = "Failed to save " + save_layout.Transformations().string();
+        };
+        if (!deferFinalWrites)
+            saveTrajectory();
         // extract global point cloud map
         pcl::PointCloud<PointType>::Ptr globalCornerCloud(new pcl::PointCloud<PointType>());
         pcl::PointCloud<PointType>::Ptr globalCornerCloudDS(new pcl::PointCloud<PointType>());
         pcl::PointCloud<PointType>::Ptr globalSurfCloud(new pcl::PointCloud<PointType>());
         pcl::PointCloud<PointType>::Ptr globalSurfCloudDS(new pcl::PointCloud<PointType>());
         pcl::PointCloud<PointType>::Ptr globalMapCloud(new pcl::PointCloud<PointType>());
+        // When online DUFOMap is enabled, GlobalMap is the complete deskewed
+        // keyframe map filtered point-by-point by the worker. Corner/surface
+        // features keep their own export path and never leak into this cloud.
+        pcl::PointCloud<PointType>::Ptr globalCompleteCloud(
+            new pcl::PointCloud<PointType>());
+        if (dufomapEnabled && completeScanExport)
+        {
+            globalCompleteCloud->reserve(completeScanExport->points.size());
+            for (const auto& point : completeScanExport->points)
+            {
+                PointType output;
+                output.x = point.x;
+                output.y = point.y;
+                output.z = point.z;
+                output.intensity = point.intensity;
+                globalCompleteCloud->push_back(output);
+            }
+            completeScanExport.reset();
+        }
         const bool useStaticFilter = config_.mapping.static_map_filter.enable && config_.mapping.static_map_filter.voxel_size > 1e-3f && config_.mapping.static_map_filter.min_keyframes > 1;
-
         std::unordered_map<VoxelIndex, VoxelAcc, VoxelIndexHash> voxSurf;
         std::unordered_map<VoxelIndex, VoxelAcc, VoxelIndexHash> voxCorner;
 
@@ -528,8 +1594,25 @@ public:
                             "Skipping keyframe %d with missing feature cloud", i);
                 continue;
             }
-            pcl::PointCloud<PointType>::Ptr cornerT = transformPointCloud(cornerKeyFramesSnapshot[i],  &keyPoses6DSnapshot->points[i]);
-            pcl::PointCloud<PointType>::Ptr surfT   = transformPointCloud(surfKeyFramesSnapshot[i],    &keyPoses6DSnapshot->points[i]);
+            pcl::PointCloud<PointType>::Ptr cornerForMap = cornerKeyFramesSnapshot[i];
+            pcl::PointCloud<PointType>::Ptr surfForMap = surfKeyFramesSnapshot[i];
+            if (dufomapEnabled)
+            {
+                const auto& labels = dufomapLabels->labels[i];
+                cornerForMap = FilterKeyframeCloud(cornerKeyFramesSnapshot[i], &labels.corner);
+                surfForMap = FilterKeyframeCloud(surfKeyFramesSnapshot[i], &labels.surf);
+                if (!cornerForMap || !surfForMap)
+                {
+                    outcome.message =
+                        "online DUFOMap label application failed at keyframe " +
+                        std::to_string(i) +
+                        "; refusing to save an empty or partial map";
+                    RCLCPP_ERROR(get_logger(), "%s", outcome.message.c_str());
+                    return outcome;
+                }
+            }
+            pcl::PointCloud<PointType>::Ptr cornerT = transformPointCloud(cornerForMap,  &keyPoses6DSnapshot->points[i]);
+            pcl::PointCloud<PointType>::Ptr surfT   = transformPointCloud(surfForMap,    &keyPoses6DSnapshot->points[i]);
 
             if (generateScanContextDb)
             {
@@ -591,8 +1674,89 @@ public:
             << std::endl;
         }
 
+        pcl::PointCloud<PointType>::Ptr preparedGround;
+        if (options.save_ground_map)
+        {
+            if (recomputeGround)
+            {
+                if (!RecomputeExportGround(keyPoses6DSnapshot, keyFrameCount,
+                                           scanCacheErrorSnapshot, groundCacheErrorSnapshot,
+                                           groundRes, preparedGround,
+                                           &outcome.message))
+                    return outcome;
+            }
+            else
+                preparedGround = BuildGroundFromSnapshot(
+                    groundKeyFramesSnapshot, keyPoses6DSnapshot);
+            try
+            {
+                if (groundGridEnabled)
+                {
+                    lio_sam_hesai::GroundGridExportOptions gridOptions;
+                    gridOptions.resolution = groundRes;
+                    gridOptions.search_radius =
+                        config_.mapping.ground_segmentation.grid_patch.search_radius;
+                    gridOptions.max_height_range =
+                        config_.mapping.ground_segmentation.grid_patch.max_height_range;
+                    gridOptions.max_roughness =
+                        config_.mapping.ground_segmentation.grid_patch.max_roughness;
+                    gridOptions.plane_distance_threshold =
+                        config_.mapping.ground_segmentation.plane_distance;
+                    gridOptions.max_slope_deg =
+                        config_.mapping.ground_segmentation.grid_patch.max_slope_deg;
+                    gridOptions.max_prediction_margin =
+                        config_.mapping.ground_segmentation.grid_patch.max_prediction_margin;
+                    gridOptions.min_plane_inlier_ratio =
+                        config_.mapping.ground_segmentation.grid_patch.min_inlier_ratio;
+                    gridOptions.min_neighbor_cells =
+                        config_.mapping.ground_segmentation.grid_patch.min_neighbor_cells;
+                    gridOptions.min_support_quadrants =
+                        config_.mapping.ground_segmentation.grid_patch.min_support_quadrants;
+                    gridOptions.max_hole_cells =
+                        config_.mapping.map_save.ground_grid.max_hole_cells;
+                    gridOptions.fill_unobserved_gaps =
+                        config_.mapping.ground_segmentation.grid_patch.enable;
+                    pcl::PointCloud<lio_sam_hesai::GroundGridPointType> gridded;
+                    std::string gridError;
+                    if (!lio_sam_hesai::BuildGroundGrid(
+                            *preparedGround, gridOptions, &gridded, &gridError))
+                    {
+                        outcome.message =
+                            "Ground grid export failed: " + gridError;
+                        return outcome;
+                    }
+                    preparedGround->swap(gridded);
+                }
+                else
+                {
+                    appendGlobalGroundGridPatches(preparedGround);
+                    preparedGround = downsampleGroundMapCloud(preparedGround, groundRes);
+                }
+                shiftSavedMapCloudZ(preparedGround);
+                flattenGroundCloudForSave(preparedGround);
+            }
+            catch (const std::exception& exception)
+            {
+                outcome.message = std::string("Ground export preprocessing failed: ") + exception.what();
+                return outcome;
+            }
+        }
+
+        if (deferFinalWrites)
+        {
+            if (!lio_sam_hesai::RemovePriorMapArtifacts(save_layout, &artifactError))
+            {
+                outcome.message = artifactError;
+                return outcome;
+            }
+            saveTrajectory();
+        }
+
         shiftSavedMapCloudZ(globalCornerCloud);
         shiftSavedMapCloudZ(globalSurfCloud);
+        // The complete cloud is already in map coordinates after the worker's
+        // classification; only now apply the existing save Z offset.
+        shiftSavedMapCloudZ(globalCompleteCloud);
         if (config_.mapping.map_save.align_ground_to_zero)
         {
             std::cout << "Saved map Z offset: " << config_.mapping.map_save.ground_z_offset
@@ -608,45 +1772,70 @@ public:
            downSizeFilterCorner.setInputCloud(globalCornerCloud);
            downSizeFilterCorner.setLeafSize(resolution, resolution, resolution);
            downSizeFilterCorner.filter(*globalCornerCloudDS);
-           if (pcl::io::savePCDFileBinary(save_layout.CornerMap().string(), *globalCornerCloudDS) != 0 &&
+           std::string saveError;
+           if (!SaveCloudBinary(save_layout.CornerMap(), *globalCornerCloudDS,
+                                &saveError) &&
                failure.empty())
-               failure = "Failed to save " + save_layout.CornerMap().string();
+               failure = saveError;
            // down-sample and save surf cloud
            downSizeFilterSurf.setInputCloud(globalSurfCloud);
            downSizeFilterSurf.setLeafSize(resolution, resolution, resolution);
            downSizeFilterSurf.filter(*globalSurfCloudDS);
-           if (pcl::io::savePCDFileBinary(save_layout.SurfaceMap().string(), *globalSurfCloudDS) != 0 &&
+           if (!SaveCloudBinary(save_layout.SurfaceMap(), *globalSurfCloudDS,
+                                &saveError) &&
                failure.empty())
-               failure = "Failed to save " + save_layout.SurfaceMap().string();
+               failure = saveError;
            //pcl::io::savePCDFileBinary(saveMapDirectory + "/localmap.pcd", *globalSurfCloudDS);
            // build and save GlobalMap with same resolution
-           *globalMapCloud += *globalCornerCloudDS;
-           *globalMapCloud += *globalSurfCloudDS;
+           if (dufomapEnabled)
+           {
+               pcl::VoxelGrid<PointType> complete_filter;
+               complete_filter.setLeafSize(resolution, resolution, resolution);
+               complete_filter.setInputCloud(globalCompleteCloud);
+               complete_filter.filter(*globalMapCloud);
+               globalCompleteCloud.reset();
+           }
+           else
+           {
+               *globalMapCloud += *globalCornerCloudDS;
+               *globalMapCloud += *globalSurfCloudDS;
+           }
         }
         else
         {
            // save corner cloud
-           if (pcl::io::savePCDFileBinary(save_layout.CornerMap().string(), *globalCornerCloud) != 0 &&
+           std::string saveError;
+           if (!SaveCloudBinary(save_layout.CornerMap(), *globalCornerCloud,
+                                &saveError) &&
                failure.empty())
-               failure = "Failed to save " + save_layout.CornerMap().string();
+               failure = saveError;
            // save surf cloud
-           if (pcl::io::savePCDFileBinary(save_layout.SurfaceMap().string(), *globalSurfCloud) != 0 &&
+           if (!SaveCloudBinary(save_layout.SurfaceMap(), *globalSurfCloud,
+                                &saveError) &&
                failure.empty())
-               failure = "Failed to save " + save_layout.SurfaceMap().string();
+               failure = saveError;
            // build GlobalMap without downsampling
-           *globalMapCloud += *globalCornerCloud;
-           *globalMapCloud += *globalSurfCloud;
+           if (dufomapEnabled)
+               globalMapCloud = std::move(globalCompleteCloud);
+           else
+           {
+               *globalMapCloud += *globalCornerCloud;
+               *globalMapCloud += *globalSurfCloud;
+           }
         }
-        int ret = pcl::io::savePCDFileBinary(save_layout.GlobalMap().string(), *globalMapCloud);
-        if (ret != 0 && failure.empty())
-            failure = "Failed to save " + save_layout.GlobalMap().string();
+        std::string globalSaveError;
+        const bool globalMapSaved =
+            SaveCloudBinary(save_layout.GlobalMap(), *globalMapCloud,
+                            &globalSaveError);
+        if (!globalMapSaved && failure.empty())
+            failure = globalSaveError;
         bool scanContextDbSaved = !generateScanContextDb;
         if (generateScanContextDb)
         {
             const std::string scanContextPath =
                 save_layout.ScanContextDb().string();
             scanContextDbSaved =
-                ret == 0 && scanContextGenerator.Size() > 0 &&
+                globalMapSaved && scanContextGenerator.Size() > 0 &&
                 scanContextGenerator.SaveDB(
                     scanContextPath, MapArtifactLayout::kGlobalMapName);
             if (scanContextDbSaved)
@@ -663,29 +1852,18 @@ public:
                              scanContextPath.c_str());
             }
         }
-        const float groundRes = lio_sam_hesai::ResolveMapSaveResolution(
-            options.ground_resolution, config_.mapping.map_save.ground_resolution);
-        // Ground stays optional: when the request turns it off the stale file
-        // was already removed above and the tiled export simply sees no ground
-        // source.
         bool groundSaved = true;
-        if (options.save_ground_map)
+        if (options.save_ground_map && preparedGround && !preparedGround->empty())
         {
-            {
-                std::lock_guard<std::mutex> lock(mtx);
-                groundSaved = saveGlobalGroundMap(
-                    save_layout.GroundMap().string(), groundRes, true);
-            }
-            if (!groundSaved && failure.empty())
-                failure = "Failed to save " + save_layout.GroundMap().string();
-            if (groundRes != resolution)
-                std::cout << "Ground save resolution: " << groundRes << std::endl;
+            std::string save_error;
+            groundSaved = SaveCloudBinary(save_layout.GroundMap(), *preparedGround, &save_error);
+            if (!groundSaved && failure.empty()) failure = save_error;
         }
 
         bool tiledMapSaved = !options.save_tiled_map;
         if (options.save_tiled_map)
         {
-            if (ret == 0 && groundSaved && scanContextDbSaved)
+            if (globalMapSaved && groundSaved && scanContextDbSaved)
             {
                 localization_map::TileMapGeneratorOptions tileOptions;
                 tileOptions.map_directory = saveMapDirectory;
@@ -917,24 +2095,24 @@ public:
                 continue;
             }
 
-            auto mapIt = laserCloudMapContainer.find(thisKeyInd);
-            if (mapIt != laserCloudMapContainer.end())
+            const auto *cached = transformed_keyframe_cache_.Find(thisKeyInd);
+            if (cached != nullptr)
             {
-                *laserCloudCornerFromMap += mapIt->second.first;
-                *laserCloudSurfFromMap += mapIt->second.second;
+                *laserCloudCornerFromMap += cached->corner;
+                *laserCloudSurfFromMap += cached->surf;
                 continue;
             }
 
-            pcl::PointCloud<PointType> laserCloudCornerTemp =
-                *transformPointCloud(cornerCloudKeyFrames[thisKeyInd],
-                                     &cloudKeyPoses6D->points[thisKeyInd]);
-            pcl::PointCloud<PointType> laserCloudSurfTemp =
-                *transformPointCloud(surfCloudKeyFrames[thisKeyInd],
-                                     &cloudKeyPoses6D->points[thisKeyInd]);
-            *laserCloudCornerFromMap += laserCloudCornerTemp;
-            *laserCloudSurfFromMap += laserCloudSurfTemp;
-            laserCloudMapContainer[thisKeyInd] =
-                std::make_pair(laserCloudCornerTemp, laserCloudSurfTemp);
+            auto corner = transformPointCloud(
+                cornerCloudKeyFrames[thisKeyInd],
+                &cloudKeyPoses6D->points[thisKeyInd]);
+            auto surf = transformPointCloud(
+                surfCloudKeyFrames[thisKeyInd],
+                &cloudKeyPoses6D->points[thisKeyInd]);
+            *laserCloudCornerFromMap += *corner;
+            *laserCloudSurfFromMap += *surf;
+            transformed_keyframe_cache_.Insert(
+                thisKeyInd, std::move(*corner), std::move(*surf));
         }
 
         downSizeFilterCorner.setInputCloud(laserCloudCornerFromMap);
@@ -946,9 +2124,6 @@ public:
         downSizeFilterSurf.filter(*laserCloudSurfFromMapDS);
         laserCloudSurfFromMapDSNum = laserCloudSurfFromMapDS->size();
         BuildSurfIVoxMap();
-
-        if (laserCloudMapContainer.size() > 1000)
-            laserCloudMapContainer.clear();
     }
 
     void allocateMemory()
@@ -998,6 +2173,9 @@ public:
 
     void laserCloudInfoHandler(const lio_sam_hesai::msg::CloudInfo::SharedPtr msgIn)
     {
+        // Freeze registration and evidence enqueue together for map saves.
+        // The worker queue lock is short and never held during integration.
+        std::unique_lock<std::mutex> lock(mtx);
         // extract time stamp
         timeLaserInfoStamp = msgIn->header.stamp;
         timeLaserInfoCur = stamp2Sec(msgIn->header.stamp);
@@ -1008,27 +2186,208 @@ public:
         pcl::fromROSMsg(msgIn->cloud_surface, *laserCloudSurfLast);
         pcl::fromROSMsg(msgIn->cloud_ground,  *laserCloudGroundLast);
 
-        std::lock_guard<std::mutex> lock(mtx);
+        MaybeLogOnlineDufomapHealth();
 
-        static double timeLastProcessing = -1;
-        if (timeLaserInfoCur - timeLastProcessing >= config_.mapping.system.mapping_process_interval)
+        bool processed = false;
+        bool keyframe_added = false;
+        bool loop_closed = false;
+        int anchor_keyframe = -1;
+        lio_sam_hesai::DufomapPose anchor_T_scan = IdentityPose();
+        lio_sam_hesai::DufomapPose fallback_map_T_scan = IdentityPose();
+        lio_sam_hesai::DufomapPose processed_guess{};
+        bool processed_guess_valid = false;
+        bool cache_complete_scan = false;
+        std::size_t complete_scan_index = 0;
         {
-            timeLastProcessing = timeLaserInfoCur;
+            static double timeLastProcessing = -1;
+            if (timeLaserInfoCur - timeLastProcessing >= config_.mapping.system.mapping_process_interval)
+            {
+                timeLastProcessing = timeLaserInfoCur;
+                processed = true;
 
-            updateInitialGuess();
-            extractSurroundingKeyFrames();
-            downsampleCurrentScan();
-            scan2MapOptimization();
+                updateInitialGuess();
+                extractSurroundingKeyFrames();
+                downsampleCurrentScan();
+                scan2MapOptimization();
 
-            saveKeyFramesAndFactor();
+                const std::size_t keyframe_count_before =
+                    cloudKeyPoses3D->size();
+                saveKeyFramesAndFactor();
+                keyframe_added =
+                    cloudKeyPoses3D->size() > keyframe_count_before;
+                loop_closed = aLoopIsClosed;
 
-            correctPoses();
+                correctPoses();
+                if (loop_closed)
+                    UpdateOnlineDufomapPoses();
 
-            publishOdometry();
+                publishOdometry();
 
-            if (config_.mapping.system.mapping_mode)
-                publishFrames();
+                if (config_.mapping.system.mapping_mode)
+                    publishFrames();
+
+                // Freeze this registered scan's exact pose and anchor state
+                // while the mapping data is still under the mutex. Keyframe
+                // poses are the post-loop-correction values.
+                if (online_dufomap_)
+                {
+                    const lio_sam_hesai::DufomapPose lidar_map_pose =
+                        CurrentLidarMapPose();
+                    fallback_map_T_scan = lidar_map_pose;
+                    if (keyframe_added && !cloudKeyPoses6D->empty())
+                    {
+                        // This scan defines the new keyframe, so its local
+                        // cloud is exactly at the keyframe pose and must move
+                        // with that keyframe after a loop correction.
+                        anchor_keyframe = static_cast<int>(
+                            cloudKeyPoses6D->size() - 1);
+                        anchor_T_scan = IdentityPose();
+                        fallback_map_T_scan =
+                            PoseMatrix(cloudKeyPoses6D->back());
+                    }
+                    else if (!cloudKeyPoses6D->empty() &&
+                             IsRigidPose(lidar_map_pose))
+                    {
+                        const lio_sam_hesai::DufomapPose anchor_map_pose =
+                            PoseMatrix(cloudKeyPoses6D->back());
+                        if (IsRigidPose(anchor_map_pose))
+                        {
+                            const lio_sam_hesai::DufomapPose relative = RelativePose(
+                                anchor_map_pose, lidar_map_pose);
+                            if (IsRigidPose(relative))
+                            {
+                                anchor_keyframe = static_cast<int>(
+                                    cloudKeyPoses6D->size() - 1);
+                                anchor_T_scan = relative;
+                            }
+                        }
+                    }
+                    processed_guess = CurrentInitialGuessPose();
+                    processed_guess_valid =
+                        cloudInfo.odom_available &&
+                        IsRigidPose(processed_guess);
+                    have_last_processed_ = true;
+                    last_processed_anchor_keyframe_ = anchor_keyframe;
+                    last_processed_anchor_T_scan_ = anchor_T_scan;
+                    last_processed_fallback_map_T_scan_ = fallback_map_T_scan;
+                    last_processed_initial_guess_ = processed_guess;
+                    have_last_processed_initial_guess_ = processed_guess_valid;
+                }
+
+                if (online_dufomap_ && keyframe_added)
+                {
+                    // Persist the complete scan independent of ground mode.
+                    // The pending counter is raised before the mapping lock is
+                    // released so a save can wait for this exact keyframe.
+                    cache_complete_scan = true;
+                    complete_scan_index = cloudKeyPoses3D->size() - 1;
+                    BeginCompleteScanWrite();
+                }
+            }
         }
+
+        const auto cache_complete = [&]() {
+            if (!cache_complete_scan) return;
+            // Register the keyframe and enqueue its evidence under mtx before
+            // releasing it. Saves then capture both in the same snapshot and
+            // wait only for this disk write to finish.
+            lock.unlock();
+            std::string cache_error;
+            try
+            {
+                StoreCompleteKeyframeScan(
+                    complete_scan_index, msgIn->cloud_export_scan, &cache_error);
+            }
+            catch (const std::exception& exception)
+            {
+                cache_error = std::string("complete keyframe scan cache failed: ") +
+                              exception.what();
+                std::lock_guard<std::mutex> cache_lock(mtx);
+                completeScanCacheError_ = cache_error;
+            }
+            FinishCompleteScanWrite();
+            if (!cache_error.empty())
+                RCLCPP_ERROR(get_logger(),
+                             "Failed to cache complete keyframe scan: %s",
+                             cache_error.c_str());
+        };
+
+        if (!online_dufomap_ || msgIn->cloud_export_scan.data.empty())
+        {
+            cache_complete();
+            return;
+        }
+
+        lio_sam_hesai::OnlineDufomapEvidence evidence;
+        evidence.cloud = std::make_shared<const sensor_msgs::msg::PointCloud2>(
+            msgIn->cloud_export_scan);
+        evidence.fallback_map_T_scan = fallback_map_T_scan;
+
+        const auto enqueue = [&](const lio_sam_hesai::OnlineDufomapEvidence& item) {
+            if (online_dufomap_->Enqueue(item))
+                return true;
+            ++online_dufomap_enqueue_failures_;
+            if (online_dufomap_enqueue_failures_ % 100U == 1U)
+            {
+                RCLCPP_WARN(get_logger(),
+                            "Online DUFOMap rejected evidence (%zu failures so far)",
+                            online_dufomap_enqueue_failures_);
+            }
+            return false;
+        };
+
+        if (processed)
+        {
+            // A registered scan uses the exact scan-matched pose. Its anchor
+            // is always the latest keyframe, never a raw IMU-only guess.
+            evidence.anchor_keyframe = anchor_keyframe;
+            evidence.anchor_T_scan = anchor_T_scan;
+            enqueue(evidence);
+            cache_complete();
+            return;
+        }
+
+        // A skipped scan was not scan-matched. Extrapolate from the last
+        // registered scan's keyframe anchor with its saved IMU initial guess:
+        //   anchor_T_current = anchor_T_processed *
+        //                      inv(processed_guess) * current_guess
+        // and accept it only if every matrix and the increment are sane.
+        if (!have_last_processed_ ||
+            last_processed_anchor_keyframe_ < 0 ||
+            !have_last_processed_initial_guess_ ||
+            !cloudInfo.odom_available)
+        {
+            ++online_dufomap_skipped_;
+            return;
+        }
+        const lio_sam_hesai::DufomapPose current_guess =
+            CurrentInitialGuessPose();
+        if (!IsRigidPose(last_processed_initial_guess_) ||
+            !IsRigidPose(current_guess))
+        {
+            ++online_dufomap_rejected_;
+            return;
+        }
+        const lio_sam_hesai::DufomapPose relative = RelativePose(
+            last_processed_initial_guess_, current_guess);
+        if (!IsSaneRelativeIncrement(relative))
+        {
+            ++online_dufomap_rejected_;
+            return;
+        }
+        const lio_sam_hesai::DufomapPose candidate = ComposePose(
+            last_processed_anchor_T_scan_, relative);
+        if (!IsRigidPose(candidate))
+        {
+            ++online_dufomap_rejected_;
+            return;
+        }
+        evidence.anchor_keyframe = last_processed_anchor_keyframe_;
+        evidence.anchor_T_scan = candidate;
+        evidence.fallback_map_T_scan =
+            last_processed_fallback_map_T_scan_;
+        if (!enqueue(evidence))
+            return;
     }
 
     void gpsHandler(const nav_msgs::msg::Odometry::SharedPtr gpsMsg)
@@ -1242,12 +2601,26 @@ public:
     }
 
     // 将全局地面点云保存到与全局地图相同的输出目录中。Whether ground is
-    // exported at all is decided by the caller's SaveMapExportOptions toggle;
-    // the legacy service feeds it the configured save_ground_map flag.
-    bool saveGlobalGroundMap(const std::string &filePath, float leafSize, bool useBinary)
+    // exported at all is decided by the caller's SaveMapExportOptions toggle.
+    // `source` is used by the DUFOMap export path: it holds the unfiltered
+    // ground rebuilt from the frozen final-pose snapshot, so save-only grid
+    // patching, downsampling, shift and flatten are applied here without
+    // touching live keyframes.
+    bool saveGlobalGroundMap(const std::string &filePath, float leafSize, bool useBinary,
+                             const pcl::PointCloud<PointType>::Ptr &source = nullptr)
     {
-        pcl::PointCloud<PointType>::Ptr globalGroundMap =
-            buildFullGlobalGroundMap(leafSize);
+        (void)useBinary;
+        pcl::PointCloud<PointType>::Ptr globalGroundMap;
+        if (source != nullptr)
+        {
+            globalGroundMap.reset(new pcl::PointCloud<PointType>(*source));
+            appendGlobalGroundGridPatches(globalGroundMap);
+            globalGroundMap = downsampleGroundMapCloud(globalGroundMap, leafSize);
+        }
+        else
+        {
+            globalGroundMap = buildFullGlobalGroundMap(leafSize);
+        }
         if (globalGroundMap->empty())
         {
             RCLCPP_WARN(get_logger(), "Ground map is empty, skip saving: %s",
@@ -1257,15 +2630,14 @@ public:
 
         shiftSavedMapCloudZ(globalGroundMap);
         flattenGroundCloudForSave(globalGroundMap);
-        const int ret = useBinary
-                            ? pcl::io::savePCDFileBinary(filePath, *globalGroundMap)
-                            : pcl::io::savePCDFileASCII(filePath, *globalGroundMap);
-        if (ret != 0)
+        std::string error;
+        if (!SaveCloudBinary(filePath, *globalGroundMap, &error))
         {
-            RCLCPP_WARN(get_logger(), "Failed to save ground map: %s",
-                        filePath.c_str());
+            RCLCPP_WARN(get_logger(), "Failed to save ground map %s: %s",
+                        filePath.c_str(), error.c_str());
+            return false;
         }
-        return ret == 0;
+        return true;
     }
 
     pcl::PointCloud<PointType>::Ptr buildGlobalGroundMapFromKeyPoses(
@@ -1344,77 +2716,165 @@ public:
         if (pubLaserCloudSurround->get_subscription_count() == 0)
             return;
 
-        if (cloudKeyPoses3D->points.empty() == true)
+        // Freeze the exact keyframe clouds and poses this publication uses.
+        // The worker label snapshot is checked against the same pose
+        // generation below, so a rebuild can never mix old labels with new
+        // map poses.
+        std::vector<pcl::PointCloud<PointType>::Ptr> corners;
+        std::vector<pcl::PointCloud<PointType>::Ptr> surfs;
+        pcl::PointCloud<PointTypePose>::Ptr poses(new pcl::PointCloud<PointTypePose>());
+        lio_sam_hesai::DufomapSnapshotRequest dufomapRequest{};
+        rclcpp::Time mapStamp;
+        const bool labelsEnabled = config_.mapping.dufomap.enable;
+        {
+            std::lock_guard<std::mutex> lock(mtx);
+            mapStamp = timeLaserInfoStamp;
+            const std::size_t count = std::min(
+                std::min(cloudKeyPoses6D->size(), cornerCloudKeyFrames.size()),
+                surfCloudKeyFrames.size());
+            corners.assign(cornerCloudKeyFrames.begin(), cornerCloudKeyFrames.begin() + count);
+            surfs.assign(surfCloudKeyFrames.begin(), surfCloudKeyFrames.begin() + count);
+            poses->points.assign(cloudKeyPoses6D->points.begin(),
+                                 cloudKeyPoses6D->points.begin() + count);
+            if (labelsEnabled)
+            {
+                if (!online_dufomap_) return;
+                // Capture the generation together with the frozen poses. Do
+                // not re-read a fresh generation after unlocking.
+                dufomapRequest = online_dufomap_->CaptureRequest(count);
+            }
+        }
+        if (poses->points.empty())
             return;
 
-        pcl::KdTreeFLANN<PointType>::Ptr kdtreeGlobalMap(new pcl::KdTreeFLANN<PointType>());;
-        pcl::PointCloud<PointType>::Ptr globalMapKeyPoses(new pcl::PointCloud<PointType>());
-        pcl::PointCloud<PointType>::Ptr globalMapKeyPosesDS(new pcl::PointCloud<PointType>());
-        pcl::PointCloud<PointType>::Ptr globalMapKeyFrames(new pcl::PointCloud<PointType>());
-        pcl::PointCloud<PointType>::Ptr globalMapKeyFramesDS(new pcl::PointCloud<PointType>());
-
-        // kd-tree to find near key frames to visualize
-        std::vector<int> pointSearchIndGlobalMap;
-        std::vector<float> pointSearchSqDisGlobalMap;
-        // search near key frames to visualize
-        mtx.lock();
-        kdtreeGlobalMap->setInputCloud(cloudKeyPoses3D);
-        kdtreeGlobalMap->radiusSearch(cloudKeyPoses3D->back(), config_.mapping.visualization.global_map_search_radius, pointSearchIndGlobalMap, pointSearchSqDisGlobalMap, 0);
-        mtx.unlock();
-
-        for (int i = 0; i < (int)pointSearchIndGlobalMap.size(); ++i)
-            globalMapKeyPoses->push_back(cloudKeyPoses3D->points[pointSearchIndGlobalMap[i]]);
-        // downsample near selected key frames
-        pcl::VoxelGrid<PointType> downSizeFilterGlobalMapKeyPoses; // for global map visualization
-        downSizeFilterGlobalMapKeyPoses.setLeafSize(config_.mapping.visualization.global_map_pose_density, config_.mapping.visualization.global_map_pose_density, config_.mapping.visualization.global_map_pose_density); // for global map visualization
-        downSizeFilterGlobalMapKeyPoses.setInputCloud(globalMapKeyPoses);
-        downSizeFilterGlobalMapKeyPoses.filter(*globalMapKeyPosesDS);
-
-        for(auto& pt : globalMapKeyPosesDS->points)
+        std::shared_ptr<const lio_sam_hesai::LabelSnapshot> labels;
+        std::string labelError;
+        if (labelsEnabled)
         {
-            kdtreeGlobalMap->nearestKSearch(pt, 1, pointSearchIndGlobalMap, pointSearchSqDisGlobalMap);
-            pt.intensity = cloudKeyPoses3D->points[pointSearchIndGlobalMap[0]].intensity;
+            labels = online_dufomap_->LatestSnapshot();
+            if (!labels ||
+                labels->keyframe_generation != dufomapRequest.keyframe_generation)
+            {
+                // Keep the previous consistent display until the worker has
+                // finished rebuilding the generation captured with these poses.
+                return;
+            }
+            // New keyframes can arrive faster than history is classified.
+            // Publish the ready prefix instead of starving RViz indefinitely.
+            const std::size_t ready_count = std::min(
+                poses->size(), std::min(labels->keyframe_count,
+                                        labels->labels.size()));
+            if (ready_count == 0) return;
+            poses->resize(ready_count);
+            corners.resize(ready_count);
+            surfs.resize(ready_count);
+            if (!ValidateDufomapLabels(*labels, poses->size(), corners, surfs,
+                                       &labelError))
+            {
+                // Never publish a partial or raw cloud in place of the last
+                // complete cleaned map.
+                return;
+            }
         }
 
-        // extract visualized and downsampled key frames
-        if (config_.mapping.static_map_filter.enable && config_.mapping.static_map_filter.voxel_size > 1e-3f && config_.mapping.static_map_filter.min_keyframes > 1)
+        pcl::PointCloud<PointType>::Ptr key_positions(new pcl::PointCloud<PointType>());
+        key_positions->reserve(poses->size());
+        for (std::size_t index = 0; index < poses->points.size(); ++index)
         {
-            std::unordered_map<VoxelIndex, VoxelAcc, VoxelIndexHash> vox;
-            // Rough reserve: (num keyframes) * (points per keyframe / (voxel aggregation factor))
-            vox.reserve((size_t)globalMapKeyPosesDS->size() * 200);
+            PointType position;
+            position.x = poses->points[index].x;
+            position.y = poses->points[index].y;
+            position.z = poses->points[index].z;
+            position.intensity = static_cast<float>(index);
+            key_positions->push_back(position);
+        }
 
-            for (int i = 0; i < (int)globalMapKeyPosesDS->size(); ++i){
-                if (pointDistance(globalMapKeyPosesDS->points[i], cloudKeyPoses3D->back()) > config_.mapping.visualization.global_map_search_radius)
-                    continue;
-                int thisKeyInd = (int)globalMapKeyPosesDS->points[i].intensity;
+        pcl::KdTreeFLANN<PointType> kdtree;
+        kdtree.setInputCloud(key_positions);
+        std::vector<int> searched_indices;
+        std::vector<float> searched_distances;
+        kdtree.radiusSearch(key_positions->back(),
+                            config_.mapping.visualization.global_map_search_radius,
+                            searched_indices, searched_distances, 0);
 
-                pcl::PointCloud<PointType>::Ptr corner = transformPointCloud(cornerCloudKeyFrames[thisKeyInd], &cloudKeyPoses6D->points[thisKeyInd]);
-                pcl::PointCloud<PointType>::Ptr surf   = transformPointCloud(surfCloudKeyFrames[thisKeyInd],   &cloudKeyPoses6D->points[thisKeyInd]);
+        pcl::PointCloud<PointType>::Ptr nearby_poses(new pcl::PointCloud<PointType>());
+        for (const int index : searched_indices)
+            nearby_poses->push_back(key_positions->points[index]);
+        pcl::VoxelGrid<PointType> pose_filter;
+        pose_filter.setLeafSize(
+            config_.mapping.visualization.global_map_pose_density,
+            config_.mapping.visualization.global_map_pose_density,
+            config_.mapping.visualization.global_map_pose_density);
+        pose_filter.setInputCloud(nearby_poses);
+        pcl::PointCloud<PointType>::Ptr nearby_poses_ds(new pcl::PointCloud<PointType>());
+        pose_filter.filter(*nearby_poses_ds);
 
+        std::vector<int> selected;
+        for (auto& point : nearby_poses_ds->points)
+        {
+            std::vector<int> nearest(1);
+            std::vector<float> distance(1);
+            kdtree.nearestKSearch(point, 1, nearest, distance);
+            point.intensity = static_cast<float>(nearest[0]);
+            selected.push_back(nearest[0]);
+        }
+
+        pcl::PointCloud<PointType>::Ptr global_frames(new pcl::PointCloud<PointType>());
+        const bool static_filter =
+            config_.mapping.static_map_filter.enable &&
+            config_.mapping.static_map_filter.voxel_size > 1e-3f &&
+            config_.mapping.static_map_filter.min_keyframes > 1;
+        std::unordered_map<VoxelIndex, VoxelAcc, VoxelIndexHash> voxels;
+        if (static_filter)
+            voxels.reserve(selected.size() * 200);
+
+        for (const int index : selected)
+        {
+            if (index < 0 || static_cast<std::size_t>(index) >= poses->size())
+                continue;
+            pcl::PointCloud<PointType>::Ptr corner = corners[index];
+            pcl::PointCloud<PointType>::Ptr surf = surfs[index];
+            if (labelsEnabled)
+            {
+                const auto& keyframe_labels = labels->labels[index];
+                corner = FilterKeyframeCloud(corner, &keyframe_labels.corner);
+                surf = FilterKeyframeCloud(surf, &keyframe_labels.surf);
+                if (!corner || !surf)
+                    return;
+            }
+            pcl::PointCloud<PointType>::Ptr corner_world =
+                transformPointCloud(corner, &poses->points[index]);
+            pcl::PointCloud<PointType>::Ptr surf_world =
+                transformPointCloud(surf, &poses->points[index]);
+            if (static_filter)
+            {
                 if (config_.mapping.static_map_filter.filter_corners)
-                    accumulateVoxelMap(vox, corner, thisKeyInd, config_.mapping.static_map_filter.voxel_size);
-                accumulateVoxelMap(vox, surf, thisKeyInd, config_.mapping.static_map_filter.voxel_size);
+                    accumulateVoxelMap(voxels, corner_world, index,
+                                       config_.mapping.static_map_filter.voxel_size);
+                accumulateVoxelMap(voxels, surf_world, index,
+                                   config_.mapping.static_map_filter.voxel_size);
             }
-
-            globalMapKeyFrames = voxelMapToCloud(vox, config_.mapping.static_map_filter.min_keyframes);
-        }
-        else
-        {
-            for (int i = 0; i < (int)globalMapKeyPosesDS->size(); ++i){
-                if (pointDistance(globalMapKeyPosesDS->points[i], cloudKeyPoses3D->back()) > config_.mapping.visualization.global_map_search_radius)
-                    continue;
-                int thisKeyInd = (int)globalMapKeyPosesDS->points[i].intensity;
-                *globalMapKeyFrames += *transformPointCloud(cornerCloudKeyFrames[thisKeyInd],  &cloudKeyPoses6D->points[thisKeyInd]);
-                *globalMapKeyFrames += *transformPointCloud(surfCloudKeyFrames[thisKeyInd],    &cloudKeyPoses6D->points[thisKeyInd]);
+            else
+            {
+                *global_frames += *corner_world;
+                *global_frames += *surf_world;
             }
         }
-        // downsample visualized points
-        pcl::VoxelGrid<PointType> downSizeFilterGlobalMapKeyFrames; // for global map visualization
-        downSizeFilterGlobalMapKeyFrames.setLeafSize(config_.mapping.visualization.global_map_leaf_size, config_.mapping.visualization.global_map_leaf_size, config_.mapping.visualization.global_map_leaf_size); // for global map visualization
-        downSizeFilterGlobalMapKeyFrames.setInputCloud(globalMapKeyFrames);
-        downSizeFilterGlobalMapKeyFrames.filter(*globalMapKeyFramesDS);
+        if (static_filter)
+            global_frames = voxelMapToCloud(
+                voxels, config_.mapping.static_map_filter.min_keyframes);
 
-        publishCloud(pubLaserCloudSurround, globalMapKeyFramesDS, timeLaserInfoStamp, config_.frames.odometry);
+        pcl::PointCloud<PointType>::Ptr global_frames_ds(new pcl::PointCloud<PointType>());
+        pcl::VoxelGrid<PointType> frame_filter;
+        frame_filter.setLeafSize(
+            config_.mapping.visualization.global_map_leaf_size,
+            config_.mapping.visualization.global_map_leaf_size,
+            config_.mapping.visualization.global_map_leaf_size);
+        frame_filter.setInputCloud(global_frames);
+        frame_filter.filter(*global_frames_ds);
+
+        publishCloud(pubLaserCloudSurround, global_frames_ds, mapStamp,
+                     config_.frames.odometry);
     }
 
     void loopClosureThread()
@@ -1799,18 +3259,24 @@ public:
                 continue;
 
             int thisKeyInd = (int)cloudToExtract->points[i].intensity;
-            if (laserCloudMapContainer.find(thisKeyInd) != laserCloudMapContainer.end()) 
+            const auto *cached = transformed_keyframe_cache_.Find(thisKeyInd);
+            if (cached != nullptr)
             {
                 // transformed cloud available
-                *laserCloudCornerFromMap += laserCloudMapContainer[thisKeyInd].first;
-                *laserCloudSurfFromMap   += laserCloudMapContainer[thisKeyInd].second;
+                *laserCloudCornerFromMap += cached->corner;
+                *laserCloudSurfFromMap   += cached->surf;
             } else {
                 // transformed cloud not available
-                pcl::PointCloud<PointType> laserCloudCornerTemp = *transformPointCloud(cornerCloudKeyFrames[thisKeyInd],  &cloudKeyPoses6D->points[thisKeyInd]);
-                pcl::PointCloud<PointType> laserCloudSurfTemp = *transformPointCloud(surfCloudKeyFrames[thisKeyInd],    &cloudKeyPoses6D->points[thisKeyInd]);
-                *laserCloudCornerFromMap += laserCloudCornerTemp;
-                *laserCloudSurfFromMap   += laserCloudSurfTemp;
-                laserCloudMapContainer[thisKeyInd] = std::make_pair(laserCloudCornerTemp, laserCloudSurfTemp);
+                auto corner = transformPointCloud(
+                    cornerCloudKeyFrames[thisKeyInd],
+                    &cloudKeyPoses6D->points[thisKeyInd]);
+                auto surf = transformPointCloud(
+                    surfCloudKeyFrames[thisKeyInd],
+                    &cloudKeyPoses6D->points[thisKeyInd]);
+                *laserCloudCornerFromMap += *corner;
+                *laserCloudSurfFromMap   += *surf;
+                transformed_keyframe_cache_.Insert(
+                    thisKeyInd, std::move(*corner), std::move(*surf));
             }
             
         }
@@ -1825,10 +3291,6 @@ public:
         downSizeFilterSurf.filter(*laserCloudSurfFromMapDS);
         laserCloudSurfFromMapDSNum = laserCloudSurfFromMapDS->size();
         BuildSurfIVoxMap();
-
-        // clear map cache if too large
-        if (laserCloudMapContainer.size() > 1000)
-            laserCloudMapContainer.clear();
     }
 
     void extractSurroundingKeyFrames()
@@ -2651,6 +4113,34 @@ public:
         surfCloudKeyFrames.push_back(thisSurfKeyFrame);
         groundCloudKeyFrames.push_back(thisGroundKeyFrame);
 
+        // Register immutable corner/surface targets for the online worker.
+        // The keyframe clouds above remain the optimization/output inputs; the
+        // worker only receives copies and returns labels.
+        if (online_dufomap_)
+        {
+            std::vector<lio_sam_hesai::DufomapPoint> corner_points;
+            std::vector<lio_sam_hesai::DufomapPoint> surf_points;
+            corner_points.reserve(thisCornerKeyFrame->size());
+            surf_points.reserve(thisSurfKeyFrame->size());
+            for (const auto& point : thisCornerKeyFrame->points)
+                corner_points.push_back(lio_sam_hesai::DufomapPoint{
+                    point.x, point.y, point.z, point.intensity});
+            for (const auto& point : thisSurfKeyFrame->points)
+                surf_points.push_back(lio_sam_hesai::DufomapPoint{
+                    point.x, point.y, point.z, point.intensity});
+            online_dufomap_->RegisterKeyframe(
+                static_cast<int>(cloudKeyPoses3D->size() - 1),
+                std::move(corner_points), std::move(surf_points),
+                PoseMatrix(cloudKeyPoses6D->back()));
+        }
+
+        if (ExportGroundAlgorithm() != lio_sam_hesai::GroundAlgorithm::None)
+        {
+            std::string cache_error;
+            if (!StoreGroundInputsForExport(cloudKeyPoses3D->size() - 1, &cache_error))
+                RCLCPP_ERROR(get_logger(), "Failed to cache ground export input: %s", cache_error.c_str());
+        }
+
         // save path for visualization
         updatePath(thisPose6D);
     }
@@ -2663,7 +4153,7 @@ public:
         if (aLoopIsClosed == true)
         {
             // clear map cache
-            laserCloudMapContainer.clear();
+            transformed_keyframe_cache_.Clear();
             InvalidateLocalMapCache();
             // clear path
             globalPath.poses.clear();

@@ -137,6 +137,41 @@ def _default_context(description):
     return context
 
 
+def _rviz_node(description):
+    for node in _nodes(description):
+        if _node_label(node) == "rviz2":
+            return node
+    raise AssertionError("mapping launch description has no rviz2 node")
+
+
+def _rviz_condition_result(description, overrides=None):
+    """
+    Evaluate the mapping RViz condition after visiting launch declarations.
+
+    This mirrors what launch does when it visits the RViz node: every
+    DeclareLaunchArgument encountered earlier has populated the context. A
+    condition evaluated before its argument is declared raises
+    SubstitutionFailure instead of returning a boolean.
+    """
+    if "use_rviz" not in _declared_names(description):
+        raise AssertionError("use_rviz is not declared in the launch description")
+
+    rviz = _rviz_node(description)
+    context = LaunchContext()
+    if overrides:
+        context.launch_configurations.update(overrides)
+
+    for entity in description.entities:
+        if isinstance(entity, DeclareLaunchArgument):
+            entity.visit(context)
+        elif entity is rviz:
+            if rviz.condition is None:
+                raise AssertionError("rviz2 node has no launch condition")
+            return rviz.condition.evaluate(context)
+
+    raise AssertionError("rviz2 node is not part of the launch description")
+
+
 def _use_sim_time_by_node(description, context):
     """
     Resolve every node's internal use_sim_time.
@@ -303,6 +338,44 @@ class LaunchSimClockTest(unittest.TestCase):
                 self.assertIn('"use_sim_time": use_sim', text)
                 self.assertNotIn("LEGACY_USE_SIM_UNSET", text)
                 self.assertNotIn("_effective_use_sim_time", text)
+
+
+class MappingRvizLaunchTest(unittest.TestCase):
+    """The mapping launch must declare use_rviz before its RViz condition."""
+
+    def _description(self):
+        return _launch_description(
+            "mapping_rviz", "launch/mapping.launch.py")
+
+    def test_declares_use_rviz_before_the_rviz_action(self):
+        description = self._description()
+        declaration_indices = [
+            index
+            for index, entity in enumerate(description.entities)
+            if isinstance(entity, DeclareLaunchArgument)
+            and entity.name == "use_rviz"
+        ]
+        self.assertEqual(len(declaration_indices), 1, declaration_indices)
+        self.assertLess(
+            declaration_indices[0],
+            description.entities.index(_rviz_node(description)),
+        )
+
+    def test_default_keeps_rviz_disabled(self):
+        description = self._description()
+        self.assertEqual(
+            _declared_default(description, "use_rviz"), "false")
+        self.assertFalse(_rviz_condition_result(description))
+
+    def test_explicit_use_rviz_controls_the_rviz_action(self):
+        for override in ("true", "false"):
+            with self.subTest(use_rviz=override):
+                description = self._description()
+                self.assertEqual(
+                    _rviz_condition_result(
+                        description, {"use_rviz": override}),
+                    override == "true",
+                )
 
 
 if __name__ == "__main__":

@@ -75,14 +75,13 @@ localization:
     load_timeout_ms: 1000
 
 map_save:
-  save_tiled_map: false
   tiled_map:
     tile_size_m: 100.0
     output_subdirectory: "tiled"
     overview_resolution_m: 5.0
 ```
 
-`map_save.save_tiled_map` 默认关闭。只有显式启用后，保存地图流程才额外生成分块
+保存请求的 `save_tiled_map` 默认关闭。只有显式启用后，保存地图流程才额外生成分块
 目录；现有 PCD 和 Scan Context 产物继续生成。
 
 配置约束：

@@ -112,7 +112,8 @@ void SaveMapPanel::OnSaveClicked()
   // including values from a custom launch params_file.
   if (!controller_->RequestSave(
         destination.toStdString(), dialog.SaveGroundMap(),
-        dialog.SaveTiledMap()))
+        dialog.SaveTiledMap(), SaveMapController::kDefaultResolution,
+        SaveMapController::kDefaultGroundResolution))
   {
     pending_status_ =
       tr("Could not start the map save: the service is unavailable or a save "

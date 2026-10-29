@@ -4,18 +4,14 @@
 #include <system_error>
 #include <utility>
 
-namespace lio_sam_hesai
-{
+namespace lio_sam_hesai {
 
-namespace
-{
+namespace {
 
 namespace fs = std::filesystem;
 
-void SetError(std::string* error, std::string message)
-{
-  if (error != nullptr)
-  {
+void SetError(std::string* error, std::string message) {
+  if (error != nullptr) {
     *error = std::move(message);
   }
 }
@@ -23,17 +19,14 @@ void SetError(std::string* error, std::string message)
 // Comparison key for the root/home checks: resolves symlinked prefixes when
 // possible and drops the trailing separator that forms such as "dir/." keep.
 // Falls back to the lexical form when the path cannot be canonicalized.
-fs::path ComparisonKey(const fs::path& path)
-{
+fs::path ComparisonKey(const fs::path& path) {
   std::error_code error;
   fs::path key = fs::weakly_canonical(path, error);
-  if (error)
-  {
+  if (error) {
     key = path;
   }
   key = key.lexically_normal();
-  if (key != key.root_path() && !key.empty() && key.filename().empty())
-  {
+  if (key != key.root_path() && !key.empty() && key.filename().empty()) {
     key = key.parent_path();
   }
   return key;
@@ -44,12 +37,10 @@ fs::path ComparisonKey(const fs::path& path)
 // "link/" and "link/." would otherwise slip past the rejection. Folding the
 // lexical form and dropping the trailing separator keeps the check on the
 // component the caller actually named.
-fs::path SymlinkCheckPath(const fs::path& path)
-{
+fs::path SymlinkCheckPath(const fs::path& path) {
   fs::path check = path.lexically_normal();
   while (check.filename().empty() && check.has_parent_path() &&
-         check != check.parent_path())
-  {
+         check != check.parent_path()) {
     check = check.parent_path();
   }
   return check;
@@ -59,28 +50,23 @@ fs::path SymlinkCheckPath(const fs::path& path)
 
 bool ValidateSaveMapDestination(const fs::path& destination,
                                 const fs::path& home_directory,
-                                std::string* error)
-{
-  if (destination.empty())
-  {
+                                std::string* error) {
+  if (destination.empty()) {
     SetError(error, "save destination must not be empty");
     return false;
   }
-  if (!destination.is_absolute())
-  {
+  if (!destination.is_absolute()) {
     SetError(error, "save destination must be an absolute path: " +
                         destination.string());
     return false;
   }
 
-  if (ComparisonKey(destination) == ComparisonKey(fs::path("/")))
-  {
+  if (ComparisonKey(destination) == ComparisonKey(fs::path("/"))) {
     SetError(error, "save destination must not be the filesystem root");
     return false;
   }
   if (!home_directory.empty() &&
-      ComparisonKey(destination) == ComparisonKey(home_directory))
-  {
+      ComparisonKey(destination) == ComparisonKey(home_directory)) {
     SetError(error, "save destination must not be the home directory: " +
                         destination.string());
     return false;
@@ -89,8 +75,7 @@ bool ValidateSaveMapDestination(const fs::path& destination,
   std::error_code status_error;
   const fs::file_status status =
       fs::symlink_status(SymlinkCheckPath(destination), status_error);
-  if (!status_error && fs::is_symlink(status))
-  {
+  if (!status_error && fs::is_symlink(status)) {
     SetError(error, "save destination must not be a symlink: " +
                         destination.string());
     return false;
@@ -99,46 +84,12 @@ bool ValidateSaveMapDestination(const fs::path& destination,
   return true;
 }
 
-std::optional<SaveMapExportOptions> MakeLegacySaveMapExportOptions(
-    const std::string& requested_destination, float resolution,
-    float ground_resolution, const std::string& home_directory,
-    const std::string& configured_directory, bool configured_save_ground_map,
-    bool configured_save_tiled_map, std::string* error)
-{
-  const std::string& suffix =
-      requested_destination.empty() ? configured_directory
-                                    : requested_destination;
-  // Historical semantics: the destination is concatenated onto HOME, so a
-  // caller-provided "/map/site" lands in "$HOME/map/site".
-  const std::string resolved = home_directory + suffix;
-  if (resolved.empty())
-  {
-    SetError(error, "save destination is not configured");
-    return std::nullopt;
-  }
-
-  SaveMapExportOptions options;
-  options.directory = resolved;
-  options.resolution = resolution;
-  options.ground_resolution = ground_resolution;
-  options.save_ground_map = configured_save_ground_map;
-  options.save_tiled_map = configured_save_tiled_map;
-
-  if (!ValidateSaveMapDestination(options.directory, home_directory, error))
-  {
-    return std::nullopt;
-  }
-  return options;
-}
-
 std::optional<SaveMapExportOptions> MakeSaveMapExportOptions(
     const std::string& requested_destination, float resolution,
     float ground_resolution, bool save_ground_map, bool save_tiled_map,
-    const std::string& home_directory, std::string* error)
-{
+    const std::string& home_directory, std::string* error) {
   const fs::path destination(requested_destination);
-  if (!ValidateSaveMapDestination(destination, home_directory, error))
-  {
+  if (!ValidateSaveMapDestination(destination, home_directory, error)) {
     return std::nullopt;
   }
 
@@ -151,17 +102,18 @@ std::optional<SaveMapExportOptions> MakeSaveMapExportOptions(
   return options;
 }
 
-bool RemovePriorMapArtifacts(const MapArtifactLayout& layout, std::string* error)
-{
-  const fs::path tiled_name = layout.TiledRoot().lexically_relative(layout.Root());
+bool RemovePriorMapArtifacts(const MapArtifactLayout& layout,
+                             std::string* error) {
+  const fs::path tiled_name =
+      layout.TiledRoot().lexically_relative(layout.Root());
   if (tiled_name.empty() || tiled_name.is_absolute() ||
       tiled_name.parent_path() != fs::path{} ||
       tiled_name.filename() != tiled_name ||
       tiled_name == "." || tiled_name == ".." ||
       tiled_name.native().find(fs::path::value_type{}) !=
-          fs::path::string_type::npos)
-  {
-    SetError(error, "tiled output subdirectory must be one safe relative filename");
+          fs::path::string_type::npos) {
+    SetError(error,
+             "tiled output subdirectory must be one safe relative filename");
     return false;
   }
 
@@ -179,42 +131,35 @@ bool RemovePriorMapArtifacts(const MapArtifactLayout& layout, std::string* error
 
   // Fixed artifact names are files. Reject a directory at one of those names
   // before deleting anything, so its contents cannot be mistaken for map data.
-  for (const fs::path& artifact : files)
-  {
+  for (const fs::path& artifact : files) {
     std::error_code status_error;
     const fs::file_status status = fs::symlink_status(artifact, status_error);
-    if (status_error && status_error != std::errc::no_such_file_or_directory)
-    {
+    if (status_error && status_error != std::errc::no_such_file_or_directory) {
       SetError(error, "unable to inspect map artifact " + artifact.string() +
                           ": " + status_error.message());
       return false;
     }
-    if (!status_error && fs::is_directory(status))
-    {
+    if (!status_error && fs::is_directory(status)) {
       SetError(error, "map artifact path is a directory: " + artifact.string());
       return false;
     }
   }
 
-  for (const fs::path& artifact : files)
-  {
+  for (const fs::path& artifact : files) {
     std::error_code remove_error;
     fs::remove(artifact, remove_error);
-    if (remove_error)
-    {
+    if (remove_error) {
       SetError(error, "unable to remove prior map artifact " +
                           artifact.string() + ": " + remove_error.message());
       return false;
     }
   }
-  for (const fs::path& artifact : {layout.TiledRoot(), incomplete_directory})
-  {
+  for (const fs::path& artifact : {layout.TiledRoot(), incomplete_directory}) {
     std::error_code remove_error;
     // remove_all never follows a symlink: a symlinked tiled directory is
     // unlinked, not deleted through.
     fs::remove_all(artifact, remove_error);
-    if (remove_error)
-    {
+    if (remove_error) {
       SetError(error, "unable to remove prior map artifact " +
                           artifact.string() + ": " + remove_error.message());
       return false;

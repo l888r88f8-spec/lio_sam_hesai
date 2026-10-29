@@ -159,7 +159,7 @@ lio_sam_hesai_generate_tiled_map /home/robot/map/hesai_sim2 \
   --origin-x 0 --origin-y 0 --overview-resolution-m 5 --frame-id map
 ```
 
-也可通过 `scripts/run_localization_stability.sh tiled-generate` 一键执行。`map_save.save_tiled_map` 默认关闭；仅在建图流程显式开启后才在保存 PCD/`sc_db.bin` 之外额外产出分块目录。
+也可通过 `scripts/run_localization_stability.sh tiled-generate` 一键执行。保存请求的 `save_tiled_map` 默认关闭；仅在建图流程显式开启后才在保存 PCD/`sc_db.bin` 之外额外产出分块目录。
 
 ### 回滚
 

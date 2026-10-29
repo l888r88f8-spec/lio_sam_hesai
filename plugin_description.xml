@@ -4,7 +4,7 @@
     type="lio_sam_hesai::rviz::SaveMapPanel"
     base_class_type="rviz_common::Panel">
     <description>
-      Save Map button for mapping sessions. Calls the /lio_sam/save_map service
+      Save Map button for mapping sessions. Calls the /lio_sam/save_map_options service
       after confirmation and reports success, failure, or service availability.
     </description>
   </class>

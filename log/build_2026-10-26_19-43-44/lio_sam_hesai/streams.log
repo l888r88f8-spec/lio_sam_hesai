@@ -1,0 +1,306 @@
+[0.023s] Invoking command in '/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake /home/robot/slam_ws/src/lio_sam_hesai -DBUILD_TESTING=ON -DCMAKE_INSTALL_PREFIX=/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/install/lio_sam_hesai
+[0.047s] -- Found glog    (include: /usr/include, library: /usr/lib/aarch64-linux-gnu/libglog.so)
+[0.050s] -- Searching for g2o ...
+[0.050s] -- Found g2o headers in: /opt/ros/humble/include
+[0.050s] -- Found libg2o: /opt/ros/humble/lib/aarch64-linux-gnu/libg2o_csparse_extension.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_core.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_stuff.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_types_slam2d.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_types_slam3d.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_solver_cholmod.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_solver_pcg.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_solver_csparse.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_solver_eigen.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_incremental.so
+[0.050s] -- Found ament_cmake: 1.3.14 (/opt/ros/humble/share/ament_cmake/cmake)
+[0.295s] -- Found rosidl_default_generators: 1.2.1 (/opt/ros/humble/share/rosidl_default_generators/cmake)
+[0.301s] -- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c
+[0.310s] -- Found rosidl_adapter: 3.1.8 (/opt/ros/humble/share/rosidl_adapter/cmake)
+[0.392s] -- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp
+[0.452s] -- Found rclcpp: 16.0.18 (/opt/ros/humble/share/rclcpp/cmake)
+[0.536s] -- Found rmw_implementation_cmake: 6.1.2 (/opt/ros/humble/share/rmw_implementation_cmake/cmake)
+[0.539s] -- Found rmw_fastrtps_cpp: 6.2.10 (/opt/ros/humble/share/rmw_fastrtps_cpp/cmake)
+[0.717s] -- Using RMW implementation 'rmw_fastrtps_cpp' as default
+[0.818s] -- Found rclpy: 3.3.21 (/opt/ros/humble/share/rclpy/cmake)
+[0.818s] -- Found cv_bridge: 3.2.1 (/opt/ros/humble/share/cv_bridge/cmake)
+[0.891s] -- Found nav_msgs: 4.9.1 (/opt/ros/humble/share/nav_msgs/cmake)
+[0.921s] -- Found diagnostic_msgs: 4.9.1 (/opt/ros/humble/share/diagnostic_msgs/cmake)
+[0.945s] -- Found visualization_msgs: 4.9.1 (/opt/ros/humble/share/visualization_msgs/cmake)
+[0.979s] -- Found pcl_conversions: 2.4.5 (/opt/ros/humble/share/pcl_conversions/cmake)
+[1.048s] -- Eigen found (include: /usr/include/eigen3, version: 3.4.0)
+[1.124s] -- FLANN found (include: /usr/include, lib: /usr/lib/aarch64-linux-gnu/libflann_cpp.so)
+[1.894s] -- OpenNI found (version: 1.5.4.0, include: /usr/include/ni, lib: /usr/lib/libOpenNI.so;libusb::libusb)
+[1.905s] -- OpenNI2 found (version: 2.2.0.33, include: /usr/include/openni2, lib: /usr/lib/aarch64-linux-gnu/libOpenNI2.so;libusb::libusb)
+[2.137s] -- Eigen found (include: /usr/include/eigen3, version: 3.4.0)
+[2.147s] -- OpenNI found (version: 1.5.4.0, include: /usr/include/ni, lib: /usr/lib/libOpenNI.so;libusb::libusb)
+[2.156s] -- OpenNI2 found (version: 2.2.0.33, include: /usr/include/openni2, lib: /usr/lib/aarch64-linux-gnu/libOpenNI2.so;libusb::libusb)
+[2.382s] -- Found Qhull version 8.0.2
+[2.607s] -- OpenNI found (version: 1.5.4.0, include: /usr/include/ni, lib: /usr/lib/libOpenNI.so;libusb::libusb)
+[2.848s] -- Found tf2: 0.25.19 (/opt/ros/humble/share/tf2/cmake)
+[2.858s] -- Found tf2_geometry_msgs: 0.25.19 (/opt/ros/humble/share/tf2_geometry_msgs/cmake)
+[2.868s] -- Found eigen3_cmake_module: 0.1.1 (/opt/ros/humble/share/eigen3_cmake_module/cmake)
+[2.871s] -- Ensuring Eigen3 include directory is part of orocos-kdl CMake target
+[3.012s] -- Found tf2_sensor_msgs: 0.25.19 (/opt/ros/humble/share/tf2_sensor_msgs/cmake)
+[3.020s] -- Found tf2_eigen: 0.25.19 (/opt/ros/humble/share/tf2_eigen/cmake)
+[3.031s] CMake Warning (dev) at CMakeLists.txt:38 (find_package):
+[3.032s]   Policy CMP0074 is not set: find_package uses <PackageName>_ROOT variables.
+[3.032s]   Run "cmake --help-policy CMP0074" for policy details.  Use the cmake_policy
+[3.032s]   command to set the policy and suppress this warning.
+[3.032s] 
+[3.032s]   CMake variable PCL_ROOT is set to:
+[3.032s] 
+[3.032s]     /usr
+[3.032s] 
+[3.032s]   For compatibility, CMake is ignoring the variable.
+[3.033s] This warning is for project developers.  Use -Wno-dev to suppress it.
+[3.033s] 
+[3.058s] -- Found pluginlib: 5.1.3 (/opt/ros/humble/share/pluginlib/cmake)
+[3.082s] -- Found rviz_common: 11.2.26 (/opt/ros/humble/share/rviz_common/cmake)
+[3.089s] -- Setting assimp_DIR to: '/opt/ros/humble/share/rviz_assimp_vendor/cmake/../../../opt/rviz_assimp_vendor/lib/cmake/assimp-4.1'
+[3.100s] -- Setting OGRE_DIR to: '/opt/ros/humble/share/rviz_ogre_vendor/cmake/../../../opt/rviz_ogre_vendor/lib/OGRE/cmake'
+[3.104s] -- Found OGRE
+[3.104s] --   static     : OFF
+[3.104s] --   components : HLMS;MeshLodGenerator;Overlay;Paging;Property;RTShaderSystem;Terrain;Volume
+[3.104s] --   plugins    : Plugin_BSPSceneManager;Plugin_OctreeSceneManager;Plugin_PCZSceneManager;Plugin_ParticleFX;RenderSystem_GL;RenderSystem_GL3Plus;Codec_STBI
+[3.104s] --   media      : /opt/ros/humble/opt/rviz_ogre_vendor/share/OGRE/Media
+[3.104s] -- OGRE_LIBRARIES: OgreHLMS;OgreMeshLodGenerator;OgreOverlay;OgrePaging;OgreProperty;OgreRTShaderSystem;OgreTerrain;OgreVolume;OgreMain
+[3.104s] -- OGRE_LIBRARY_DIRS: /opt/ros/humble/opt/rviz_ogre_vendor/lib
+[3.104s] -- OGRE_PLUGINS: Plugin_BSPSceneManager;Plugin_OctreeSceneManager;Plugin_PCZSceneManager;Plugin_ParticleFX;RenderSystem_GL;RenderSystem_GL3Plus;Codec_STBI
+[3.104s] -- OGRE_PLUGIN_DIR: /opt/ros/humble/opt/rviz_ogre_vendor/lib/OGRE
+[3.105s] -- rviz_ogre_vendor::OgreOverlay for IMPORTED_LOCATION_RELEASE: /opt/ros/humble/opt/rviz_ogre_vendor/lib/libOgreOverlay.so
+[3.105s] -- rviz_ogre_vendor::OgreOverlay for IMPORTED_LOCATION_DEBUG: /opt/ros/humble/opt/rviz_ogre_vendor/lib/libOgreOverlay.so
+[3.105s] -- rviz_ogre_vendor::OgreMain for IMPORTED_LOCATION_RELEASE: /opt/ros/humble/opt/rviz_ogre_vendor/lib/libOgreMain.so
+[3.105s] -- rviz_ogre_vendor::OgreMain for IMPORTED_LOCATION_DEBUG: /opt/ros/humble/opt/rviz_ogre_vendor/lib/libOgreMain.so
+[3.108s] -- Could not find freeimage library
+[3.224s] -- library: /usr/lib/aarch64-linux-gnu/libcurl.so
+[3.265s] -- Found GTSAM include directory: /usr/local/include
+[3.265s] -- Found GTSAM unstable include directory: /usr/local/include
+[3.265s] -- Found GTSAM libraries: /usr/local/lib/libgtsam.so;/usr/local/lib/libgtsam_unstable.so
+[3.785s] -- Found ament_cmake_ros: 0.10.0 (/opt/ros/humble/share/ament_cmake_ros/cmake)
+[4.257s] -- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c
+[4.875s] -- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp
+[4.917s] -- Found python_cmake_module: 0.10.0 (/opt/ros/humble/share/python_cmake_module/cmake)
+[4.962s] -- Using PYTHON_EXECUTABLE: /usr/bin/python3
+[4.962s] -- Using PYTHON_INCLUDE_DIRS: /usr/include/python3.10
+[4.963s] -- Using PYTHON_LIBRARIES: /usr/lib/aarch64-linux-gnu/libpython3.10.so
+[5.519s] -- Found ament_lint_auto: 0.12.15 (/opt/ros/humble/share/ament_lint_auto/cmake)
+[5.522s] -- Found gtest sources under '/opt/ros/humble/src/gtest_vendor': C++ tests using 'Google Test' will be built
+[5.763s] -- Added test 'copyright' to check source files copyright and LICENSE
+[6.085s] -- Added test 'cppcheck' to perform static code analysis on C / C++ code
+[6.099s] -- Configured cppcheck include dirs: /home/robot/slam_ws/src/lio_sam_hesai/include;/home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam;$<BUILD_INTERFACE:/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_generator_c>;$<BUILD_INTERFACE:/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_typesupport_fastrtps_c>;$<BUILD_INTERFACE:/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_typesupport_introspection_c>;$<BUILD_INTERFACE:/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_generator_cpp>;$<BUILD_INTERFACE:/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_typesupport_fastrtps_cpp>;$<BUILD_INTERFACE:/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_typesupport_introspection_cpp>;/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_generator_c;/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_generator_py;/home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/arm64;/home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include;/home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/compat;/home/robot/slam_ws/src/lio_sam_hesai/third_party/patchworkpp/cpp/common/include;/home/robot/slam_ws/src/lio_sam_hesai/third_party/patchworkpp/cpp/patchworkpp/include
+[6.099s] -- Configured cppcheck exclude dirs and/or files: 
+[6.434s] -- Added test 'cpplint' to check C / C++ code against the Google style
+[6.434s] -- Configured cpplint exclude dirs and/or files: 
+[6.485s] -- Added test 'flake8' to check Python code syntax and style conventions
+[6.571s] -- Added test 'lint_cmake' to check CMake code style
+[6.615s] -- Added test 'pep257' to check Python code against some of the docstring style conventions in PEP 257
+[6.975s] -- Added test 'uncrustify' to check C / C++ code style
+[6.975s] -- Configured uncrustify additional arguments: 
+[7.029s] -- Added test 'xmllint' to check XML markup files
+[7.035s] -- Configuring done
+[8.260s] -- Generating done
+[8.619s] -- Build files have been written to: /home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai
+[8.703s] Invoked command in '/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai' returned '0': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake /home/robot/slam_ws/src/lio_sam_hesai -DBUILD_TESTING=ON -DCMAKE_INSTALL_PREFIX=/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/install/lio_sam_hesai
+[8.708s] Invoking command in '/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --build /home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai --target test_online_dufomap -- -j8 -l8
+[8.850s] Consolidate compiler generated dependencies of target gtest_main
+[8.851s] Consolidate compiler generated dependencies of target gtest
+[8.851s] Consolidate compiler generated dependencies of target lio_sam_hesai_dufomap_native
+[8.878s] [ 66%] Building CXX object CMakeFiles/lio_sam_hesai_dufomap_native.dir/src/common/dufomap_backend.cpp.o
+[8.878s] [ 66%] Built target gtest
+[8.878s] [ 66%] Built target gtest_main
+[12.133s] In file included from /home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/geometry/intersects.hpp:48,
+[12.133s]                  from /home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/map/predicate/spatial.hpp:49,
+[12.133s]                  from /home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/map/octree/octree.hpp:57,
+[12.133s]                  from /home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/map/octree/octree_map.hpp:47,
+[12.133s]                  from /home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/map/ufomap.hpp:63,
+[12.133s]                  from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:13:
+[12.133s] /home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/geometry/helper.hpp: In function ‘constexpr std::pair<float, float> ufo::getInterval(const ufo::AABB&, ufo::Point)’:
+[12.133s] /home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/geometry/helper.hpp:174:77: note: parameter passing for argument of type ‘std::pair<float, float>’ when C++17 is enabled changed to match C++14 in GCC 10.1
+[12.134s]   174 | constexpr std::pair<float, float> getInterval(AABB const& aabb, Point axis) noexcept
+[12.134s]       |                                                                             ^~~~~~~~
+[12.674s] In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:15:
+[12.675s] /home/robot/slam_ws/src/lio_sam_hesai/include/common/dufomap_config.h: At global scope:
+[12.675s] /home/robot/slam_ws/src/lio_sam_hesai/include/common/dufomap_config.h:33:7: error: conflicting declaration ‘using DufomapExportConfig = struct DufomapConfig’
+[12.675s]    33 | using DufomapExportConfig = DufomapConfig;
+[12.675s]       |       ^~~~~~~~~~~~~~~~~~~
+[12.676s] In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:
+[12.676s] /home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: previous declaration as ‘struct DufomapExportConfig’
+[12.676s]    12 | struct DufomapExportConfig;
+[12.676s]       |        ^~~~~~~~~~~~~~~~~~~
+[12.676s] /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp: In function ‘lio_sam_hesai::{anonymous}::ValidatedConfig lio_sam_hesai::{anonymous}::ValidateConfig(const DufomapExportConfig&)’:
+[12.676s] /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:51:25: error: invalid use of incomplete type ‘const struct DufomapExportConfig’
+[12.676s]    51 |   Require(std::isfinite(config.resolution) && config.resolution > 0.0,
+[12.676s]       |                         ^~~~~~
+[12.676s] In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:
+[12.676s] /home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of ‘struct DufomapExportConfig’
+[12.676s]    12 | struct DufomapExportConfig;
+[12.676s]       |        ^~~~~~~~~~~~~~~~~~~
+[12.677s] /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:51:47: error: invalid use of incomplete type ‘const struct DufomapExportConfig’
+[12.677s]    51 |   Require(std::isfinite(config.resolution) && config.resolution > 0.0,
+[12.677s]       |                                               ^~~~~~
+[12.677s] In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:
+[12.677s] /home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of ‘struct DufomapExportConfig’
+[12.677s]    12 | struct DufomapExportConfig;
+[12.677s]       |        ^~~~~~~~~~~~~~~~~~~
+[12.677s] /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:53:25: error: invalid use of incomplete type ‘const struct DufomapExportConfig’
+[12.677s]    53 |   Require(std::isfinite(config.d_s) && config.d_s >= 0.0,
+[12.677s]       |                         ^~~~~~
+[12.677s] In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:
+[12.678s] /home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of ‘struct DufomapExportConfig’
+[12.678s]    12 | struct DufomapExportConfig;
+[12.678s]       |        ^~~~~~~~~~~~~~~~~~~
+[12.678s] /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:53:40: error: invalid use of incomplete type ‘const struct DufomapExportConfig’
+[12.678s]    53 |   Require(std::isfinite(config.d_s) && config.d_s >= 0.0,
+[12.678s]       |                                        ^~~~~~
+[12.678s] In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:
+[12.678s] /home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of ‘struct DufomapExportConfig’
+[12.678s]    12 | struct DufomapExportConfig;
+[12.678s]       |        ^~~~~~~~~~~~~~~~~~~
+[12.678s] /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:55:11: error: invalid use of incomplete type ‘const struct DufomapExportConfig’
+[12.678s]    55 |   Require(config.d_p >= 0 && config.d_p <= 4,
+[12.678s]       |           ^~~~~~
+[12.679s] In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:
+[12.679s] /home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of ‘struct DufomapExportConfig’
+[12.679s]    12 | struct DufomapExportConfig;
+[12.679s]       |        ^~~~~~~~~~~~~~~~~~~
+[12.679s] /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:55:30: error: invalid use of incomplete type ‘const struct DufomapExportConfig’
+[12.679s]    55 |   Require(config.d_p >= 0 && config.d_p <= 4,
+[12.679s]       |                              ^~~~~~
+[12.679s] In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:
+[12.679s] /home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of ‘struct DufomapExportConfig’
+[12.679s]    12 | struct DufomapExportConfig;
+[12.679s]       |        ^~~~~~~~~~~~~~~~~~~
+[12.679s] /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:57:11: error: invalid use of incomplete type ‘const struct DufomapExportConfig’
+[12.680s]    57 |   Require(config.num_threads == 0 || config.num_threads >= 2,
+[12.680s]       |           ^~~~~~
+[12.680s] In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:
+[12.680s] /home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of ‘struct DufomapExportConfig’
+[12.680s]    12 | struct DufomapExportConfig;
+[12.680s]       |        ^~~~~~~~~~~~~~~~~~~
+[12.680s] /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:57:38: error: invalid use of incomplete type ‘const struct DufomapExportConfig’
+[12.680s]    57 |   Require(config.num_threads == 0 || config.num_threads >= 2,
+[12.680s]       |                                      ^~~~~~
+[12.680s] In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:
+[12.680s] /home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of ‘struct DufomapExportConfig’
+[12.680s]    12 | struct DufomapExportConfig;
+[12.680s]       |        ^~~~~~~~~~~~~~~~~~~
+[12.681s] /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:59:25: error: invalid use of incomplete type ‘const struct DufomapExportConfig’
+[12.681s]    59 |   Require(std::isfinite(config.min_range) && config.min_range >= 0.0,
+[12.681s]       |                         ^~~~~~
+[12.681s] In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:
+[12.681s] /home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of ‘struct DufomapExportConfig’
+[12.681s]    12 | struct DufomapExportConfig;
+[12.681s]       |        ^~~~~~~~~~~~~~~~~~~
+[12.681s] /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:59:46: error: invalid use of incomplete type ‘const struct DufomapExportConfig’
+[12.681s]    59 |   Require(std::isfinite(config.min_range) && config.min_range >= 0.0,
+[12.681s]       |                                              ^~~~~~
+[12.681s] In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:
+[12.681s] /home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of ‘struct DufomapExportConfig’
+[12.682s]    12 | struct DufomapExportConfig;
+[12.682s]       |        ^~~~~~~~~~~~~~~~~~~
+[12.682s] /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:61:25: error: invalid use of incomplete type ‘const struct DufomapExportConfig’
+[12.682s]    61 |   Require(std::isfinite(config.max_range) && config.max_range >= 0.0 &&
+[12.682s]       |                         ^~~~~~
+[12.682s] In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:
+[12.682s] /home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of ‘struct DufomapExportConfig’
+[12.682s]    12 | struct DufomapExportConfig;
+[12.682s]       |        ^~~~~~~~~~~~~~~~~~~
+[12.682s] /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:61:46: error: invalid use of incomplete type ‘const struct DufomapExportConfig’
+[12.682s]    61 |   Require(std::isfinite(config.max_range) && config.max_range >= 0.0 &&
+[12.682s]       |                                              ^~~~~~
+[12.683s] In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:
+[12.683s] /home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of ‘struct DufomapExportConfig’
+[12.683s]    12 | struct DufomapExportConfig;
+[12.683s]       |        ^~~~~~~~~~~~~~~~~~~
+[12.683s] /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:62:16: error: invalid use of incomplete type ‘const struct DufomapExportConfig’
+[12.683s]    62 |               (config.max_range == 0.0 || config.max_range >= config.min_range),
+[12.683s]       |                ^~~~~~
+[12.683s] In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:
+[12.683s] /home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of ‘struct DufomapExportConfig’
+[12.683s]    12 | struct DufomapExportConfig;
+[12.683s]       |        ^~~~~~~~~~~~~~~~~~~
+[12.683s] /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:62:43: error: invalid use of incomplete type ‘const struct DufomapExportConfig’
+[12.683s]    62 |               (config.max_range == 0.0 || config.max_range >= config.min_range),
+[12.684s]       |                                           ^~~~~~
+[12.684s] In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:
+[12.684s] /home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of ‘struct DufomapExportConfig’
+[12.684s]    12 | struct DufomapExportConfig;
+[12.684s]       |        ^~~~~~~~~~~~~~~~~~~
+[12.684s] /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:62:63: error: invalid use of incomplete type ‘const struct DufomapExportConfig’
+[12.684s]    62 |               (config.max_range == 0.0 || config.max_range >= config.min_range),
+[12.684s]       |                                                               ^~~~~~
+[12.684s] In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:
+[12.684s] /home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of ‘struct DufomapExportConfig’
+[12.684s]    12 | struct DufomapExportConfig;
+[12.684s]       |        ^~~~~~~~~~~~~~~~~~~
+[12.684s] /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:65:25: error: invalid use of incomplete type ‘const struct DufomapExportConfig’
+[12.685s]    65 |   Require(std::isfinite(config.timeout_seconds) &&
+[12.685s]       |                         ^~~~~~
+[12.685s] In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:
+[12.685s] /home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of ‘struct DufomapExportConfig’
+[12.685s]    12 | struct DufomapExportConfig;
+[12.685s]       |        ^~~~~~~~~~~~~~~~~~~
+[12.685s] /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:66:15: error: invalid use of incomplete type ‘const struct DufomapExportConfig’
+[12.685s]    66 |               config.timeout_seconds >= 0.0 &&
+[12.685s]       |               ^~~~~~
+[12.685s] In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:
+[12.685s] /home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of ‘struct DufomapExportConfig’
+[12.685s]    12 | struct DufomapExportConfig;
+[12.686s]       |        ^~~~~~~~~~~~~~~~~~~
+[12.686s] /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:67:15: error: invalid use of incomplete type ‘const struct DufomapExportConfig’
+[12.686s]    67 |               config.timeout_seconds <= kMaxTimeoutSeconds,
+[12.686s]       |               ^~~~~~
+[12.686s] In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:
+[12.686s] /home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of ‘struct DufomapExportConfig’
+[12.686s]    12 | struct DufomapExportConfig;
+[12.686s]       |        ^~~~~~~~~~~~~~~~~~~
+[12.686s] /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:70:11: error: invalid use of incomplete type ‘const struct DufomapExportConfig’
+[12.686s]    70 |   return {config.resolution, config.d_s, config.d_p, config.num_threads,
+[12.686s]       |           ^~~~~~
+[12.686s] In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:
+[12.687s] /home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of ‘struct DufomapExportConfig’
+[12.687s]    12 | struct DufomapExportConfig;
+[12.687s]       |        ^~~~~~~~~~~~~~~~~~~
+[12.687s] /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:70:30: error: invalid use of incomplete type ‘const struct DufomapExportConfig’
+[12.687s]    70 |   return {config.resolution, config.d_s, config.d_p, config.num_threads,
+[12.687s]       |                              ^~~~~~
+[12.687s] In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:
+[12.687s] /home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of ‘struct DufomapExportConfig’
+[12.687s]    12 | struct DufomapExportConfig;
+[12.687s]       |        ^~~~~~~~~~~~~~~~~~~
+[12.687s] /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:70:42: error: invalid use of incomplete type ‘const struct DufomapExportConfig’
+[12.687s]    70 |   return {config.resolution, config.d_s, config.d_p, config.num_threads,
+[12.687s]       |                                          ^~~~~~
+[12.688s] In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:
+[12.688s] /home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of ‘struct DufomapExportConfig’
+[12.688s]    12 | struct DufomapExportConfig;
+[12.688s]       |        ^~~~~~~~~~~~~~~~~~~
+[12.688s] /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:70:54: error: invalid use of incomplete type ‘const struct DufomapExportConfig’
+[12.688s]    70 |   return {config.resolution, config.d_s, config.d_p, config.num_threads,
+[12.688s]       |                                                      ^~~~~~
+[12.688s] In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:
+[12.688s] /home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of ‘struct DufomapExportConfig’
+[12.688s]    12 | struct DufomapExportConfig;
+[12.688s]       |        ^~~~~~~~~~~~~~~~~~~
+[12.688s] /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:71:11: error: invalid use of incomplete type ‘const struct DufomapExportConfig’
+[12.688s]    71 |           config.min_range, config.max_range, config.timeout_seconds};
+[12.689s]       |           ^~~~~~
+[12.689s] In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:
+[12.689s] /home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of ‘struct DufomapExportConfig’
+[12.689s]    12 | struct DufomapExportConfig;
+[12.689s]       |        ^~~~~~~~~~~~~~~~~~~
+[12.689s] /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:71:29: error: invalid use of incomplete type ‘const struct DufomapExportConfig’
+[12.689s]    71 |           config.min_range, config.max_range, config.timeout_seconds};
+[12.689s]       |                             ^~~~~~
+[12.689s] In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:
+[12.689s] /home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of ‘struct DufomapExportConfig’
+[12.689s]    12 | struct DufomapExportConfig;
+[12.689s]       |        ^~~~~~~~~~~~~~~~~~~
+[12.690s] /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:71:47: error: invalid use of incomplete type ‘const struct DufomapExportConfig’
+[12.690s]    71 |           config.min_range, config.max_range, config.timeout_seconds};
+[12.690s]       |                                               ^~~~~~
+[12.690s] In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:
+[12.690s] /home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of ‘struct DufomapExportConfig’
+[12.690s]    12 | struct DufomapExportConfig;
+[12.690s]       |        ^~~~~~~~~~~~~~~~~~~
+[12.690s] /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:71:69: error: could not convert ‘{<expression error>, <expression error>, <expression error>, <expression error>, <expression error>, <expression error>, <expression error>}’ from ‘<brace-enclosed initializer list>’ to ‘lio_sam_hesai::{anonymous}::ValidatedConfig’
+[12.690s]    71 |           config.min_range, config.max_range, config.timeout_seconds};
+[12.690s]       |                                                                     ^
+[12.690s]       |                                                                     |
+[12.690s]       |                                                                     <brace-enclosed initializer list>
+[15.170s] gmake[3]: *** [CMakeFiles/lio_sam_hesai_dufomap_native.dir/build.make:76: CMakeFiles/lio_sam_hesai_dufomap_native.dir/src/common/dufomap_backend.cpp.o] Error 1
+[15.171s] gmake[2]: *** [CMakeFiles/Makefile2:779: CMakeFiles/lio_sam_hesai_dufomap_native.dir/all] Error 2
+[15.172s] gmake[1]: *** [CMakeFiles/Makefile2:1474: CMakeFiles/test_online_dufomap.dir/rule] Error 2
+[15.172s] gmake: *** [Makefile:738: test_online_dufomap] Error 2
+[15.177s] Invoked command in '/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai' returned '2': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --build /home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai --target test_online_dufomap -- -j8 -l8

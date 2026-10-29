@@ -1,0 +1,465 @@
+[0.000000] (-) TimerEvent: {}
+[0.000352] (lio_sam_hesai) JobQueued: {'identifier': 'lio_sam_hesai', 'dependencies': OrderedDict()}
+[0.000811] (lio_sam_hesai) JobStarted: {'identifier': 'lio_sam_hesai'}
+[0.018321] (lio_sam_hesai) JobProgress: {'identifier': 'lio_sam_hesai', 'progress': 'cmake'}
+[0.021297] (lio_sam_hesai) Command: {'cmd': ['/usr/bin/cmake', '/home/robot/slam_ws/src/lio_sam_hesai', '-DBUILD_TESTING=ON', '-DCMAKE_INSTALL_PREFIX=/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/install/lio_sam_hesai'], 'cwd': '/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai', 'env': OrderedDict([('USER', 'robot'), ('SHLVL', '0'), ('LD_LIBRARY_PATH', '/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/aarch64-linux-gnu:/opt/ros/humble/opt/openvdb_vendor/lib:/opt/ros/humble/lib'), ('VIPSHOME', '/target'), ('DSH_SESSION_ID', 'session-2930570e-64b9-426b-a86e-9673f3110efc'), ('HOME', '/home/robot'), ('ROS_PYTHON_VERSION', '3'), ('PAGER', 'cat'), ('NO_COLOR', '1'), ('ROS_DISTRO', 'humble'), ('LOGNAME', 'robot'), ('_', '/usr/bin/colcon'), ('ROS_VERSION', '2'), ('TERM', 'dumb'), ('ROS_LOCALHOST_ONLY', '0'), ('PATH', '/home/robot/.codex/tmp/arg0-linux/codex-arg0ZUNSZc:/home/robot/.vscode-server/cli/servers/Stable-e646868227c3e3a9e3f24277c8c7220be42c0be7/server/bin/remote-cli:/home/robot/.local/bin:/opt/ros/humble/bin:/home/robot/.local/share/pnpm:/home/robot/.cargo/bin:/home/robot/.nvm/versions/node/v24.21.0/bin:/home/robot/.opencode/bin:/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/home/robot/.vscode-server/extensions/openai.chatgpt-26.1021.22027-linux-arm64/bin/linux-aarch64'), ('LANG', 'en_US.UTF-8'), ('AMENT_PREFIX_PATH', '/opt/ros/humble'), ('DSH_HOME', '/home/robot/.dsh'), ('SHELL', '/bin/bash'), ('DSH_SHELL', '1'), ('GIT_PAGER', 'cat'), ('PWD', '/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai'), ('PYTHONPATH', '/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages'), ('COLCON', '1'), ('CMAKE_PREFIX_PATH', '/opt/ros/humble')]), 'shell': False}
+[0.047902] (lio_sam_hesai) StdoutLine: {'line': b'-- Found glog    (include: /usr/include, library: /usr/lib/aarch64-linux-gnu/libglog.so)\n'}
+[0.050657] (lio_sam_hesai) StdoutLine: {'line': b'-- Searching for g2o ...\n'}
+[0.050994] (lio_sam_hesai) StdoutLine: {'line': b'-- Found g2o headers in: /opt/ros/humble/include\n'}
+[0.051279] (lio_sam_hesai) StdoutLine: {'line': b'-- Found libg2o: /opt/ros/humble/lib/aarch64-linux-gnu/libg2o_csparse_extension.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_core.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_stuff.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_types_slam2d.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_types_slam3d.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_solver_cholmod.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_solver_pcg.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_solver_csparse.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_solver_eigen.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_incremental.so\n'}
+[0.051415] (lio_sam_hesai) StdoutLine: {'line': b'-- Found ament_cmake: 1.3.14 (/opt/ros/humble/share/ament_cmake/cmake)\n'}
+[0.099324] (-) TimerEvent: {}
+[0.199660] (-) TimerEvent: {}
+[0.296120] (lio_sam_hesai) StdoutLine: {'line': b'-- Found rosidl_default_generators: 1.2.1 (/opt/ros/humble/share/rosidl_default_generators/cmake)\n'}
+[0.299746] (-) TimerEvent: {}
+[0.301558] (lio_sam_hesai) StdoutLine: {'line': b'-- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c\n'}
+[0.310790] (lio_sam_hesai) StdoutLine: {'line': b'-- Found rosidl_adapter: 3.1.8 (/opt/ros/humble/share/rosidl_adapter/cmake)\n'}
+[0.392330] (lio_sam_hesai) StdoutLine: {'line': b'-- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp\n'}
+[0.399934] (-) TimerEvent: {}
+[0.452629] (lio_sam_hesai) StdoutLine: {'line': b'-- Found rclcpp: 16.0.18 (/opt/ros/humble/share/rclcpp/cmake)\n'}
+[0.500102] (-) TimerEvent: {}
+[0.536718] (lio_sam_hesai) StdoutLine: {'line': b'-- Found rmw_implementation_cmake: 6.1.2 (/opt/ros/humble/share/rmw_implementation_cmake/cmake)\n'}
+[0.540132] (lio_sam_hesai) StdoutLine: {'line': b'-- Found rmw_fastrtps_cpp: 6.2.10 (/opt/ros/humble/share/rmw_fastrtps_cpp/cmake)\n'}
+[0.600275] (-) TimerEvent: {}
+[0.700659] (-) TimerEvent: {}
+[0.717470] (lio_sam_hesai) StdoutLine: {'line': b"-- Using RMW implementation 'rmw_fastrtps_cpp' as default\n"}
+[0.800852] (-) TimerEvent: {}
+[0.818765] (lio_sam_hesai) StdoutLine: {'line': b'-- Found rclpy: 3.3.21 (/opt/ros/humble/share/rclpy/cmake)\n'}
+[0.819404] (lio_sam_hesai) StdoutLine: {'line': b'-- Found cv_bridge: 3.2.1 (/opt/ros/humble/share/cv_bridge/cmake)\n'}
+[0.891553] (lio_sam_hesai) StdoutLine: {'line': b'-- Found nav_msgs: 4.9.1 (/opt/ros/humble/share/nav_msgs/cmake)\n'}
+[0.900935] (-) TimerEvent: {}
+[0.921572] (lio_sam_hesai) StdoutLine: {'line': b'-- Found diagnostic_msgs: 4.9.1 (/opt/ros/humble/share/diagnostic_msgs/cmake)\n'}
+[0.945979] (lio_sam_hesai) StdoutLine: {'line': b'-- Found visualization_msgs: 4.9.1 (/opt/ros/humble/share/visualization_msgs/cmake)\n'}
+[0.979928] (lio_sam_hesai) StdoutLine: {'line': b'-- Found pcl_conversions: 2.4.5 (/opt/ros/humble/share/pcl_conversions/cmake)\n'}
+[1.001142] (-) TimerEvent: {}
+[1.048871] (lio_sam_hesai) StdoutLine: {'line': b'-- Eigen found (include: /usr/include/eigen3, version: 3.4.0)\n'}
+[1.101334] (-) TimerEvent: {}
+[1.124743] (lio_sam_hesai) StdoutLine: {'line': b'-- FLANN found (include: /usr/include, lib: /usr/lib/aarch64-linux-gnu/libflann_cpp.so)\n'}
+[1.201517] (-) TimerEvent: {}
+[1.301923] (-) TimerEvent: {}
+[1.402352] (-) TimerEvent: {}
+[1.502745] (-) TimerEvent: {}
+[1.603141] (-) TimerEvent: {}
+[1.703537] (-) TimerEvent: {}
+[1.803948] (-) TimerEvent: {}
+[1.894749] (lio_sam_hesai) StdoutLine: {'line': b'-- OpenNI found (version: 1.5.4.0, include: /usr/include/ni, lib: /usr/lib/libOpenNI.so;libusb::libusb)\n'}
+[1.904137] (-) TimerEvent: {}
+[1.906198] (lio_sam_hesai) StdoutLine: {'line': b'-- OpenNI2 found (version: 2.2.0.33, include: /usr/include/openni2, lib: /usr/lib/aarch64-linux-gnu/libOpenNI2.so;libusb::libusb)\n'}
+[2.004320] (-) TimerEvent: {}
+[2.104714] (-) TimerEvent: {}
+[2.138175] (lio_sam_hesai) StdoutLine: {'line': b'-- Eigen found (include: /usr/include/eigen3, version: 3.4.0)\n'}
+[2.147604] (lio_sam_hesai) StdoutLine: {'line': b'-- OpenNI found (version: 1.5.4.0, include: /usr/include/ni, lib: /usr/lib/libOpenNI.so;libusb::libusb)\n'}
+[2.157095] (lio_sam_hesai) StdoutLine: {'line': b'-- OpenNI2 found (version: 2.2.0.33, include: /usr/include/openni2, lib: /usr/lib/aarch64-linux-gnu/libOpenNI2.so;libusb::libusb)\n'}
+[2.204892] (-) TimerEvent: {}
+[2.305301] (-) TimerEvent: {}
+[2.382762] (lio_sam_hesai) StdoutLine: {'line': b'-- Found Qhull version 8.0.2\n'}
+[2.405431] (-) TimerEvent: {}
+[2.505807] (-) TimerEvent: {}
+[2.606197] (-) TimerEvent: {}
+[2.607450] (lio_sam_hesai) StdoutLine: {'line': b'-- OpenNI found (version: 1.5.4.0, include: /usr/include/ni, lib: /usr/lib/libOpenNI.so;libusb::libusb)\n'}
+[2.706368] (-) TimerEvent: {}
+[2.806752] (-) TimerEvent: {}
+[2.848571] (lio_sam_hesai) StdoutLine: {'line': b'-- Found tf2: 0.25.19 (/opt/ros/humble/share/tf2/cmake)\n'}
+[2.858530] (lio_sam_hesai) StdoutLine: {'line': b'-- Found tf2_geometry_msgs: 0.25.19 (/opt/ros/humble/share/tf2_geometry_msgs/cmake)\n'}
+[2.868840] (lio_sam_hesai) StdoutLine: {'line': b'-- Found eigen3_cmake_module: 0.1.1 (/opt/ros/humble/share/eigen3_cmake_module/cmake)\n'}
+[2.871574] (lio_sam_hesai) StdoutLine: {'line': b'-- Ensuring Eigen3 include directory is part of orocos-kdl CMake target\n'}
+[2.906912] (-) TimerEvent: {}
+[3.007287] (-) TimerEvent: {}
+[3.013133] (lio_sam_hesai) StdoutLine: {'line': b'-- Found tf2_sensor_msgs: 0.25.19 (/opt/ros/humble/share/tf2_sensor_msgs/cmake)\n'}
+[3.020625] (lio_sam_hesai) StdoutLine: {'line': b'-- Found tf2_eigen: 0.25.19 (/opt/ros/humble/share/tf2_eigen/cmake)\n'}
+[3.032007] (lio_sam_hesai) StderrLine: {'line': b'CMake Warning (dev) at CMakeLists.txt:38 (find_package):\n'}
+[3.032507] (lio_sam_hesai) StderrLine: {'line': b'  Policy CMP0074 is not set: find_package uses <PackageName>_ROOT variables.\n'}
+[3.032654] (lio_sam_hesai) StderrLine: {'line': b'  Run "cmake --help-policy CMP0074" for policy details.  Use the cmake_policy\n'}
+[3.032770] (lio_sam_hesai) StderrLine: {'line': b'  command to set the policy and suppress this warning.\n'}
+[3.032896] (lio_sam_hesai) StderrLine: {'line': b'\n'}
+[3.033004] (lio_sam_hesai) StderrLine: {'line': b'  CMake variable PCL_ROOT is set to:\n'}
+[3.033106] (lio_sam_hesai) StderrLine: {'line': b'\n'}
+[3.033204] (lio_sam_hesai) StderrLine: {'line': b'    /usr\n'}
+[3.033300] (lio_sam_hesai) StderrLine: {'line': b'\n'}
+[3.033394] (lio_sam_hesai) StderrLine: {'line': b'  For compatibility, CMake is ignoring the variable.\n'}
+[3.033489] (lio_sam_hesai) StderrLine: {'line': b'This warning is for project developers.  Use -Wno-dev to suppress it.\n'}
+[3.033586] (lio_sam_hesai) StderrLine: {'line': b'\n'}
+[3.058663] (lio_sam_hesai) StdoutLine: {'line': b'-- Found pluginlib: 5.1.3 (/opt/ros/humble/share/pluginlib/cmake)\n'}
+[3.082917] (lio_sam_hesai) StdoutLine: {'line': b'-- Found rviz_common: 11.2.26 (/opt/ros/humble/share/rviz_common/cmake)\n'}
+[3.090114] (lio_sam_hesai) StdoutLine: {'line': b"-- Setting assimp_DIR to: '/opt/ros/humble/share/rviz_assimp_vendor/cmake/../../../opt/rviz_assimp_vendor/lib/cmake/assimp-4.1'\n"}
+[3.101004] (lio_sam_hesai) StdoutLine: {'line': b"-- Setting OGRE_DIR to: '/opt/ros/humble/share/rviz_ogre_vendor/cmake/../../../opt/rviz_ogre_vendor/lib/OGRE/cmake'\n"}
+[3.104280] (lio_sam_hesai) StdoutLine: {'line': b'-- Found OGRE\n'}
+[3.104743] (lio_sam_hesai) StdoutLine: {'line': b'--   static     : OFF\n'}
+[3.104859] (lio_sam_hesai) StdoutLine: {'line': b'--   components : HLMS;MeshLodGenerator;Overlay;Paging;Property;RTShaderSystem;Terrain;Volume\n'}
+[3.104996] (lio_sam_hesai) StdoutLine: {'line': b'--   plugins    : Plugin_BSPSceneManager;Plugin_OctreeSceneManager;Plugin_PCZSceneManager;Plugin_ParticleFX;RenderSystem_GL;RenderSystem_GL3Plus;Codec_STBI\n'}
+[3.105095] (lio_sam_hesai) StdoutLine: {'line': b'--   media      : /opt/ros/humble/opt/rviz_ogre_vendor/share/OGRE/Media\n'}
+[3.105185] (lio_sam_hesai) StdoutLine: {'line': b'-- OGRE_LIBRARIES: OgreHLMS;OgreMeshLodGenerator;OgreOverlay;OgrePaging;OgreProperty;OgreRTShaderSystem;OgreTerrain;OgreVolume;OgreMain\n'}
+[3.105300] (lio_sam_hesai) StdoutLine: {'line': b'-- OGRE_LIBRARY_DIRS: /opt/ros/humble/opt/rviz_ogre_vendor/lib\n'}
+[3.105389] (lio_sam_hesai) StdoutLine: {'line': b'-- OGRE_PLUGINS: Plugin_BSPSceneManager;Plugin_OctreeSceneManager;Plugin_PCZSceneManager;Plugin_ParticleFX;RenderSystem_GL;RenderSystem_GL3Plus;Codec_STBI\n'}
+[3.105476] (lio_sam_hesai) StdoutLine: {'line': b'-- OGRE_PLUGIN_DIR: /opt/ros/humble/opt/rviz_ogre_vendor/lib/OGRE\n'}
+[3.105561] (lio_sam_hesai) StdoutLine: {'line': b'-- rviz_ogre_vendor::OgreOverlay for IMPORTED_LOCATION_RELEASE: /opt/ros/humble/opt/rviz_ogre_vendor/lib/libOgreOverlay.so\n'}
+[3.105646] (lio_sam_hesai) StdoutLine: {'line': b'-- rviz_ogre_vendor::OgreOverlay for IMPORTED_LOCATION_DEBUG: /opt/ros/humble/opt/rviz_ogre_vendor/lib/libOgreOverlay.so\n'}
+[3.105728] (lio_sam_hesai) StdoutLine: {'line': b'-- rviz_ogre_vendor::OgreMain for IMPORTED_LOCATION_RELEASE: /opt/ros/humble/opt/rviz_ogre_vendor/lib/libOgreMain.so\n'}
+[3.105844] (lio_sam_hesai) StdoutLine: {'line': b'-- rviz_ogre_vendor::OgreMain for IMPORTED_LOCATION_DEBUG: /opt/ros/humble/opt/rviz_ogre_vendor/lib/libOgreMain.so\n'}
+[3.107324] (-) TimerEvent: {}
+[3.108638] (lio_sam_hesai) StdoutLine: {'line': b'-- Could not find freeimage library\n'}
+[3.207542] (-) TimerEvent: {}
+[3.224534] (lio_sam_hesai) StdoutLine: {'line': b'-- library: /usr/lib/aarch64-linux-gnu/libcurl.so\n'}
+[3.265604] (lio_sam_hesai) StdoutLine: {'line': b'-- Found GTSAM include directory: /usr/local/include\n'}
+[3.266092] (lio_sam_hesai) StdoutLine: {'line': b'-- Found GTSAM unstable include directory: /usr/local/include\n'}
+[3.266258] (lio_sam_hesai) StdoutLine: {'line': b'-- Found GTSAM libraries: /usr/local/lib/libgtsam.so;/usr/local/lib/libgtsam_unstable.so\n'}
+[3.307701] (-) TimerEvent: {}
+[3.408044] (-) TimerEvent: {}
+[3.508427] (-) TimerEvent: {}
+[3.608793] (-) TimerEvent: {}
+[3.709204] (-) TimerEvent: {}
+[3.786193] (lio_sam_hesai) StdoutLine: {'line': b'-- Found ament_cmake_ros: 0.10.0 (/opt/ros/humble/share/ament_cmake_ros/cmake)\n'}
+[3.809259] (-) TimerEvent: {}
+[3.909507] (-) TimerEvent: {}
+[4.009883] (-) TimerEvent: {}
+[4.110257] (-) TimerEvent: {}
+[4.210647] (-) TimerEvent: {}
+[4.257300] (lio_sam_hesai) StdoutLine: {'line': b'-- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c\n'}
+[4.310793] (-) TimerEvent: {}
+[4.411138] (-) TimerEvent: {}
+[4.511508] (-) TimerEvent: {}
+[4.611880] (-) TimerEvent: {}
+[4.712259] (-) TimerEvent: {}
+[4.812773] (-) TimerEvent: {}
+[4.875356] (lio_sam_hesai) StdoutLine: {'line': b'-- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp\n'}
+[4.913124] (-) TimerEvent: {}
+[4.917682] (lio_sam_hesai) StdoutLine: {'line': b'-- Found python_cmake_module: 0.10.0 (/opt/ros/humble/share/python_cmake_module/cmake)\n'}
+[4.962546] (lio_sam_hesai) StdoutLine: {'line': b'-- Using PYTHON_EXECUTABLE: /usr/bin/python3\n'}
+[4.963160] (lio_sam_hesai) StdoutLine: {'line': b'-- Using PYTHON_INCLUDE_DIRS: /usr/include/python3.10\n'}
+[4.963437] (lio_sam_hesai) StdoutLine: {'line': b'-- Using PYTHON_LIBRARIES: /usr/lib/aarch64-linux-gnu/libpython3.10.so\n'}
+[5.013293] (-) TimerEvent: {}
+[5.113707] (-) TimerEvent: {}
+[5.214122] (-) TimerEvent: {}
+[5.314527] (-) TimerEvent: {}
+[5.414912] (-) TimerEvent: {}
+[5.515308] (-) TimerEvent: {}
+[5.520052] (lio_sam_hesai) StdoutLine: {'line': b'-- Found ament_lint_auto: 0.12.15 (/opt/ros/humble/share/ament_lint_auto/cmake)\n'}
+[5.522909] (lio_sam_hesai) StdoutLine: {'line': b"-- Found gtest sources under '/opt/ros/humble/src/gtest_vendor': C++ tests using 'Google Test' will be built\n"}
+[5.615484] (-) TimerEvent: {}
+[5.715949] (-) TimerEvent: {}
+[5.763652] (lio_sam_hesai) StdoutLine: {'line': b"-- Added test 'copyright' to check source files copyright and LICENSE\n"}
+[5.816129] (-) TimerEvent: {}
+[5.916572] (-) TimerEvent: {}
+[6.017031] (-) TimerEvent: {}
+[6.085664] (lio_sam_hesai) StdoutLine: {'line': b"-- Added test 'cppcheck' to perform static code analysis on C / C++ code\n"}
+[6.099437] (lio_sam_hesai) StdoutLine: {'line': b'-- Configured cppcheck include dirs: /home/robot/slam_ws/src/lio_sam_hesai/include;/home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam;$<BUILD_INTERFACE:/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_generator_c>;$<BUILD_INTERFACE:/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_typesupport_fastrtps_c>;$<BUILD_INTERFACE:/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_typesupport_introspection_c>;$<BUILD_INTERFACE:/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_generator_cpp>;$<BUILD_INTERFACE:/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_typesupport_fastrtps_cpp>;$<BUILD_INTERFACE:/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_typesupport_introspection_cpp>;/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_generator_c;/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_generator_py;/home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/arm64;/home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include;/home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/compat;/home/robot/slam_ws/src/lio_sam_hesai/third_party/patchworkpp/cpp/common/include;/home/robot/slam_ws/src/lio_sam_hesai/third_party/patchworkpp/cpp/patchworkpp/include\n'}
+[6.099927] (lio_sam_hesai) StdoutLine: {'line': b'-- Configured cppcheck exclude dirs and/or files: \n'}
+[6.117154] (-) TimerEvent: {}
+[6.217511] (-) TimerEvent: {}
+[6.317920] (-) TimerEvent: {}
+[6.418321] (-) TimerEvent: {}
+[6.434607] (lio_sam_hesai) StdoutLine: {'line': b"-- Added test 'cpplint' to check C / C++ code against the Google style\n"}
+[6.435042] (lio_sam_hesai) StdoutLine: {'line': b'-- Configured cpplint exclude dirs and/or files: \n'}
+[6.486090] (lio_sam_hesai) StdoutLine: {'line': b"-- Added test 'flake8' to check Python code syntax and style conventions\n"}
+[6.518827] (-) TimerEvent: {}
+[6.571842] (lio_sam_hesai) StdoutLine: {'line': b"-- Added test 'lint_cmake' to check CMake code style\n"}
+[6.615672] (lio_sam_hesai) StdoutLine: {'line': b"-- Added test 'pep257' to check Python code against some of the docstring style conventions in PEP 257\n"}
+[6.618942] (-) TimerEvent: {}
+[6.719296] (-) TimerEvent: {}
+[6.819684] (-) TimerEvent: {}
+[6.920077] (-) TimerEvent: {}
+[6.975647] (lio_sam_hesai) StdoutLine: {'line': b"-- Added test 'uncrustify' to check C / C++ code style\n"}
+[6.976240] (lio_sam_hesai) StdoutLine: {'line': b'-- Configured uncrustify additional arguments: \n'}
+[7.020257] (-) TimerEvent: {}
+[7.029759] (lio_sam_hesai) StdoutLine: {'line': b"-- Added test 'xmllint' to check XML markup files\n"}
+[7.035787] (lio_sam_hesai) StdoutLine: {'line': b'-- Configuring done\n'}
+[7.120449] (-) TimerEvent: {}
+[7.220852] (-) TimerEvent: {}
+[7.321245] (-) TimerEvent: {}
+[7.421634] (-) TimerEvent: {}
+[7.522032] (-) TimerEvent: {}
+[7.622420] (-) TimerEvent: {}
+[7.722806] (-) TimerEvent: {}
+[7.823220] (-) TimerEvent: {}
+[7.923589] (-) TimerEvent: {}
+[8.023948] (-) TimerEvent: {}
+[8.124328] (-) TimerEvent: {}
+[8.224717] (-) TimerEvent: {}
+[8.261125] (lio_sam_hesai) StdoutLine: {'line': b'-- Generating done\n'}
+[8.324895] (-) TimerEvent: {}
+[8.425274] (-) TimerEvent: {}
+[8.525654] (-) TimerEvent: {}
+[8.620218] (lio_sam_hesai) StdoutLine: {'line': b'-- Build files have been written to: /home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai\n'}
+[8.625778] (-) TimerEvent: {}
+[8.703307] (lio_sam_hesai) CommandEnded: {'returncode': 0}
+[8.704554] (lio_sam_hesai) JobProgress: {'identifier': 'lio_sam_hesai', 'progress': 'build'}
+[8.707091] (lio_sam_hesai) JobProgress: {'identifier': 'lio_sam_hesai', 'progress': "build target 'test_online_dufomap'"}
+[8.707293] (lio_sam_hesai) Command: {'cmd': ['/usr/bin/cmake', '--build', '/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai', '--target', 'test_online_dufomap', '--', '-j8', '-l8'], 'cwd': '/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai', 'env': OrderedDict([('USER', 'robot'), ('SHLVL', '0'), ('LD_LIBRARY_PATH', '/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/aarch64-linux-gnu:/opt/ros/humble/opt/openvdb_vendor/lib:/opt/ros/humble/lib'), ('VIPSHOME', '/target'), ('DSH_SESSION_ID', 'session-2930570e-64b9-426b-a86e-9673f3110efc'), ('HOME', '/home/robot'), ('ROS_PYTHON_VERSION', '3'), ('PAGER', 'cat'), ('NO_COLOR', '1'), ('ROS_DISTRO', 'humble'), ('LOGNAME', 'robot'), ('_', '/usr/bin/colcon'), ('ROS_VERSION', '2'), ('TERM', 'dumb'), ('ROS_LOCALHOST_ONLY', '0'), ('PATH', '/home/robot/.codex/tmp/arg0-linux/codex-arg0ZUNSZc:/home/robot/.vscode-server/cli/servers/Stable-e646868227c3e3a9e3f24277c8c7220be42c0be7/server/bin/remote-cli:/home/robot/.local/bin:/opt/ros/humble/bin:/home/robot/.local/share/pnpm:/home/robot/.cargo/bin:/home/robot/.nvm/versions/node/v24.21.0/bin:/home/robot/.opencode/bin:/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/home/robot/.vscode-server/extensions/openai.chatgpt-26.1021.22027-linux-arm64/bin/linux-aarch64'), ('LANG', 'en_US.UTF-8'), ('AMENT_PREFIX_PATH', '/opt/ros/humble'), ('DSH_HOME', '/home/robot/.dsh'), ('SHELL', '/bin/bash'), ('DSH_SHELL', '1'), ('GIT_PAGER', 'cat'), ('PWD', '/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai'), ('PYTHONPATH', '/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages'), ('COLCON', '1'), ('CMAKE_PREFIX_PATH', '/opt/ros/humble')]), 'shell': False}
+[8.725960] (-) TimerEvent: {}
+[8.826485] (-) TimerEvent: {}
+[8.850521] (lio_sam_hesai) StdoutLine: {'line': b'Consolidate compiler generated dependencies of target gtest_main\n'}
+[8.852029] (lio_sam_hesai) StdoutLine: {'line': b'Consolidate compiler generated dependencies of target gtest\n'}
+[8.852374] (lio_sam_hesai) StdoutLine: {'line': b'Consolidate compiler generated dependencies of target lio_sam_hesai_dufomap_native\n'}
+[8.878914] (lio_sam_hesai) StdoutLine: {'line': b'[ 66%] Building CXX object CMakeFiles/lio_sam_hesai_dufomap_native.dir/src/common/dufomap_backend.cpp.o\n'}
+[8.879308] (lio_sam_hesai) StdoutLine: {'line': b'[ 66%] Built target gtest\n'}
+[8.879428] (lio_sam_hesai) StdoutLine: {'line': b'[ 66%] Built target gtest_main\n'}
+[8.926903] (-) TimerEvent: {}
+[9.027315] (-) TimerEvent: {}
+[9.127717] (-) TimerEvent: {}
+[9.228131] (-) TimerEvent: {}
+[9.328540] (-) TimerEvent: {}
+[9.428952] (-) TimerEvent: {}
+[9.529344] (-) TimerEvent: {}
+[9.629772] (-) TimerEvent: {}
+[9.730184] (-) TimerEvent: {}
+[9.830576] (-) TimerEvent: {}
+[9.930973] (-) TimerEvent: {}
+[10.031366] (-) TimerEvent: {}
+[10.131772] (-) TimerEvent: {}
+[10.232187] (-) TimerEvent: {}
+[10.332634] (-) TimerEvent: {}
+[10.433068] (-) TimerEvent: {}
+[10.533480] (-) TimerEvent: {}
+[10.633885] (-) TimerEvent: {}
+[10.734264] (-) TimerEvent: {}
+[10.834665] (-) TimerEvent: {}
+[10.935062] (-) TimerEvent: {}
+[11.035480] (-) TimerEvent: {}
+[11.135905] (-) TimerEvent: {}
+[11.236331] (-) TimerEvent: {}
+[11.336743] (-) TimerEvent: {}
+[11.437135] (-) TimerEvent: {}
+[11.537521] (-) TimerEvent: {}
+[11.637890] (-) TimerEvent: {}
+[11.738268] (-) TimerEvent: {}
+[11.838638] (-) TimerEvent: {}
+[11.939020] (-) TimerEvent: {}
+[12.039398] (-) TimerEvent: {}
+[12.133390] (lio_sam_hesai) StderrLine: {'line': b'In file included from /home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/geometry/intersects.hpp:48,\n'}
+[12.133817] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/map/predicate/spatial.hpp:49,\n'}
+[12.133945] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/map/octree/octree.hpp:57,\n'}
+[12.134044] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/map/octree/octree_map.hpp:47,\n'}
+[12.134135] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/map/ufomap.hpp:63,\n'}
+[12.134226] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:13:\n'}
+[12.134312] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/geometry/helper.hpp: In function \xe2\x80\x98constexpr std::pair<float, float> ufo::getInterval(const ufo::AABB&, ufo::Point)\xe2\x80\x99:\n'}
+[12.134404] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/geometry/helper.hpp:174:77: note: parameter passing for argument of type \xe2\x80\x98std::pair<float, float>\xe2\x80\x99 when C++17 is enabled changed to match C++14 in GCC 10.1\n'}
+[12.134491] (lio_sam_hesai) StderrLine: {'line': b'  174 | constexpr std::pair<float, float> getInterval(AABB const& aabb, Point axis) noexcept\n'}
+[12.134573] (lio_sam_hesai) StderrLine: {'line': b'      |                                                                             ^~~~~~~~\n'}
+[12.139459] (-) TimerEvent: {}
+[12.239734] (-) TimerEvent: {}
+[12.340105] (-) TimerEvent: {}
+[12.440478] (-) TimerEvent: {}
+[12.540858] (-) TimerEvent: {}
+[12.641250] (-) TimerEvent: {}
+[12.674479] (lio_sam_hesai) StderrLine: {'line': b'In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:15:\n'}
+[12.675289] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/include/common/dufomap_config.h: At global scope:\n'}
+[12.676244] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/include/common/dufomap_config.h:33:7: error: conflicting declaration \xe2\x80\x98using DufomapExportConfig = struct DufomapConfig\xe2\x80\x99\n'}
+[12.676370] (lio_sam_hesai) StderrLine: {'line': b'   33 | using DufomapExportConfig = DufomapConfig;\n'}
+[12.676468] (lio_sam_hesai) StderrLine: {'line': b'      |       ^~~~~~~~~~~~~~~~~~~\n'}
+[12.676557] (lio_sam_hesai) StderrLine: {'line': b'In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:\n'}
+[12.676644] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: previous declaration as \xe2\x80\x98struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.676729] (lio_sam_hesai) StderrLine: {'line': b'   12 | struct DufomapExportConfig;\n'}
+[12.676809] (lio_sam_hesai) StderrLine: {'line': b'      |        ^~~~~~~~~~~~~~~~~~~\n'}
+[12.676887] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp: In function \xe2\x80\x98lio_sam_hesai::{anonymous}::ValidatedConfig lio_sam_hesai::{anonymous}::ValidateConfig(const DufomapExportConfig&)\xe2\x80\x99:\n'}
+[12.676972] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:51:25: error: invalid use of incomplete type \xe2\x80\x98const struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.677057] (lio_sam_hesai) StderrLine: {'line': b'   51 |   Require(std::isfinite(config.resolution) && config.resolution > 0.0,\n'}
+[12.677139] (lio_sam_hesai) StderrLine: {'line': b'      |                         ^~~~~~\n'}
+[12.677217] (lio_sam_hesai) StderrLine: {'line': b'In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:\n'}
+[12.677298] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of \xe2\x80\x98struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.677382] (lio_sam_hesai) StderrLine: {'line': b'   12 | struct DufomapExportConfig;\n'}
+[12.677464] (lio_sam_hesai) StderrLine: {'line': b'      |        ^~~~~~~~~~~~~~~~~~~\n'}
+[12.677543] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:51:47: error: invalid use of incomplete type \xe2\x80\x98const struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.677624] (lio_sam_hesai) StderrLine: {'line': b'   51 |   Require(std::isfinite(config.resolution) && config.resolution > 0.0,\n'}
+[12.677704] (lio_sam_hesai) StderrLine: {'line': b'      |                                               ^~~~~~\n'}
+[12.677815] (lio_sam_hesai) StderrLine: {'line': b'In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:\n'}
+[12.677898] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of \xe2\x80\x98struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.677979] (lio_sam_hesai) StderrLine: {'line': b'   12 | struct DufomapExportConfig;\n'}
+[12.678077] (lio_sam_hesai) StderrLine: {'line': b'      |        ^~~~~~~~~~~~~~~~~~~\n'}
+[12.678159] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:53:25: error: invalid use of incomplete type \xe2\x80\x98const struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.678240] (lio_sam_hesai) StderrLine: {'line': b'   53 |   Require(std::isfinite(config.d_s) && config.d_s >= 0.0,\n'}
+[12.678321] (lio_sam_hesai) StderrLine: {'line': b'      |                         ^~~~~~\n'}
+[12.678417] (lio_sam_hesai) StderrLine: {'line': b'In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:\n'}
+[12.678499] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of \xe2\x80\x98struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.678579] (lio_sam_hesai) StderrLine: {'line': b'   12 | struct DufomapExportConfig;\n'}
+[12.678661] (lio_sam_hesai) StderrLine: {'line': b'      |        ^~~~~~~~~~~~~~~~~~~\n'}
+[12.678749] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:53:40: error: invalid use of incomplete type \xe2\x80\x98const struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.678827] (lio_sam_hesai) StderrLine: {'line': b'   53 |   Require(std::isfinite(config.d_s) && config.d_s >= 0.0,\n'}
+[12.678907] (lio_sam_hesai) StderrLine: {'line': b'      |                                        ^~~~~~\n'}
+[12.678987] (lio_sam_hesai) StderrLine: {'line': b'In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:\n'}
+[12.679065] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of \xe2\x80\x98struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.679144] (lio_sam_hesai) StderrLine: {'line': b'   12 | struct DufomapExportConfig;\n'}
+[12.679223] (lio_sam_hesai) StderrLine: {'line': b'      |        ^~~~~~~~~~~~~~~~~~~\n'}
+[12.679300] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:55:11: error: invalid use of incomplete type \xe2\x80\x98const struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.679380] (lio_sam_hesai) StderrLine: {'line': b'   55 |   Require(config.d_p >= 0 && config.d_p <= 4,\n'}
+[12.679459] (lio_sam_hesai) StderrLine: {'line': b'      |           ^~~~~~\n'}
+[12.679538] (lio_sam_hesai) StderrLine: {'line': b'In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:\n'}
+[12.679617] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of \xe2\x80\x98struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.679699] (lio_sam_hesai) StderrLine: {'line': b'   12 | struct DufomapExportConfig;\n'}
+[12.679778] (lio_sam_hesai) StderrLine: {'line': b'      |        ^~~~~~~~~~~~~~~~~~~\n'}
+[12.679856] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:55:30: error: invalid use of incomplete type \xe2\x80\x98const struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.679944] (lio_sam_hesai) StderrLine: {'line': b'   55 |   Require(config.d_p >= 0 && config.d_p <= 4,\n'}
+[12.680026] (lio_sam_hesai) StderrLine: {'line': b'      |                              ^~~~~~\n'}
+[12.680105] (lio_sam_hesai) StderrLine: {'line': b'In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:\n'}
+[12.680184] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of \xe2\x80\x98struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.680264] (lio_sam_hesai) StderrLine: {'line': b'   12 | struct DufomapExportConfig;\n'}
+[12.680344] (lio_sam_hesai) StderrLine: {'line': b'      |        ^~~~~~~~~~~~~~~~~~~\n'}
+[12.680423] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:57:11: error: invalid use of incomplete type \xe2\x80\x98const struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.680502] (lio_sam_hesai) StderrLine: {'line': b'   57 |   Require(config.num_threads == 0 || config.num_threads >= 2,\n'}
+[12.680582] (lio_sam_hesai) StderrLine: {'line': b'      |           ^~~~~~\n'}
+[12.680667] (lio_sam_hesai) StderrLine: {'line': b'In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:\n'}
+[12.680748] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of \xe2\x80\x98struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.680829] (lio_sam_hesai) StderrLine: {'line': b'   12 | struct DufomapExportConfig;\n'}
+[12.680908] (lio_sam_hesai) StderrLine: {'line': b'      |        ^~~~~~~~~~~~~~~~~~~\n'}
+[12.680985] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:57:38: error: invalid use of incomplete type \xe2\x80\x98const struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.681074] (lio_sam_hesai) StderrLine: {'line': b'   57 |   Require(config.num_threads == 0 || config.num_threads >= 2,\n'}
+[12.681154] (lio_sam_hesai) StderrLine: {'line': b'      |                                      ^~~~~~\n'}
+[12.681233] (lio_sam_hesai) StderrLine: {'line': b'In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:\n'}
+[12.681310] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of \xe2\x80\x98struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.681389] (lio_sam_hesai) StderrLine: {'line': b'   12 | struct DufomapExportConfig;\n'}
+[12.681466] (lio_sam_hesai) StderrLine: {'line': b'      |        ^~~~~~~~~~~~~~~~~~~\n'}
+[12.681542] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:59:25: error: invalid use of incomplete type \xe2\x80\x98const struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.681620] (lio_sam_hesai) StderrLine: {'line': b'   59 |   Require(std::isfinite(config.min_range) && config.min_range >= 0.0,\n'}
+[12.681698] (lio_sam_hesai) StderrLine: {'line': b'      |                         ^~~~~~\n'}
+[12.681801] (lio_sam_hesai) StderrLine: {'line': b'In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:\n'}
+[12.681885] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of \xe2\x80\x98struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.681967] (lio_sam_hesai) StderrLine: {'line': b'   12 | struct DufomapExportConfig;\n'}
+[12.682045] (lio_sam_hesai) StderrLine: {'line': b'      |        ^~~~~~~~~~~~~~~~~~~\n'}
+[12.682123] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:59:46: error: invalid use of incomplete type \xe2\x80\x98const struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.682214] (lio_sam_hesai) StderrLine: {'line': b'   59 |   Require(std::isfinite(config.min_range) && config.min_range >= 0.0,\n'}
+[12.682293] (lio_sam_hesai) StderrLine: {'line': b'      |                                              ^~~~~~\n'}
+[12.682371] (lio_sam_hesai) StderrLine: {'line': b'In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:\n'}
+[12.682448] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of \xe2\x80\x98struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.682537] (lio_sam_hesai) StderrLine: {'line': b'   12 | struct DufomapExportConfig;\n'}
+[12.682613] (lio_sam_hesai) StderrLine: {'line': b'      |        ^~~~~~~~~~~~~~~~~~~\n'}
+[12.682690] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:61:25: error: invalid use of incomplete type \xe2\x80\x98const struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.682769] (lio_sam_hesai) StderrLine: {'line': b'   61 |   Require(std::isfinite(config.max_range) && config.max_range >= 0.0 &&\n'}
+[12.682847] (lio_sam_hesai) StderrLine: {'line': b'      |                         ^~~~~~\n'}
+[12.682924] (lio_sam_hesai) StderrLine: {'line': b'In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:\n'}
+[12.683002] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of \xe2\x80\x98struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.683081] (lio_sam_hesai) StderrLine: {'line': b'   12 | struct DufomapExportConfig;\n'}
+[12.683159] (lio_sam_hesai) StderrLine: {'line': b'      |        ^~~~~~~~~~~~~~~~~~~\n'}
+[12.683239] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:61:46: error: invalid use of incomplete type \xe2\x80\x98const struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.683319] (lio_sam_hesai) StderrLine: {'line': b'   61 |   Require(std::isfinite(config.max_range) && config.max_range >= 0.0 &&\n'}
+[12.683417] (lio_sam_hesai) StderrLine: {'line': b'      |                                              ^~~~~~\n'}
+[12.683504] (lio_sam_hesai) StderrLine: {'line': b'In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:\n'}
+[12.683585] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of \xe2\x80\x98struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.683665] (lio_sam_hesai) StderrLine: {'line': b'   12 | struct DufomapExportConfig;\n'}
+[12.683743] (lio_sam_hesai) StderrLine: {'line': b'      |        ^~~~~~~~~~~~~~~~~~~\n'}
+[12.683834] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:62:16: error: invalid use of incomplete type \xe2\x80\x98const struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.683918] (lio_sam_hesai) StderrLine: {'line': b'   62 |               (config.max_range == 0.0 || config.max_range >= config.min_range),\n'}
+[12.683997] (lio_sam_hesai) StderrLine: {'line': b'      |                ^~~~~~\n'}
+[12.684076] (lio_sam_hesai) StderrLine: {'line': b'In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:\n'}
+[12.684154] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of \xe2\x80\x98struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.684233] (lio_sam_hesai) StderrLine: {'line': b'   12 | struct DufomapExportConfig;\n'}
+[12.684311] (lio_sam_hesai) StderrLine: {'line': b'      |        ^~~~~~~~~~~~~~~~~~~\n'}
+[12.684387] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:62:43: error: invalid use of incomplete type \xe2\x80\x98const struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.684465] (lio_sam_hesai) StderrLine: {'line': b'   62 |               (config.max_range == 0.0 || config.max_range >= config.min_range),\n'}
+[12.684544] (lio_sam_hesai) StderrLine: {'line': b'      |                                           ^~~~~~\n'}
+[12.684622] (lio_sam_hesai) StderrLine: {'line': b'In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:\n'}
+[12.684700] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of \xe2\x80\x98struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.684779] (lio_sam_hesai) StderrLine: {'line': b'   12 | struct DufomapExportConfig;\n'}
+[12.684857] (lio_sam_hesai) StderrLine: {'line': b'      |        ^~~~~~~~~~~~~~~~~~~\n'}
+[12.684935] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:62:63: error: invalid use of incomplete type \xe2\x80\x98const struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.685014] (lio_sam_hesai) StderrLine: {'line': b'   62 |               (config.max_range == 0.0 || config.max_range >= config.min_range),\n'}
+[12.685092] (lio_sam_hesai) StderrLine: {'line': b'      |                                                               ^~~~~~\n'}
+[12.685172] (lio_sam_hesai) StderrLine: {'line': b'In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:\n'}
+[12.685250] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of \xe2\x80\x98struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.685328] (lio_sam_hesai) StderrLine: {'line': b'   12 | struct DufomapExportConfig;\n'}
+[12.685406] (lio_sam_hesai) StderrLine: {'line': b'      |        ^~~~~~~~~~~~~~~~~~~\n'}
+[12.685484] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:65:25: error: invalid use of incomplete type \xe2\x80\x98const struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.685562] (lio_sam_hesai) StderrLine: {'line': b'   65 |   Require(std::isfinite(config.timeout_seconds) &&\n'}
+[12.685650] (lio_sam_hesai) StderrLine: {'line': b'      |                         ^~~~~~\n'}
+[12.685728] (lio_sam_hesai) StderrLine: {'line': b'In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:\n'}
+[12.685820] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of \xe2\x80\x98struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.685902] (lio_sam_hesai) StderrLine: {'line': b'   12 | struct DufomapExportConfig;\n'}
+[12.685979] (lio_sam_hesai) StderrLine: {'line': b'      |        ^~~~~~~~~~~~~~~~~~~\n'}
+[12.686056] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:66:15: error: invalid use of incomplete type \xe2\x80\x98const struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.686144] (lio_sam_hesai) StderrLine: {'line': b'   66 |               config.timeout_seconds >= 0.0 &&\n'}
+[12.686224] (lio_sam_hesai) StderrLine: {'line': b'      |               ^~~~~~\n'}
+[12.686302] (lio_sam_hesai) StderrLine: {'line': b'In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:\n'}
+[12.686379] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of \xe2\x80\x98struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.686470] (lio_sam_hesai) StderrLine: {'line': b'   12 | struct DufomapExportConfig;\n'}
+[12.686549] (lio_sam_hesai) StderrLine: {'line': b'      |        ^~~~~~~~~~~~~~~~~~~\n'}
+[12.686627] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:67:15: error: invalid use of incomplete type \xe2\x80\x98const struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.686706] (lio_sam_hesai) StderrLine: {'line': b'   67 |               config.timeout_seconds <= kMaxTimeoutSeconds,\n'}
+[12.686785] (lio_sam_hesai) StderrLine: {'line': b'      |               ^~~~~~\n'}
+[12.686863] (lio_sam_hesai) StderrLine: {'line': b'In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:\n'}
+[12.686942] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of \xe2\x80\x98struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.687029] (lio_sam_hesai) StderrLine: {'line': b'   12 | struct DufomapExportConfig;\n'}
+[12.687110] (lio_sam_hesai) StderrLine: {'line': b'      |        ^~~~~~~~~~~~~~~~~~~\n'}
+[12.687188] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:70:11: error: invalid use of incomplete type \xe2\x80\x98const struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.687266] (lio_sam_hesai) StderrLine: {'line': b'   70 |   return {config.resolution, config.d_s, config.d_p, config.num_threads,\n'}
+[12.687344] (lio_sam_hesai) StderrLine: {'line': b'      |           ^~~~~~\n'}
+[12.687421] (lio_sam_hesai) StderrLine: {'line': b'In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:\n'}
+[12.687501] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of \xe2\x80\x98struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.687582] (lio_sam_hesai) StderrLine: {'line': b'   12 | struct DufomapExportConfig;\n'}
+[12.687661] (lio_sam_hesai) StderrLine: {'line': b'      |        ^~~~~~~~~~~~~~~~~~~\n'}
+[12.687740] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:70:30: error: invalid use of incomplete type \xe2\x80\x98const struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.687819] (lio_sam_hesai) StderrLine: {'line': b'   70 |   return {config.resolution, config.d_s, config.d_p, config.num_threads,\n'}
+[12.687897] (lio_sam_hesai) StderrLine: {'line': b'      |                              ^~~~~~\n'}
+[12.687983] (lio_sam_hesai) StderrLine: {'line': b'In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:\n'}
+[12.688063] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of \xe2\x80\x98struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.688143] (lio_sam_hesai) StderrLine: {'line': b'   12 | struct DufomapExportConfig;\n'}
+[12.688220] (lio_sam_hesai) StderrLine: {'line': b'      |        ^~~~~~~~~~~~~~~~~~~\n'}
+[12.688296] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:70:42: error: invalid use of incomplete type \xe2\x80\x98const struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.688376] (lio_sam_hesai) StderrLine: {'line': b'   70 |   return {config.resolution, config.d_s, config.d_p, config.num_threads,\n'}
+[12.688456] (lio_sam_hesai) StderrLine: {'line': b'      |                                          ^~~~~~\n'}
+[12.688533] (lio_sam_hesai) StderrLine: {'line': b'In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:\n'}
+[12.688612] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of \xe2\x80\x98struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.688691] (lio_sam_hesai) StderrLine: {'line': b'   12 | struct DufomapExportConfig;\n'}
+[12.688768] (lio_sam_hesai) StderrLine: {'line': b'      |        ^~~~~~~~~~~~~~~~~~~\n'}
+[12.688845] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:70:54: error: invalid use of incomplete type \xe2\x80\x98const struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.688924] (lio_sam_hesai) StderrLine: {'line': b'   70 |   return {config.resolution, config.d_s, config.d_p, config.num_threads,\n'}
+[12.689002] (lio_sam_hesai) StderrLine: {'line': b'      |                                                      ^~~~~~\n'}
+[12.689079] (lio_sam_hesai) StderrLine: {'line': b'In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:\n'}
+[12.689157] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of \xe2\x80\x98struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.689234] (lio_sam_hesai) StderrLine: {'line': b'   12 | struct DufomapExportConfig;\n'}
+[12.689311] (lio_sam_hesai) StderrLine: {'line': b'      |        ^~~~~~~~~~~~~~~~~~~\n'}
+[12.689387] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:71:11: error: invalid use of incomplete type \xe2\x80\x98const struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.689466] (lio_sam_hesai) StderrLine: {'line': b'   71 |           config.min_range, config.max_range, config.timeout_seconds};\n'}
+[12.689543] (lio_sam_hesai) StderrLine: {'line': b'      |           ^~~~~~\n'}
+[12.689619] (lio_sam_hesai) StderrLine: {'line': b'In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:\n'}
+[12.689697] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of \xe2\x80\x98struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.689793] (lio_sam_hesai) StderrLine: {'line': b'   12 | struct DufomapExportConfig;\n'}
+[12.689874] (lio_sam_hesai) StderrLine: {'line': b'      |        ^~~~~~~~~~~~~~~~~~~\n'}
+[12.689953] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:71:29: error: invalid use of incomplete type \xe2\x80\x98const struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.690044] (lio_sam_hesai) StderrLine: {'line': b'   71 |           config.min_range, config.max_range, config.timeout_seconds};\n'}
+[12.690123] (lio_sam_hesai) StderrLine: {'line': b'      |                             ^~~~~~\n'}
+[12.690201] (lio_sam_hesai) StderrLine: {'line': b'In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:\n'}
+[12.690290] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of \xe2\x80\x98struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.690380] (lio_sam_hesai) StderrLine: {'line': b'   12 | struct DufomapExportConfig;\n'}
+[12.690460] (lio_sam_hesai) StderrLine: {'line': b'      |        ^~~~~~~~~~~~~~~~~~~\n'}
+[12.690537] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:71:47: error: invalid use of incomplete type \xe2\x80\x98const struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.690624] (lio_sam_hesai) StderrLine: {'line': b'   71 |           config.min_range, config.max_range, config.timeout_seconds};\n'}
+[12.690706] (lio_sam_hesai) StderrLine: {'line': b'      |                                               ^~~~~~\n'}
+[12.690785] (lio_sam_hesai) StderrLine: {'line': b'In file included from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:1:\n'}
+[12.690863] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/dufomap_backend.h:12:8: note: forward declaration of \xe2\x80\x98struct DufomapExportConfig\xe2\x80\x99\n'}
+[12.690942] (lio_sam_hesai) StderrLine: {'line': b'   12 | struct DufomapExportConfig;\n'}
+[12.691018] (lio_sam_hesai) StderrLine: {'line': b'      |        ^~~~~~~~~~~~~~~~~~~\n'}
+[12.691095] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:71:69: error: could not convert \xe2\x80\x98{<expression error>, <expression error>, <expression error>, <expression error>, <expression error>, <expression error>, <expression error>}\xe2\x80\x99 from \xe2\x80\x98<brace-enclosed initializer list>\xe2\x80\x99 to \xe2\x80\x98lio_sam_hesai::{anonymous}::ValidatedConfig\xe2\x80\x99\n'}
+[12.691182] (lio_sam_hesai) StderrLine: {'line': b'   71 |           config.min_range, config.max_range, config.timeout_seconds};\n'}
+[12.691261] (lio_sam_hesai) StderrLine: {'line': b'      |                                                                     ^\n'}
+[12.691339] (lio_sam_hesai) StderrLine: {'line': b'      |                                                                     |\n'}
+[12.691416] (lio_sam_hesai) StderrLine: {'line': b'      |                                                                     <brace-enclosed initializer list>\n'}
+[12.741400] (-) TimerEvent: {}
+[12.841782] (-) TimerEvent: {}
+[12.942156] (-) TimerEvent: {}
+[13.042537] (-) TimerEvent: {}
+[13.142921] (-) TimerEvent: {}
+[13.243304] (-) TimerEvent: {}
+[13.343690] (-) TimerEvent: {}
+[13.444075] (-) TimerEvent: {}
+[13.544457] (-) TimerEvent: {}
+[13.644842] (-) TimerEvent: {}
+[13.745220] (-) TimerEvent: {}
+[13.845593] (-) TimerEvent: {}
+[13.945988] (-) TimerEvent: {}
+[14.046359] (-) TimerEvent: {}
+[14.146728] (-) TimerEvent: {}
+[14.247094] (-) TimerEvent: {}
+[14.347460] (-) TimerEvent: {}
+[14.447831] (-) TimerEvent: {}
+[14.548202] (-) TimerEvent: {}
+[14.648571] (-) TimerEvent: {}
+[14.748935] (-) TimerEvent: {}
+[14.849295] (-) TimerEvent: {}
+[14.949669] (-) TimerEvent: {}
+[15.050069] (-) TimerEvent: {}
+[15.150470] (-) TimerEvent: {}
+[15.170716] (lio_sam_hesai) StderrLine: {'line': b'gmake[3]: *** [CMakeFiles/lio_sam_hesai_dufomap_native.dir/build.make:76: CMakeFiles/lio_sam_hesai_dufomap_native.dir/src/common/dufomap_backend.cpp.o] Error 1\n'}
+[15.171594] (lio_sam_hesai) StderrLine: {'line': b'gmake[2]: *** [CMakeFiles/Makefile2:779: CMakeFiles/lio_sam_hesai_dufomap_native.dir/all] Error 2\n'}
+[15.172284] (lio_sam_hesai) StderrLine: {'line': b'gmake[1]: *** [CMakeFiles/Makefile2:1474: CMakeFiles/test_online_dufomap.dir/rule] Error 2\n'}
+[15.172826] (lio_sam_hesai) StderrLine: {'line': b'gmake: *** [Makefile:738: test_online_dufomap] Error 2\n'}
+[15.177963] (lio_sam_hesai) CommandEnded: {'returncode': 2}
+[15.211695] (lio_sam_hesai) JobEnded: {'identifier': 'lio_sam_hesai', 'rc': 2}
+[15.223193] (-) EventReactorShutdown: {}

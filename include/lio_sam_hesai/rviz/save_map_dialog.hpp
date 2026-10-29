@@ -15,7 +15,7 @@ namespace rviz
 {
 
 /// Modal "Save Map" dialog: collects the destination directory and the
-/// per-save ground/tiled artifact toggles sent to /lio_sam/save_map_options.
+/// per-save ground/tiled toggles sent to /lio_sam/save_map_options.
 ///
 /// The dialog owns no ROS or filesystem state; it only reports the operator's
 /// choices. The Save button stays disabled until a non-empty absolute

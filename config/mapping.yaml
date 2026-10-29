@@ -1,6 +1,6 @@
 /**:
   ros__parameters:
-    # ros2 service call /lio_sam/save_map lio_sam_hesai/srv/SaveMap "{resolution: 0.01, ground_resolution: 0.05, destination: /map/hesai_sim}"
+    # ros2 service call /lio_sam/save_map_options lio_sam_hesai/srv/SaveMapOptions "{destination: '/home/robot/map/hesai_sim', resolution: 0.01, ground_resolution: 0.05, save_ground_map: true, save_tiled_map: true}"
     # Sub Topics
     sensor_topic:
       lidar_topic: "/lidar_points"                       # "/ls/lslidar_point_cloud"# Point cloud data in
@@ -86,28 +86,63 @@
              0.0,  1.0,  0.0,
              0.0,  0.0,  1.0 ]                          # 用于姿态初始化的RPY外参矩阵
 
-    # 显式地图与点云导出
+    # 地图与点云导出参数
     map_save:
       directory: "/map/hesai_outdoor_yifu/"              # 全局地图导出目录，程序会删除后重建该目录
-      save_ground_map: true                              # 是否保存全局地面点云，保存路径与全局地图一致
       resolution: 0.3                                    # 自动导出全局地图时的下采样分辨率，0表示不额外下采样
-      ground_resolution: 0.1                             # 自动导出全局地面地图时的下采样分辨率，0表示不额外下采样
-      save_tiled_map: true                               # 按瓦片导出地图
+      ground_resolution: 0.1                             # 地面网格间距；ground_grid开启时必须>0，关闭时0表示不额外下采样
       tiled_map:
         tile_size_m: 40.0
         output_subdirectory: "tiled"
         overview_resolution_m: 5.0
+      ground_grid:
+        enable: true                                    # 最终GroundMap按XY单层栅格导出，保留坡度
+        max_hole_cells: 14                              # 仅当完整连通空洞总格数不超过该值时整体填充，大洞不分块补
+      ground_mesh:
+        enable: true                                    # 仅Current/RingPlane export；在最终单层栅格前补扫描线间缺失样本
+        max_edge_length: 0.5                            # 三角边长基础阈值，单位米
+        edge_length_per_meter: 0.25                     # 随距离放宽的三角边长系数，单位米/米
+        max_range_ratio: 2.0                            # 三角顶点到雷达的最远/最近距离比上限
       align_ground_to_zero: false                        # 保存地图PCD时整体平移Z，使地面接近map.z=0
       ground_z_offset: 0.68                              # 保存地图PCD时叠加的Z偏移，约等于雷达离地高度
 
-    # 地面分割与地面导出
-    ground_segmentation:
+    # 几何动态点云滤除
+    # 局部几何一致性滤波
+    dynamic_filter:
+      enable: false                                      # 是否启用局部几何一致性滤波
+      surface_knn_max_distance: 1.5                      # 局部地图5NN搜索距离阈值，单位米
+      surface_plane_max_distance: 0.15                   # 当前点到局部平面距离阈值，单位米
+
+    # 全局静态地图持久性滤波
+    static_map_filter:
+      enable: false                                      # 是否启用多关键帧体素持久性滤波
+      voxel_size: 0.1                                    # 持久性滤波体素尺寸，单位米
+      min_keyframes: 3                                   # 体素至少被多少个关键帧观测后才保留
+      filter_corners: false                              # 是否对边缘点也应用静态持久性滤波
+
+    # 在线 DUFOMap 动态点云清理
+    dufomap:
+      enable: false
+      resolution: 0.1                                    # DUFOMap 分类网格尺寸，影响删点范围，不合并输出点；map_save 控制降采样
+      d_s: 0.2                                           # DUFOMap 命中膨胀距离 d_s，单位米
+      d_p: 1                                             # DUFOMap 未知区域膨胀参数 d_p，范围 0–4
+      num_threads: 2                                     # 在线建议 2，避免抢占 LIO 线程；0 表示自动，其余必须 >=2
+      min_range: 0.2                                     # 参与射线证据的最近距离，用于去掉车体/雷达自身点，单位米
+      max_range: 100.0                                   # 参与射线证据的最远距离，0 表示不限制，单位米
+      cache_directory: "/home/robot/slam_ws/keyframe_cache"  # 在线证据磁盘缓存根路径；每次建图在其下建独立 session，退出保留；留空用临时目录
+      temporal_guard:
+        enable: true                                     # 辅助粗网格 + 完整关键帧持久性保护；关闭时保持 fine-only
+        coarse_resolution: 0.4                           # 仅补删的辅助粗网格，必须大于 resolution
+        min_keyframe_support: 2                          # 粗网格体素至少被多少个不同关键帧观测才保留
+
+    # 扫描线地面点云分割
+    ring_plane:
+      mode: "export"                                     # off / online / export  优先
       only_mode: false                                   # 是否只分割地面
       leaf_size: 0.02                                    # 原始点云下采样体素尺寸，越大发布越稀疏
       scan_start_index: 10                               # 参与地面种子的起始 ring 编号
       scan_end_index: 15                                 # 参与地面种子的结束 ring 编号，设为-1时表示使用全部 ring
       angle_threshold_deg: 10.0                          # 相邻ring竖直夹角阈值，小于该值的点对可作为地面种子，单位度
-
       grid_patch:
         enable: true                                     # 是否启用局部高程栅格补点
         resolution: 0.10                                 # 高程栅格补点分辨率，单位米
@@ -119,12 +154,24 @@
         min_inlier_ratio: 0.70                           # 局部平面拟合内点比例下限
         min_neighbor_cells: 6                            # 候选空格周围最少有效地面栅格数
         min_support_quadrants: 3                         # 候选空格周围最少支撑象限数，用于避免开放边界外扩
-
       plane_distance: 0.12                               # 当前帧 局部地面平面拟合的点到平面距离阈值，单位米
       plane_max_angle_deg: 30.0                          # 当前帧 局部地面法向相对竖直方向允许的最大倾角，单位度
       plane_min_points: 80                               # 当前帧 局部地面平面拟合所需的最少种子点数
+
       flatten_z: false                                   # 保存或发布地面点云前是否将高度压平到固定Z；坡道路面需保留真实Z
       flatten_value: 0.1                                 # 启用groundFlattenZ后使用的固定高度值
+
+    # Patchwork++ 地面分割
+    patchworkpp:
+      mode: "off"                                        # off / online / export
+      sensor_height: 0.68                                # 雷达原点离地高度，单位米；请按实际安装标定
+      min_range: 0.5                                     # 地面分类最小距离，单位米
+      max_range: 80.0                                    # 地面分类最大距离，单位米
+      uprightness_thr: 0.707                             # 地面法向与竖直方向夹角的余弦下限，越大越严格
+      th_seeds: 0.125                                    # 低处种子高度容差，单位米
+      th_dist: 0.125                                     # 局部地面拟合距离阈值，单位米
+      enable_rnr: false                                 # 反射噪声处理；不同雷达强度尺度不同，标定后再开启
+      rnr_intensity_threshold: 0.2                       # 开启 RNR 后使用的强度阈值
 
     # LOAM特征提取阈值
     feature_extraction:
@@ -139,19 +186,6 @@
       mapping_corner_leaf_size: 0.05                     # 建图阶段边缘特征体素尺寸
       mapping_surface_leaf_size: 0.05                    # 建图阶段平面特征体素尺寸
 
-    # 局部几何一致性滤波
-    dynamic_filter:
-      enable: false                                      # 是否启用局部几何一致性滤波
-      surface_knn_max_distance: 1.5                      # 局部地图5NN搜索距离阈值，单位米
-      surface_plane_max_distance: 0.15                   # 当前点到局部平面距离阈值，单位米
-
-    # 全局静态地图持久性滤波
-    static_map_filter:
-      enable: false                                      # 是否启用多关键帧体素持久性滤波
-      voxel_size: 0.4                                    # 持久性滤波体素尺寸，单位米
-      min_keyframes: 3                                   # 体素至少被多少个关键帧观测后才保留
-      filter_corners: false                              # 是否对边缘点也应用静态持久性滤波
-
     # 机器人运动约束
     motion_constraint:
       z_tolerance: 1000.0                                # Z方向允许的最大位移约束，单位米
@@ -163,6 +197,7 @@
       keyframe_angle_threshold: 0.2                      # 新增关键帧的旋转阈值，单位弧度
       keyframe_density: 0.2                              # 周围关键帧位姿下采样间隔，单位米
       search_radius: 20.0                                # 扫描到地图优化时局部子地图搜索半径，单位米
+      transformed_cache_max_mb: 128                      # 已变换关键帧角点/面点buffer的LRU缓存上限，单位MiB；0关闭
 
     # 回环检测参数
     loop_closure:

@@ -50,6 +50,8 @@ SaveMapDialog::SaveMapDialog(QWidget* parent)
   tiled_map_checkbox_->setObjectName("saveMapTiledCheckbox");
   tiled_map_checkbox_->setChecked(true);
 
+
+
   validation_label_ = new QLabel(this);
   validation_label_->setObjectName("saveMapValidationLabel");
   validation_label_->setStyleSheet(kErrorStyle);
@@ -95,6 +97,7 @@ bool SaveMapDialog::SaveTiledMap() const
 {
   return tiled_map_checkbox_->isChecked();
 }
+
 
 void SaveMapDialog::BrowseForDestination()
 {

@@ -99,12 +99,21 @@ include_directories(
   ${G2O_INCLUDE_DIR}
 )
 
-rosidl_generate_interfaces(${PROJECT_NAME} "msg/CloudInfo.msg" "srv/SaveMap.srv" "srv/SaveMapOptions.srv" DEPENDENCIES std_msgs sensor_msgs)
+rosidl_generate_interfaces(${PROJECT_NAME} "msg/CloudInfo.msg" "srv/SaveMapOptions.srv" DEPENDENCIES std_msgs sensor_msgs)
+
+# Pure coarse-voxel support and label policy. No ROS, PCL, or native backend
+# dependency, so config parsing and policy tests can link it directly.
+add_library(${PROJECT_NAME}_dufomap_temporal_guard STATIC
+  src/common/dufomap_temporal_guard.cpp)
+target_include_directories(${PROJECT_NAME}_dufomap_temporal_guard PUBLIC include)
+set_target_properties(${PROJECT_NAME}_dufomap_temporal_guard PROPERTIES
+  POSITION_INDEPENDENT_CODE ON)
 
 # Shared contract sources: direction-safe transforms, ROS pose/TF conversion,
 # immutable configuration, and map artifact layout. Consumers link this instead
 # of re-deriving frames, aliases, or artifact paths themselves.
 add_library(${PROJECT_NAME}_contracts STATIC
+  src/common/dufomap_export.cpp
   src/common/map_artifact_layout.cpp
   src/common/ros_pose_adapter.cpp
   src/common/save_map_request.cpp
@@ -113,13 +122,72 @@ add_library(${PROJECT_NAME}_contracts STATIC
 ament_target_dependencies(${PROJECT_NAME}_contracts
   rclcpp geometry_msgs nav_msgs)
 target_include_directories(${PROJECT_NAME}_contracts PUBLIC include)
-target_link_libraries(${PROJECT_NAME}_contracts ${LIO_SAM_EIGEN_TARGET})
+target_link_libraries(${PROJECT_NAME}_contracts ${LIO_SAM_EIGEN_TARGET}
+  ${PROJECT_NAME}_dufomap_temporal_guard)
 # Consumers include the shared relocalization library, so this archive's
 # objects must be position independent.
 set_target_properties(${PROJECT_NAME}_contracts PROPERTIES
   POSITION_INDEPENDENT_CODE ON)
 
 
+
+# Durable complete-keyframe scan cache used by online DUFOMap export. It only
+# depends on the small DufomapPoint value type, so it stays C++17 and can be
+# shared by the worker and behavior tests.
+add_library(${PROJECT_NAME}_keyframe_scan_cache STATIC
+  src/common/keyframe_scan_cache.cpp)
+target_include_directories(${PROJECT_NAME}_keyframe_scan_cache PUBLIC include)
+set_target_properties(${PROJECT_NAME}_keyframe_scan_cache PROPERTIES
+  POSITION_INDEPENDENT_CODE ON)
+
+# Official DUFOMap/UFOMap core is C++20 and intentionally isolated behind a
+# PIMPL so the mapping node and all other production targets stay C++17.
+find_package(TBB REQUIRED)
+add_library(${PROJECT_NAME}_dufomap_native STATIC
+  src/common/dufomap_backend.cpp)
+target_include_directories(${PROJECT_NAME}_dufomap_native
+  PUBLIC include
+  PRIVATE third_party/ufomap/include
+          third_party/ufomap/compat)
+target_compile_features(${PROJECT_NAME}_dufomap_native PRIVATE cxx_std_20)
+target_compile_definitions(${PROJECT_NAME}_dufomap_native PRIVATE UFO_PARALLEL=1)
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
+  target_include_directories(${PROJECT_NAME}_dufomap_native BEFORE PRIVATE
+    third_party/ufomap/arm64)
+endif()
+target_link_libraries(${PROJECT_NAME}_dufomap_native
+  PUBLIC TBB::tbb OpenMP::OpenMP_CXX Threads::Threads)
+set_target_properties(${PROJECT_NAME}_dufomap_native PROPERTIES
+  POSITION_INDEPENDENT_CODE ON)
+
+# Background online state is shared by the mapping node and behavior tests.
+add_library(${PROJECT_NAME}_dufomap_online STATIC
+  src/common/online_dufomap.cpp)
+target_include_directories(${PROJECT_NAME}_dufomap_online PUBLIC
+  include ${PCL_INCLUDE_DIRS})
+ament_target_dependencies(${PROJECT_NAME}_dufomap_online
+  sensor_msgs pcl_conversions)
+target_link_libraries(${PROJECT_NAME}_dufomap_online
+  ${PROJECT_NAME}_keyframe_scan_cache ${PROJECT_NAME}_dufomap_native
+  ${PROJECT_NAME}_dufomap_temporal_guard ${PCL_LIBRARIES})
+set_target_properties(${PROJECT_NAME}_dufomap_online PROPERTIES
+  POSITION_INDEPENDENT_CODE ON)
+
+add_library(${PROJECT_NAME}_ground_algorithms STATIC
+  src/ground/current_ground_segmenter.cpp
+  src/ground/ground_mesh.cpp
+  src/ground/ground_grid_processor.cpp
+  src/ground/ground_projection_cache.cpp
+  src/ground/online_ground_pipeline.cpp
+  src/common/patchworkpp_ground_segmenter.cpp
+  third_party/patchworkpp/cpp/common/src/plane_fit.cpp
+  third_party/patchworkpp/cpp/patchworkpp/src/patchworkpp.cpp)
+target_include_directories(${PROJECT_NAME}_ground_algorithms PUBLIC include ${PCL_INCLUDE_DIRS}
+  PRIVATE third_party/patchworkpp/cpp/common/include
+          third_party/patchworkpp/cpp/patchworkpp/include)
+ament_target_dependencies(${PROJECT_NAME}_ground_algorithms rclcpp nav_msgs geometry_msgs OpenCV)
+target_link_libraries(${PROJECT_NAME}_ground_algorithms ${PCL_LIBRARIES} ${LIO_SAM_EIGEN_TARGET})
+set_target_properties(${PROJECT_NAME}_ground_algorithms PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 add_executable(${PROJECT_NAME}_featureExtraction src/featureExtraction.cpp)
 ament_target_dependencies(${PROJECT_NAME}_featureExtraction rclcpp rclpy std_msgs sensor_msgs geometry_msgs nav_msgs pcl_conversions pcl_msgs visualization_msgs tf2 tf2_ros tf2_eigen tf2_sensor_msgs tf2_geometry_msgs OpenCV PCL)
@@ -128,7 +196,7 @@ target_link_libraries(${PROJECT_NAME}_featureExtraction "${cpp_typesupport_targe
 
 add_executable(${PROJECT_NAME}_imageProjection src/imageProjection.cpp)
 ament_target_dependencies(${PROJECT_NAME}_imageProjection rclcpp rclpy std_msgs sensor_msgs geometry_msgs nav_msgs pcl_conversions pcl_msgs visualization_msgs tf2 tf2_ros tf2_eigen tf2_sensor_msgs tf2_geometry_msgs OpenCV PCL)
-target_link_libraries(${PROJECT_NAME}_imageProjection "${cpp_typesupport_target}") 
+target_link_libraries(${PROJECT_NAME}_imageProjection "${cpp_typesupport_target}" ${PROJECT_NAME}_ground_algorithms)
 
 add_executable(${PROJECT_NAME}_imuPreintegration src/imuPreintegration.cpp)
 ament_target_dependencies(${PROJECT_NAME}_imuPreintegration rclcpp rclpy std_msgs sensor_msgs geometry_msgs nav_msgs pcl_conversions pcl_msgs visualization_msgs tf2 tf2_ros tf2_eigen tf2_sensor_msgs tf2_geometry_msgs OpenCV PCL)
@@ -149,6 +217,8 @@ if (OpenMP_CXX_FOUND)
 else()
   target_link_libraries(${PROJECT_NAME}_mapOptimization ${GTSAM_LIBRARIES} "${cpp_typesupport_target}" ${GLOG_LIBRARIES} yaml-cpp)
 endif()
+
+target_link_libraries(${PROJECT_NAME}_mapOptimization ${PROJECT_NAME}_ground_algorithms ${PROJECT_NAME}_dufomap_online)
 
 add_library(${PROJECT_NAME}_relocalization_lib
   src/imu/data_synchronizer.cpp
@@ -295,6 +365,29 @@ install(
   DESTINATION lib/${PROJECT_NAME}
 )
 
+install(FILES third_party/patchworkpp/LICENSE third_party/patchworkpp/SOURCE.md
+  DESTINATION share/${PROJECT_NAME}/third_party/patchworkpp)
+
+install(FILES third_party/ufomap/LICENSE third_party/ufomap/LICENSE.liblzf
+              third_party/ufomap/SOURCE.md third_party/ufomap/SHA256SUMS
+  DESTINATION share/${PROJECT_NAME}/third_party/ufomap)
+
+install(DIRECTORY scripts/dufomap_native
+  DESTINATION lib/${PROJECT_NAME}
+  PATTERN "__pycache__" EXCLUDE)
+
+# /proc/self/exe resolves symlink installs back to the build executable.
+# Keep the legacy replay script adjacent in build and install layouts.
+configure_file(scripts/dufomap_export_filter.py
+  ${CMAKE_CURRENT_BINARY_DIR}/dufomap_export_filter.py COPYONLY)
+
+# Legacy manual replay tools installed next to mapOptimization; production
+# online mapping runs the native backend and never launches this script.
+install(
+  PROGRAMS scripts/dufomap_export_filter.py scripts/install_dufomap_backend.sh
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 install(
   TARGETS ${PROJECT_NAME}_relocalization_lib
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -350,13 +443,34 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/test/test_localization_stability_rss.py)
   set_tests_properties(test_localization_stability_rss PROPERTIES
     ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/test/integration")
+  add_test(NAME test_dufomap_export_filter
+    COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/test/test_dufomap_export_filter.py)
   find_package(ament_cmake_gtest REQUIRED)
   find_package(ament_lint_auto REQUIRED)
+  ament_add_gtest(test_online_ground_pipeline test/test_online_ground_pipeline.cpp)
+  target_include_directories(test_online_ground_pipeline PRIVATE include)
+  target_link_libraries(test_online_ground_pipeline ${PROJECT_NAME}_ground_algorithms)
+  ament_add_gtest(test_current_ground_segmenter test/test_current_ground_segmenter.cpp)
+  target_include_directories(test_current_ground_segmenter PRIVATE include)
+  target_link_libraries(test_current_ground_segmenter ${PROJECT_NAME}_ground_algorithms)
+  ament_add_gtest(test_ground_mesh test/test_ground_mesh.cpp)
+  target_include_directories(test_ground_mesh PRIVATE include)
+  target_link_libraries(test_ground_mesh ${PROJECT_NAME}_ground_algorithms)
+  ament_add_gtest(test_patchworkpp_ground_segmenter test/test_patchworkpp_ground_segmenter.cpp)
+  target_include_directories(test_patchworkpp_ground_segmenter PRIVATE include)
+  target_link_libraries(test_patchworkpp_ground_segmenter ${PROJECT_NAME}_ground_algorithms)
   ament_add_gtest(test_ground_ring_policy test/test_ground_ring_policy.cpp)
   target_include_directories(test_ground_ring_policy PRIVATE include)
   ament_add_gtest(test_ground_grid_patcher test/test_ground_grid_patcher.cpp)
   target_include_directories(test_ground_grid_patcher PRIVATE include ${PCL_INCLUDE_DIRS})
   target_link_libraries(test_ground_grid_patcher ${PCL_LIBRARIES})
+  ament_add_gtest(test_ground_grid_processor
+    test/test_ground_grid_processor.cpp)
+  target_include_directories(test_ground_grid_processor PRIVATE
+    include ${PCL_INCLUDE_DIRS})
+  target_link_libraries(test_ground_grid_processor
+    ${PROJECT_NAME}_ground_algorithms)
   ament_add_gtest(test_ground_patch_parameter_surface test/test_ground_patch_parameter_surface.cpp)
   ament_add_gtest(test_auto_relocalization_parameter_surface
     test/test_auto_relocalization_parameter_surface.cpp)
@@ -379,17 +493,62 @@ if(BUILD_TESTING)
   ament_add_gtest(test_map_artifact_layout test/test_map_artifact_layout.cpp)
   target_include_directories(test_map_artifact_layout PRIVATE include)
   target_link_libraries(test_map_artifact_layout ${PROJECT_NAME}_contracts)
+  ament_add_gtest(test_keyframe_scan_cache
+    test/test_keyframe_scan_cache.cpp)
+  target_include_directories(test_keyframe_scan_cache PRIVATE include)
+  target_link_libraries(test_keyframe_scan_cache
+    ${PROJECT_NAME}_keyframe_scan_cache)
+  ament_add_gtest(test_transformed_keyframe_cache
+    test/test_transformed_keyframe_cache.cpp)
+  target_include_directories(test_transformed_keyframe_cache PRIVATE
+    include ${PCL_INCLUDE_DIRS})
+  target_link_libraries(test_transformed_keyframe_cache ${PCL_LIBRARIES})
+  ament_add_gtest(test_dufomap_export test/test_dufomap_export.cpp)
+  target_include_directories(test_dufomap_export PRIVATE include)
+  target_link_libraries(test_dufomap_export ${PROJECT_NAME}_contracts)
+  ament_add_gtest(test_dufomap_native test/test_dufomap_native.cpp)
+  target_include_directories(test_dufomap_native PRIVATE include)
+  target_link_libraries(test_dufomap_native ${PROJECT_NAME}_dufomap_native)
+  ament_add_gtest(test_online_dufomap test/test_online_dufomap.cpp)
+  target_include_directories(test_online_dufomap PRIVATE include ${PCL_INCLUDE_DIRS})
+  ament_target_dependencies(test_online_dufomap sensor_msgs pcl_conversions)
+  target_link_libraries(test_online_dufomap
+    ${PROJECT_NAME}_dufomap_online "${cpp_typesupport_target}")
+  # Temporal-guard tests are intentionally independent of the existing online
+  # test target so RED/green progress on the guard cannot hide regressions in
+  # the 22 established online behavior tests.
+  ament_add_gtest(test_dufomap_temporal_guard
+    test/test_dufomap_temporal_guard.cpp)
+  target_include_directories(test_dufomap_temporal_guard PRIVATE include)
+  target_link_libraries(test_dufomap_temporal_guard
+    ${PROJECT_NAME}_dufomap_temporal_guard)
+  ament_add_gtest(test_dufomap_temporal_guard_config
+    test/test_dufomap_temporal_guard_config.cpp)
+  target_include_directories(test_dufomap_temporal_guard_config PRIVATE include)
+  target_link_libraries(test_dufomap_temporal_guard_config
+    ${PROJECT_NAME}_contracts)
+  ament_add_gtest(test_online_dufomap_temporal_guard
+    test/test_online_dufomap_temporal_guard.cpp)
+  target_include_directories(test_online_dufomap_temporal_guard
+    PRIVATE include ${PCL_INCLUDE_DIRS})
+  ament_target_dependencies(test_online_dufomap_temporal_guard
+    sensor_msgs pcl_conversions)
+  target_link_libraries(test_online_dufomap_temporal_guard
+    ${PROJECT_NAME}_dufomap_online ${PROJECT_NAME}_contracts
+    "${cpp_typesupport_target}")
   ament_add_gtest(test_save_map_request test/test_save_map_request.cpp)
   target_include_directories(test_save_map_request PRIVATE include)
   target_link_libraries(test_save_map_request
     ${PROJECT_NAME}_contracts "${cpp_typesupport_target}")
-  # Drives the real mapOptimization::ExportMap so a save request whose
-  # save_ground_map differs from the YAML flag is covered end to end. The node
+  # Drives the real mapOptimization::ExportMap to cover online labels and
+  # ground artifact toggles end to end. The node
   # class has no header, so the test includes src/mapOptimization.cpp and needs
   # the same dependencies as the node executable.
   ament_add_gtest(test_map_optimization_save_export
     test/test_map_optimization_save_export.cpp)
   target_include_directories(test_map_optimization_save_export PRIVATE include)
+  # This test includes the full mapping node; avoid optimizing its templates.
+  target_compile_options(test_map_optimization_save_export PRIVATE -O0)
   ament_target_dependencies(test_map_optimization_save_export
     rclcpp rclpy std_msgs sensor_msgs geometry_msgs nav_msgs pcl_conversions
     pcl_msgs visualization_msgs tf2 tf2_ros tf2_eigen tf2_sensor_msgs
@@ -402,6 +561,7 @@ if(BUILD_TESTING)
     src/relocalization/scan_context.cpp
   )
   target_link_libraries(test_map_optimization_save_export
+    ${PROJECT_NAME}_ground_algorithms ${PROJECT_NAME}_dufomap_online
     ${PROJECT_NAME}_contracts ${GTSAM_LIBRARIES} "${cpp_typesupport_target}"
     ${GLOG_LIBRARIES} yaml-cpp)
   if(OpenMP_CXX_FOUND)
@@ -416,6 +576,10 @@ if(BUILD_TESTING)
   target_link_libraries(test_ros_pose_adapter ${PROJECT_NAME}_contracts)
   ament_add_gtest(test_parameter_alias test/test_parameter_alias.cpp)
   target_include_directories(test_parameter_alias PRIVATE include)
+  ament_add_gtest(test_ground_mode_config test/test_ground_mode_config.cpp
+    SKIP_LINKING_MAIN_LIBRARIES)
+  target_include_directories(test_ground_mode_config PRIVATE include)
+  target_link_libraries(test_ground_mode_config ${PROJECT_NAME}_contracts)
   ament_add_gtest(test_slam_config test/test_slam_config.cpp
     SKIP_LINKING_MAIN_LIBRARIES)
   target_include_directories(test_slam_config PRIVATE include)

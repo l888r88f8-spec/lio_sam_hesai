@@ -79,12 +79,23 @@ ros2 bag play your_data
 ```
 
 ### 2. 在 RViz 保存地图
-建图启动后，在 RViz 的 **Save Map** 面板点击 **Save Map**，会弹出保存对话框。
+在线 DUFOMap 由 `dufomap.enable` 控制（`config/mapping.yaml` 默认开启），在
+建图过程中持续更新关键帧标签；保存时只等待与冻结关键帧/poses 同一 generation
+的标签快照。开启时 `GlobalMap.pcd` 来自每个关键帧持久化的完整 deskewed 扫描，
+由 worker 在最终位姿下过滤；关闭时仍是 legacy corner+surface 拼接。保存服务
+本身没有 DUFOMap 开关。
+
+建图启动后，在 RViz 的 **Save Map** 面板点击 **Save Map**，会弹出保存对话框；
+对话框中的 ground/tiled 复选框只控制本次保存的地面和瓦片产物。RViz 默认显示
+清理后的 `/lio_sam/mapping/map_global`；原始配准点云
+`/lio_sam/mapping/cloud_registered` 对应的 `mapping_cloud_registered_raw`
+显示默认关闭，避免动态原始点覆盖清理图。局部地图/完整清理图更新有发布周期，
+回环后也要等下一次重建完成才会切换。
 
 也可以直接调用：
 
 ```bash
-ros2 service call /lio_sam/save_map lio_sam_hesai/srv/SaveMap "{resolution: 0.2, ground_resolution: 0.05, destination: /tmp/LOAM}"
+ros2 service call /lio_sam/save_map_options lio_sam_hesai/srv/SaveMapOptions "{destination: '/tmp/LOAM', resolution: 0.2, ground_resolution: 0.05, save_ground_map: true, save_tiled_map: false}"
 ```
 
 <img width="1387" height="992" alt="image" src="image/image.png" />
@@ -138,7 +149,7 @@ USE_SIM_TIME=true ros2 launch lio_sam_hesai localization.launch.py
 - 新增自动重定位
 - 引入多种门控增强定位稳定性
 - 重定位与跟踪支持按需加载瓦片地图，加入地图清单校验、异步加载和有界缓存，减少大地图常驻内存占用。
-- RViz 的 **Save Map** 面板新增目标目录选择、地面地图与瓦片地图开关及覆盖确认；新增 `/lio_sam/save_map_options` 服务，支持按次指定保存选项。旧版 `/lio_sam/save_map` 服务继续可用。
+- RViz 的 **Save Map** 面板新增目标目录选择、地面地图与瓦片地图开关及覆盖确认；新增 `/lio_sam/save_map_options` 服务，支持按次指定保存选项；旧版 `/lio_sam/save_map` 服务已移除，保存统一走 `/lio_sam/save_map_options`。
 - 整理建图与定位的坐标系、位姿变换和共享配置，增加参数校验；修复相对地图路径解析及瓦片覆盖范围判断。
 - 调整定位 TF 的发布时间以匹配当前 IMU 时间，并完善传感器中断及时间跳变时的 TF 处理；三个 launch 的仿真时间可通过 `USE_SIM_TIME` 或 `use_sim:=...` 设置。
 

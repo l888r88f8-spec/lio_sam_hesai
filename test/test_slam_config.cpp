@@ -296,6 +296,83 @@ TEST(SlamConfig, MappingRejectsInvalidConsumedRuntimeParameters) {
       {"local_map.keyframe_angle_threshold", 0.0}}));
 }
 
+TEST(SlamConfig, MappingTransformedCacheBudgetDefaultsAndRejectsNegative) {
+  EXPECT_EQ(LoadMapping().mapping.local_map.transformed_cache_max_mb, 128);
+  EXPECT_EQ(LoadMapping({{"local_map.transformed_cache_max_mb", 0}})
+                .mapping.local_map.transformed_cache_max_mb,
+            0);
+  EXPECT_EQ(LoadMapping({{"local_map.transformed_cache_max_mb", 512}})
+                .mapping.local_map.transformed_cache_max_mb,
+            512);
+  EXPECT_THROW(LoadMapping({{"local_map.transformed_cache_max_mb", -1}}),
+               std::invalid_argument);
+}
+
+TEST(SlamConfig, MappingGroundGridExportDefaultsOffAndAcceptsOptIn) {
+  EXPECT_FALSE(LoadMapping().mapping.map_save.ground_grid.enable);
+  EXPECT_TRUE(LoadMapping({{"map_save.ground_grid.enable", true}})
+                  .mapping.map_save.ground_grid.enable);
+  EXPECT_FALSE(LoadMapping({{"map_save.ground_grid.enable", false}})
+                   .mapping.map_save.ground_grid.enable);
+}
+
+TEST(SlamConfig, MappingGroundMeshDefaultsOffAndAcceptsOptIn) {
+  const auto defaults = LoadMapping().mapping.map_save.ground_mesh;
+  EXPECT_FALSE(defaults.enable);
+  EXPECT_DOUBLE_EQ(defaults.max_edge_length, 0.5);
+  EXPECT_DOUBLE_EQ(defaults.edge_length_per_meter, 0.25);
+  EXPECT_DOUBLE_EQ(defaults.max_range_ratio, 2.0);
+  EXPECT_TRUE(LoadMapping({{"map_save.ground_mesh.enable", true}})
+                  .mapping.map_save.ground_mesh.enable);
+  EXPECT_FALSE(LoadMapping({{"map_save.ground_mesh.enable", false}})
+                   .mapping.map_save.ground_mesh.enable);
+}
+
+TEST(SlamConfig, MappingGroundMeshThresholdsOverrideAndValidate) {
+  const auto accepted = LoadMapping(
+      {{"map_save.ground_mesh.max_edge_length", 0.75},
+       {"map_save.ground_mesh.edge_length_per_meter", 0.0},
+       {"map_save.ground_mesh.max_range_ratio", 3.0}});
+  EXPECT_DOUBLE_EQ(accepted.mapping.map_save.ground_mesh.max_edge_length, 0.75);
+  EXPECT_DOUBLE_EQ(
+      accepted.mapping.map_save.ground_mesh.edge_length_per_meter, 0.0);
+  EXPECT_DOUBLE_EQ(accepted.mapping.map_save.ground_mesh.max_range_ratio, 3.0);
+  for (const double invalid :
+       {0.0, -1.0, std::numeric_limits<double>::quiet_NaN(),
+        std::numeric_limits<double>::infinity()}) {
+    SCOPED_TRACE(invalid);
+    EXPECT_THROW(LoadMapping({rclcpp::Parameter(
+                     "map_save.ground_mesh.max_edge_length", invalid)}),
+                 std::invalid_argument);
+  }
+  for (const double invalid :
+       {-1.0, std::numeric_limits<double>::quiet_NaN(),
+        std::numeric_limits<double>::infinity()}) {
+    SCOPED_TRACE(invalid);
+    EXPECT_THROW(LoadMapping({rclcpp::Parameter(
+                     "map_save.ground_mesh.edge_length_per_meter", invalid)}),
+                 std::invalid_argument);
+    EXPECT_THROW(LoadMapping({rclcpp::Parameter(
+                     "map_save.ground_mesh.max_range_ratio", invalid)}),
+                 std::invalid_argument);
+  }
+  EXPECT_THROW(LoadMapping({{"map_save.ground_mesh.max_range_ratio", 0.99}}),
+               std::invalid_argument);
+}
+
+TEST(SlamConfig, MappingGroundGridMaxHoleCellsDefaultsAndValidates) {
+  EXPECT_EQ(LoadMapping().mapping.map_save.ground_grid.max_hole_cells, 14);
+  EXPECT_EQ(LoadMapping({{"map_save.ground_grid.max_hole_cells", 1}})
+                .mapping.map_save.ground_grid.max_hole_cells,
+            1);
+  for (const int invalid : {0, -1}) {
+    SCOPED_TRACE(invalid);
+    EXPECT_THROW(
+        LoadMapping({{"map_save.ground_grid.max_hole_cells", invalid}}),
+        std::invalid_argument);
+  }
+}
+
 TEST(SlamConfig, MappingRejectsNonPositiveOrNonFiniteTileSize) {
   // tile_map_generator.cpp rejects a non-positive tile size when generation
   // runs; the configuration has to reject it up front instead of accepting a
@@ -325,7 +402,7 @@ TEST(SlamConfig, RejectsRemovedShutdownAutoSaveParameters) {
       } catch (const std::invalid_argument& error) {
         const std::string message = error.what();
         EXPECT_NE(message.find(key), std::string::npos);
-        EXPECT_NE(message.find("/lio_sam/save_map"), std::string::npos);
+        EXPECT_NE(message.find("/lio_sam/save_map_options"), std::string::npos);
       }
     }
   }

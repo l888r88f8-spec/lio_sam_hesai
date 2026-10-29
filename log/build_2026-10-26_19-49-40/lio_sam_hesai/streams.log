@@ -1,0 +1,12 @@
+[0.018s] Invoking command in '/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --build /home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai --target test_online_dufomap -- -j8 -l8
+[0.157s] Consolidate compiler generated dependencies of target lio_sam_hesai_dufomap_native
+[0.169s] [ 16%] Built target gtest
+[0.169s] [ 16%] Built target lio_sam_hesai__cpp
+[0.171s] [ 33%] Built target gtest_main
+[0.181s] [ 50%] Built target lio_sam_hesai_dufomap_native
+[0.214s] [ 83%] Built target lio_sam_hesai__rosidl_typesupport_cpp
+[0.290s] [100%] Building CXX object CMakeFiles/test_online_dufomap.dir/src/common/online_dufomap.cpp.o
+[0.290s] [100%] Building CXX object CMakeFiles/test_online_dufomap.dir/test/test_online_dufomap.cpp.o
+[15.923s] [100%] Linking CXX executable test_online_dufomap
+[16.572s] [100%] Built target test_online_dufomap
+[16.596s] Invoked command in '/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai' returned '0': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --build /home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai --target test_online_dufomap -- -j8 -l8

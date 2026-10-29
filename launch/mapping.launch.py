@@ -5,12 +5,13 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
-
+from launch.conditions import IfCondition
 
 def generate_launch_description():
     share_dir = get_package_share_directory("lio_sam_hesai")
     parameter_file = LaunchConfiguration("params_file")
     use_sim = LaunchConfiguration("use_sim")
+    use_rviz = LaunchConfiguration("use_rviz")
     rviz_config_file = os.path.join(share_dir, "config", "rviz2.rviz")
 
     params_declare = DeclareLaunchArgument(
@@ -26,6 +27,11 @@ def generate_launch_description():
             "launch process environment, or false when unset; an explicit "
             "use_sim:=... overrides it."
         ),
+    )
+    use_rviz_declare = DeclareLaunchArgument(
+        "use_rviz",
+        default_value="false",
+        description="Launch RViz if true.",
     )
 
     nodes = [
@@ -89,17 +95,18 @@ def generate_launch_description():
             output="screen",
             sigterm_timeout="30",
         ),
-        # Node(
-        #     package="rviz2",
-        #     executable="rviz2",
-        #     name="rviz2",
-        #     arguments=["-d", rviz_config_file],
-        #     parameters=[{"use_sim_time": use_sim}],
-        #     output="screen",
-        #     emulate_tty=True,
-        # ),
+        Node(
+            package="rviz2",
+            executable="rviz2",
+            name="rviz2",
+            arguments=["-d", rviz_config_file],
+            parameters=[{"use_sim_time": use_sim}],
+            output="screen",
+            emulate_tty=True,
+            condition=IfCondition(use_rviz),
+        )
     ]
 
     return LaunchDescription(
-        [params_declare, use_sim_declare] + nodes
+        [params_declare, use_sim_declare, use_rviz_declare] + nodes
     )

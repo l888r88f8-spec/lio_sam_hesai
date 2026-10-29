@@ -1,0 +1,10 @@
+Consolidate compiler generated dependencies of target lio_sam_hesai_dufomap_native
+[ 16%] Built target gtest
+[ 16%] Built target lio_sam_hesai__cpp
+[ 33%] Built target gtest_main
+[ 50%] Built target lio_sam_hesai_dufomap_native
+[ 83%] Built target lio_sam_hesai__rosidl_typesupport_cpp
+[100%] Building CXX object CMakeFiles/test_online_dufomap.dir/src/common/online_dufomap.cpp.o
+[100%] Building CXX object CMakeFiles/test_online_dufomap.dir/test/test_online_dufomap.cpp.o
+[100%] Linking CXX executable test_online_dufomap
+[100%] Built target test_online_dufomap

@@ -1,0 +1,21 @@
+[0.019s] Invoking command in '/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --build /home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai --target test_online_dufomap -- -j8 -l8
+[0.153s] [ 16%] Building CXX object CMakeFiles/lio_sam_hesai_dufomap_native.dir/src/common/dufomap_backend.cpp.o
+[0.154s] [ 16%] Built target gtest_main
+[0.154s] [ 33%] Built target lio_sam_hesai__cpp
+[0.158s] [ 33%] Built target gtest
+[0.197s] [ 66%] Built target lio_sam_hesai__rosidl_typesupport_cpp
+[3.185s] In file included from /home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/geometry/intersects.hpp:48,
+[3.186s]                  from /home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/map/predicate/spatial.hpp:49,
+[3.186s]                  from /home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/map/octree/octree.hpp:57,
+[3.186s]                  from /home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/map/octree/octree_map.hpp:47,
+[3.186s]                  from /home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/map/ufomap.hpp:63,
+[3.186s]                  from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:13:
+[3.187s] /home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/geometry/helper.hpp: In function ‘constexpr std::pair<float, float> ufo::getInterval(const ufo::AABB&, ufo::Point)’:
+[3.187s] /home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/geometry/helper.hpp:174:77: note: parameter passing for argument of type ‘std::pair<float, float>’ when C++17 is enabled changed to match C++14 in GCC 10.1
+[3.187s]   174 | constexpr std::pair<float, float> getInterval(AABB const& aabb, Point axis) noexcept
+[3.187s]       |                                                                             ^~~~~~~~
+[24.153s] [ 83%] Linking CXX static library liblio_sam_hesai_dufomap_native.a
+[24.238s] [ 83%] Built target lio_sam_hesai_dufomap_native
+[24.301s] Consolidate compiler generated dependencies of target test_online_dufomap
+[24.340s] [ 83%] Building CXX object CMakeFiles/test_online_dufomap.dir/test/test_online_dufomap.cpp.o
+[40.284s] [ 83%] Linking CXX executable test_online_dufomap

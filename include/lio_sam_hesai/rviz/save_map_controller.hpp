@@ -60,9 +60,9 @@ public:
   /// path; an empty value is rejected here without contacting the service,
   /// while the mapping node validates and reports the path form (root, home,
   /// or symlink) in the response message. Negative resolutions use the
-  /// mapping node's configured map_save resolutions. Returns false without
-  /// calling the service when it is unavailable, the destination is empty, or
-  /// another save is still in flight.
+  /// mapping node's configured map_save resolutions. Returns false without calling
+  /// the service when it is unavailable, the destination is empty, or another
+  /// save is still in flight.
   bool RequestSave(const std::string& destination, bool save_ground_map,
                    bool save_tiled_map,
                    float resolution = kDefaultResolution,

@@ -1,0 +1,10 @@
+[ 16%] Building CXX object CMakeFiles/lio_sam_hesai_dufomap_native.dir/src/common/dufomap_backend.cpp.o
+[ 16%] Built target gtest_main
+[ 33%] Built target lio_sam_hesai__cpp
+[ 33%] Built target gtest
+[ 66%] Built target lio_sam_hesai__rosidl_typesupport_cpp
+[ 83%] Linking CXX static library liblio_sam_hesai_dufomap_native.a
+[ 83%] Built target lio_sam_hesai_dufomap_native
+Consolidate compiler generated dependencies of target test_online_dufomap
+[ 83%] Building CXX object CMakeFiles/test_online_dufomap.dir/test/test_online_dufomap.cpp.o
+[ 83%] Linking CXX executable test_online_dufomap

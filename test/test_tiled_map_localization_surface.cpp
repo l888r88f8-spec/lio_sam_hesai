@@ -33,7 +33,9 @@ TEST(TiledMapLocalizationSurface, UsesProviderForEveryMapRequest) {
   ExpectToken("src/slam/localization.cpp",
               "const auto initial_map = map_provider_->LoadCandidate");
   ExpectToken("src/slam/localization.cpp",
-              "UpdateActiveMapSnapshot(initial_map.snapshot)");
+              "PrepareActiveMapSnapshot(initial_map.snapshot)");
+  ExpectToken("src/slam/localization.cpp",
+              "ApplyActiveMapSnapshot(std::move(prepared_active_map))");
   ExpectToken("src/slam/localization.cpp", "map_provider_->RequestTracking");
   ExpectToken("src/slam/localization.cpp", "MapRequestState::kPending");
   ExpectToken("src/slam/localization.cpp",
@@ -46,7 +48,7 @@ TEST(TiledMapLocalizationSurface, UsesProviderForEveryMapRequest) {
 
 TEST(TiledMapLocalizationSurface, ExportsTilesAndPublishesMapDiagnostics) {
   ExpectToken("src/mapOptimization.cpp",
-              "config_.mapping.map_save.save_tiled_map");
+              "options.save_tiled_map");
   ExpectToken("src/mapOptimization.cpp", "GenerateTileMap");
   const std::string system = "src/slam/system.cpp";
   for (const char* key : {

@@ -1,0 +1,281 @@
+[0.000000] (-) TimerEvent: {}
+[0.000212] (lio_sam_hesai) JobQueued: {'identifier': 'lio_sam_hesai', 'dependencies': OrderedDict()}
+[0.000984] (lio_sam_hesai) JobStarted: {'identifier': 'lio_sam_hesai'}
+[0.013062] (lio_sam_hesai) JobProgress: {'identifier': 'lio_sam_hesai', 'progress': 'cmake'}
+[0.014785] (lio_sam_hesai) JobProgress: {'identifier': 'lio_sam_hesai', 'progress': 'build'}
+[0.016325] (lio_sam_hesai) JobProgress: {'identifier': 'lio_sam_hesai', 'progress': "build target 'test_online_dufomap'"}
+[0.016396] (lio_sam_hesai) Command: {'cmd': ['/usr/bin/cmake', '--build', '/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai', '--target', 'test_online_dufomap', '--', '-j8', '-l8'], 'cwd': '/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai', 'env': OrderedDict([('USER', 'robot'), ('SHLVL', '1'), ('LD_LIBRARY_PATH', '/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/aarch64-linux-gnu:/opt/ros/humble/opt/openvdb_vendor/lib:/opt/ros/humble/lib'), ('VIPSHOME', '/target'), ('DSH_SESSION_ID', 'session-2930570e-64b9-426b-a86e-9673f3110efc'), ('HOME', '/home/robot'), ('ROS_PYTHON_VERSION', '3'), ('PAGER', 'cat'), ('NO_COLOR', '1'), ('ROS_DISTRO', 'humble'), ('LOGNAME', 'robot'), ('_', '/usr/bin/colcon'), ('ROS_VERSION', '2'), ('TERM', 'dumb'), ('ROS_LOCALHOST_ONLY', '0'), ('PATH', '/home/robot/.codex/tmp/arg0-linux/codex-arg0ZUNSZc:/home/robot/.vscode-server/cli/servers/Stable-e646868227c3e3a9e3f24277c8c7220be42c0be7/server/bin/remote-cli:/home/robot/.local/bin:/opt/ros/humble/bin:/home/robot/.local/share/pnpm:/home/robot/.cargo/bin:/home/robot/.nvm/versions/node/v24.21.0/bin:/home/robot/.opencode/bin:/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/home/robot/.vscode-server/extensions/openai.chatgpt-26.1021.22027-linux-arm64/bin/linux-aarch64'), ('LANG', 'en_US.UTF-8'), ('AMENT_PREFIX_PATH', '/opt/ros/humble'), ('DSH_HOME', '/home/robot/.dsh'), ('SHELL', '/bin/bash'), ('DSH_SHELL', '1'), ('GIT_PAGER', 'cat'), ('PWD', '/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai'), ('PYTHONPATH', '/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages'), ('COLCON', '1'), ('CMAKE_PREFIX_PATH', '/opt/ros/humble')]), 'shell': False}
+[0.099521] (-) TimerEvent: {}
+[0.162942] (lio_sam_hesai) StdoutLine: {'line': b'[ 16%] Building CXX object CMakeFiles/lio_sam_hesai_dufomap_native.dir/src/common/dufomap_backend.cpp.o\n'}
+[0.163420] (lio_sam_hesai) StdoutLine: {'line': b'[ 16%] Built target lio_sam_hesai__cpp\n'}
+[0.163565] (lio_sam_hesai) StdoutLine: {'line': b'[ 16%] Built target gtest\n'}
+[0.164354] (lio_sam_hesai) StdoutLine: {'line': b'[ 33%] Built target gtest_main\n'}
+[0.199704] (-) TimerEvent: {}
+[0.205529] (lio_sam_hesai) StdoutLine: {'line': b'[ 66%] Built target lio_sam_hesai__rosidl_typesupport_cpp\n'}
+[0.299869] (-) TimerEvent: {}
+[0.400309] (-) TimerEvent: {}
+[0.500749] (-) TimerEvent: {}
+[0.601161] (-) TimerEvent: {}
+[0.701579] (-) TimerEvent: {}
+[0.802029] (-) TimerEvent: {}
+[0.902483] (-) TimerEvent: {}
+[1.002914] (-) TimerEvent: {}
+[1.103331] (-) TimerEvent: {}
+[1.203744] (-) TimerEvent: {}
+[1.304129] (-) TimerEvent: {}
+[1.404567] (-) TimerEvent: {}
+[1.505008] (-) TimerEvent: {}
+[1.605477] (-) TimerEvent: {}
+[1.705942] (-) TimerEvent: {}
+[1.806412] (-) TimerEvent: {}
+[1.906912] (-) TimerEvent: {}
+[2.007372] (-) TimerEvent: {}
+[2.107816] (-) TimerEvent: {}
+[2.208264] (-) TimerEvent: {}
+[2.308706] (-) TimerEvent: {}
+[2.409193] (-) TimerEvent: {}
+[2.509626] (-) TimerEvent: {}
+[2.610078] (-) TimerEvent: {}
+[2.710527] (-) TimerEvent: {}
+[2.811003] (-) TimerEvent: {}
+[2.911456] (-) TimerEvent: {}
+[3.011900] (-) TimerEvent: {}
+[3.112329] (-) TimerEvent: {}
+[3.212741] (-) TimerEvent: {}
+[3.313140] (-) TimerEvent: {}
+[3.393955] (lio_sam_hesai) StderrLine: {'line': b'In file included from /home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/geometry/intersects.hpp:48,\n'}
+[3.394483] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/map/predicate/spatial.hpp:49,\n'}
+[3.394677] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/map/octree/octree.hpp:57,\n'}
+[3.394854] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/map/octree/octree_map.hpp:47,\n'}
+[3.394996] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/map/ufomap.hpp:63,\n'}
+[3.395132] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:13:\n'}
+[3.395264] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/geometry/helper.hpp: In function \xe2\x80\x98constexpr std::pair<float, float> ufo::getInterval(const ufo::AABB&, ufo::Point)\xe2\x80\x99:\n'}
+[3.395399] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/geometry/helper.hpp:174:77: note: parameter passing for argument of type \xe2\x80\x98std::pair<float, float>\xe2\x80\x99 when C++17 is enabled changed to match C++14 in GCC 10.1\n'}
+[3.395532] (lio_sam_hesai) StderrLine: {'line': b'  174 | constexpr std::pair<float, float> getInterval(AABB const& aabb, Point axis) noexcept\n'}
+[3.395660] (lio_sam_hesai) StderrLine: {'line': b'      |                                                                             ^~~~~~~~\n'}
+[3.413235] (-) TimerEvent: {}
+[3.513579] (-) TimerEvent: {}
+[3.613999] (-) TimerEvent: {}
+[3.714432] (-) TimerEvent: {}
+[3.814900] (-) TimerEvent: {}
+[3.915368] (-) TimerEvent: {}
+[4.015834] (-) TimerEvent: {}
+[4.116400] (-) TimerEvent: {}
+[4.216849] (-) TimerEvent: {}
+[4.317249] (-) TimerEvent: {}
+[4.417655] (-) TimerEvent: {}
+[4.518088] (-) TimerEvent: {}
+[4.618522] (-) TimerEvent: {}
+[4.719106] (-) TimerEvent: {}
+[4.819501] (-) TimerEvent: {}
+[4.919902] (-) TimerEvent: {}
+[5.020308] (-) TimerEvent: {}
+[5.120717] (-) TimerEvent: {}
+[5.221120] (-) TimerEvent: {}
+[5.321540] (-) TimerEvent: {}
+[5.421968] (-) TimerEvent: {}
+[5.522433] (-) TimerEvent: {}
+[5.622894] (-) TimerEvent: {}
+[5.723378] (-) TimerEvent: {}
+[5.823843] (-) TimerEvent: {}
+[5.924309] (-) TimerEvent: {}
+[6.024793] (-) TimerEvent: {}
+[6.125280] (-) TimerEvent: {}
+[6.225742] (-) TimerEvent: {}
+[6.326151] (-) TimerEvent: {}
+[6.426557] (-) TimerEvent: {}
+[6.526974] (-) TimerEvent: {}
+[6.627387] (-) TimerEvent: {}
+[6.727789] (-) TimerEvent: {}
+[6.828226] (-) TimerEvent: {}
+[6.928646] (-) TimerEvent: {}
+[7.029050] (-) TimerEvent: {}
+[7.129475] (-) TimerEvent: {}
+[7.229887] (-) TimerEvent: {}
+[7.330290] (-) TimerEvent: {}
+[7.430719] (-) TimerEvent: {}
+[7.531228] (-) TimerEvent: {}
+[7.631642] (-) TimerEvent: {}
+[7.732043] (-) TimerEvent: {}
+[7.832449] (-) TimerEvent: {}
+[7.932853] (-) TimerEvent: {}
+[8.033269] (-) TimerEvent: {}
+[8.133677] (-) TimerEvent: {}
+[8.234087] (-) TimerEvent: {}
+[8.334493] (-) TimerEvent: {}
+[8.434866] (-) TimerEvent: {}
+[8.535281] (-) TimerEvent: {}
+[8.635703] (-) TimerEvent: {}
+[8.736113] (-) TimerEvent: {}
+[8.836543] (-) TimerEvent: {}
+[8.936953] (-) TimerEvent: {}
+[9.037358] (-) TimerEvent: {}
+[9.137774] (-) TimerEvent: {}
+[9.238189] (-) TimerEvent: {}
+[9.338589] (-) TimerEvent: {}
+[9.439020] (-) TimerEvent: {}
+[9.539419] (-) TimerEvent: {}
+[9.639830] (-) TimerEvent: {}
+[9.740255] (-) TimerEvent: {}
+[9.840662] (-) TimerEvent: {}
+[9.941067] (-) TimerEvent: {}
+[10.041475] (-) TimerEvent: {}
+[10.141880] (-) TimerEvent: {}
+[10.242305] (-) TimerEvent: {}
+[10.342748] (-) TimerEvent: {}
+[10.443138] (-) TimerEvent: {}
+[10.543565] (-) TimerEvent: {}
+[10.643932] (-) TimerEvent: {}
+[10.744347] (-) TimerEvent: {}
+[10.844772] (-) TimerEvent: {}
+[10.945196] (-) TimerEvent: {}
+[11.045614] (-) TimerEvent: {}
+[11.146022] (-) TimerEvent: {}
+[11.246417] (-) TimerEvent: {}
+[11.346832] (-) TimerEvent: {}
+[11.447241] (-) TimerEvent: {}
+[11.547622] (-) TimerEvent: {}
+[11.648043] (-) TimerEvent: {}
+[11.748499] (-) TimerEvent: {}
+[11.848939] (-) TimerEvent: {}
+[11.949427] (-) TimerEvent: {}
+[12.049914] (-) TimerEvent: {}
+[12.150409] (-) TimerEvent: {}
+[12.250862] (-) TimerEvent: {}
+[12.351323] (-) TimerEvent: {}
+[12.451787] (-) TimerEvent: {}
+[12.552233] (-) TimerEvent: {}
+[12.652670] (-) TimerEvent: {}
+[12.753098] (-) TimerEvent: {}
+[12.853506] (-) TimerEvent: {}
+[12.953932] (-) TimerEvent: {}
+[13.054422] (-) TimerEvent: {}
+[13.154926] (-) TimerEvent: {}
+[13.255388] (-) TimerEvent: {}
+[13.355842] (-) TimerEvent: {}
+[13.456316] (-) TimerEvent: {}
+[13.556804] (-) TimerEvent: {}
+[13.657286] (-) TimerEvent: {}
+[13.757760] (-) TimerEvent: {}
+[13.858238] (-) TimerEvent: {}
+[13.958733] (-) TimerEvent: {}
+[14.059219] (-) TimerEvent: {}
+[14.159705] (-) TimerEvent: {}
+[14.260201] (-) TimerEvent: {}
+[14.360669] (-) TimerEvent: {}
+[14.461109] (-) TimerEvent: {}
+[14.561537] (-) TimerEvent: {}
+[14.662016] (-) TimerEvent: {}
+[14.762479] (-) TimerEvent: {}
+[14.863923] (-) TimerEvent: {}
+[14.964399] (-) TimerEvent: {}
+[15.064878] (-) TimerEvent: {}
+[15.165367] (-) TimerEvent: {}
+[15.265840] (-) TimerEvent: {}
+[15.366318] (-) TimerEvent: {}
+[15.466801] (-) TimerEvent: {}
+[15.567278] (-) TimerEvent: {}
+[15.667766] (-) TimerEvent: {}
+[15.768251] (-) TimerEvent: {}
+[15.868743] (-) TimerEvent: {}
+[15.969277] (-) TimerEvent: {}
+[16.069757] (-) TimerEvent: {}
+[16.170234] (-) TimerEvent: {}
+[16.270745] (-) TimerEvent: {}
+[16.371229] (-) TimerEvent: {}
+[16.471721] (-) TimerEvent: {}
+[16.572173] (-) TimerEvent: {}
+[16.672610] (-) TimerEvent: {}
+[16.773081] (-) TimerEvent: {}
+[16.873564] (-) TimerEvent: {}
+[16.974013] (-) TimerEvent: {}
+[17.074425] (-) TimerEvent: {}
+[17.174903] (-) TimerEvent: {}
+[17.275388] (-) TimerEvent: {}
+[17.375864] (-) TimerEvent: {}
+[17.476313] (-) TimerEvent: {}
+[17.576742] (-) TimerEvent: {}
+[17.677228] (-) TimerEvent: {}
+[17.777724] (-) TimerEvent: {}
+[17.878214] (-) TimerEvent: {}
+[17.978683] (-) TimerEvent: {}
+[18.079185] (-) TimerEvent: {}
+[18.179666] (-) TimerEvent: {}
+[18.280164] (-) TimerEvent: {}
+[18.380652] (-) TimerEvent: {}
+[18.481116] (-) TimerEvent: {}
+[18.581545] (-) TimerEvent: {}
+[18.681983] (-) TimerEvent: {}
+[18.782407] (-) TimerEvent: {}
+[18.882921] (-) TimerEvent: {}
+[18.983462] (-) TimerEvent: {}
+[19.084031] (-) TimerEvent: {}
+[19.184562] (-) TimerEvent: {}
+[19.285057] (-) TimerEvent: {}
+[19.385605] (-) TimerEvent: {}
+[19.486176] (-) TimerEvent: {}
+[19.586754] (-) TimerEvent: {}
+[19.687250] (-) TimerEvent: {}
+[19.787745] (-) TimerEvent: {}
+[19.888228] (-) TimerEvent: {}
+[19.988706] (-) TimerEvent: {}
+[20.089199] (-) TimerEvent: {}
+[20.189688] (-) TimerEvent: {}
+[20.290151] (-) TimerEvent: {}
+[20.390581] (-) TimerEvent: {}
+[20.491004] (-) TimerEvent: {}
+[20.591437] (-) TimerEvent: {}
+[20.691883] (-) TimerEvent: {}
+[20.792302] (-) TimerEvent: {}
+[20.892767] (-) TimerEvent: {}
+[20.993264] (-) TimerEvent: {}
+[21.093764] (-) TimerEvent: {}
+[21.194244] (-) TimerEvent: {}
+[21.294740] (-) TimerEvent: {}
+[21.395216] (-) TimerEvent: {}
+[21.495706] (-) TimerEvent: {}
+[21.596211] (-) TimerEvent: {}
+[21.696702] (-) TimerEvent: {}
+[21.797187] (-) TimerEvent: {}
+[21.897688] (-) TimerEvent: {}
+[21.998141] (-) TimerEvent: {}
+[22.098580] (-) TimerEvent: {}
+[22.199097] (-) TimerEvent: {}
+[22.299570] (-) TimerEvent: {}
+[22.400037] (-) TimerEvent: {}
+[22.500511] (-) TimerEvent: {}
+[22.600968] (-) TimerEvent: {}
+[22.701589] (-) TimerEvent: {}
+[22.802247] (-) TimerEvent: {}
+[22.902746] (-) TimerEvent: {}
+[23.003237] (-) TimerEvent: {}
+[23.103724] (-) TimerEvent: {}
+[23.204221] (-) TimerEvent: {}
+[23.304711] (-) TimerEvent: {}
+[23.405190] (-) TimerEvent: {}
+[23.505619] (-) TimerEvent: {}
+[23.606080] (-) TimerEvent: {}
+[23.706560] (-) TimerEvent: {}
+[23.807002] (-) TimerEvent: {}
+[23.907430] (-) TimerEvent: {}
+[24.007899] (-) TimerEvent: {}
+[24.108403] (-) TimerEvent: {}
+[24.208872] (-) TimerEvent: {}
+[24.309317] (-) TimerEvent: {}
+[24.324242] (lio_sam_hesai) StdoutLine: {'line': b'[ 83%] Linking CXX static library liblio_sam_hesai_dufomap_native.a\n'}
+[24.399630] (lio_sam_hesai) StdoutLine: {'line': b'[ 83%] Built target lio_sam_hesai_dufomap_native\n'}
+[24.409504] (-) TimerEvent: {}
+[24.456889] (lio_sam_hesai) StdoutLine: {'line': b'Consolidate compiler generated dependencies of target test_online_dufomap\n'}
+[24.495869] (lio_sam_hesai) StdoutLine: {'line': b'[ 83%] Linking CXX executable test_online_dufomap\n'}
+[24.509693] (-) TimerEvent: {}
+[24.610139] (-) TimerEvent: {}
+[24.710586] (-) TimerEvent: {}
+[24.811046] (-) TimerEvent: {}
+[24.911456] (-) TimerEvent: {}
+[25.011856] (-) TimerEvent: {}
+[25.112251] (-) TimerEvent: {}
+[25.172941] (lio_sam_hesai) StdoutLine: {'line': b'[100%] Built target test_online_dufomap\n'}
+[25.196770] (lio_sam_hesai) CommandEnded: {'returncode': 0}
+[25.212552] (-) TimerEvent: {}
+[25.241317] (lio_sam_hesai) JobEnded: {'identifier': 'lio_sam_hesai', 'rc': 0}
+[25.243552] (-) EventReactorShutdown: {}

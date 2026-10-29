@@ -32,7 +32,7 @@
   /imu ──────────┼──────┤        ↑ deskew          ↑ 曲率特征        ↑ iSAM2+iVox+回环       │
                  │      │   imuPreintegration  ←──── /lio_sam/mapping/odometry_incremental  │
                  │      └──────────────────────────────┬───────────────────────────────────┘
-                 │                                      │ SaveMap 服务 (CTRL+C 或手动)
+                 │                                      │ SaveMapOptions 服务（手动）
                  │                                      ▼
                  │                        GlobalMap.pcd + GroundMap.pcd + sc_db.bin
                  │                                      │
@@ -93,7 +93,7 @@
 - **加速**：使用 iVox 增量体素地图替代原生 kd-tree（[CMakeLists.txt:115](../CMakeLists.txt#L115) 链接 `ivox_map`）。
 - 回环：`loopClosureThread` 独立线程（[mapOptimization.cpp:1287,2701](../src/mapOptimization.cpp#L1287)），距离/外部触发 + ICP 校验（`fitness_threshold`）。
 - 可视化：`visualizeGlobalMapThread` 独立线程（[mapOptimization.cpp:906,2704](../src/mapOptimization.cpp#L906)）。
-- 地图保存：`SaveMap.srv`（resolution / ground_resolution / destination），同时可生成 Scan Context 库（`generate_scan_context_db`）、地面地图、以及可选的 tile 切分地图（`SplitMap`）。
+- 地图保存：`SaveMapOptions.srv`（绝对 destination / resolution / ground_resolution / 地面与瓦片开关），在线 DUFOMap 由 `dufomap.enable` 配置；同时可生成 Scan Context 库（`generate_scan_context_db`）、地面地图、以及可选的 tile 切分地图（`SplitMap`）。
 - 动态/静态滤波：局部几何一致性（KNN+平面）与体素持久性滤波，默认均关闭（[config/mapping.yaml:120-130](../config/mapping.yaml#L120)）。
 
 ---

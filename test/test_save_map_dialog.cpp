@@ -1,6 +1,6 @@
 // Focused Qt tests for the Save Map dialog that gathers the
 // /lio_sam/save_map_options request: the destination directory plus the
-// per-save ground/tiled artifact toggles.
+// per-save ground/tiled toggles. Online DUFOMap has no per-save switch.
 //
 // The tests drive the real widgets produced by SaveMapDialog so the defaults,
 // the absolute-path gate before QDialog::Accepted, and the exact values the

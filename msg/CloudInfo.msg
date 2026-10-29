@@ -28,3 +28,9 @@ sensor_msgs/PointCloud2 cloud_deskewed  # original cloud deskewed
 sensor_msgs/PointCloud2 cloud_corner    # extracted corner feature
 sensor_msgs/PointCloud2 cloud_surface   # extracted surface feature
 sensor_msgs/PointCloud2 cloud_ground    # extracted ground feature
+
+# Optional export-only input. Empty unless the selected ground algorithm needs it.
+sensor_msgs/PointCloud2 cloud_export_scan # complete deskewed scan before projection thinning
+uint32[] cloud_projection_indices # original row*columns+column for each cloud_deskewed point
+uint32 cloud_projection_rows # original projection dimensions, current export only
+uint32 cloud_projection_columns

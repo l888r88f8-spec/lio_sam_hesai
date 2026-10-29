@@ -1,0 +1,18 @@
+# Transformed Keyframe Cache Implementation Plan
+
+**Goal:** Bound transformed feature-keyframe point buffers without changing source keyframes, poses, matching results, or exported maps.
+
+**Architecture:** Replace the 1000-frame clear-all map with a byte-budgeted LRU cache. Add `local_map.transformed_cache_max_mb` (MiB, default 128; zero disables retention; negative values rejected). Account for retained point-buffer capacity, bypass entries larger than the budget, and evict before retaining replacements. A cache miss computes the same transform and immediately contributes it to the local map. Keep pose-correction invalidation and local-map reuse semantics intact.
+
+**Scope:** Mapping configuration/parser/YAML, one focused cache helper, both transformed-keyframe consumers and clear paths in `mapOptimization.cpp`, focused tests, CMake test registration. Preserve all existing dirty changes; no commits, resets, process management, bag replays, or unrelated changes.
+
+- [x] Add and run behavior tests for LRU eviction, access refresh, replacement accounting, zero budget, oversized bypass, clear, point-buffer capacity accounting, and eviction/recomputation equivalence. The unsafe-copy regression was observed failing before deleting copy operations, then passing.
+- [x] Implement the minimal cache and parameter; update both consumers and all pose invalidation paths. Current local clouds and iVox remain independently owned and usable after eviction.
+- [x] Run focused cache/configuration tests and build/install the mapping executable with limited parallelism using the existing workspace. Confirm failures before fixes and report exact validation commands/results.
+- [x] Review the incremental diff, verify built artifacts and tests, document the cache budget's scope (point buffers, not total process RSS).
+
+Validation so far: 8 cache tests, 34 configuration tests, 13 unified-parameter tests, and 27 complete map export/integration tests passed (82 total). Real mapping-consumer tests compare cold construction, cache hits, eviction/reconstruction, and the legacy consumer's downsampled corner/surface coordinates and intensity. Pose correction invalidates a previously valid local map. An independent read-only review found no remaining blocking issues. New helper and unit-test files pass Google C++ lint at 80 columns with the project's existing exemptions. Core matching/solver function hashes match the pre-change baseline.
+
+Completed verification on the host ROS/PCL toolchain: regenerated the existing CMake build; built the four test targets above and `lio_sam_hesai_{mapOptimization,imageProjection,featureExtraction,imuPreintegration}` with `-j1`; ran the complete save/export integration suite in ROS domain 88; installed using `cmake --install /home/robot/slam_ws/build/lio_sam_hesai`. All four installed executable hashes match the build outputs. Installed YAML resolves to the current source and contains the 128 MiB default; the installed cache header matches source. `git diff --check` passes for the touched tracked files.
+
+Harness implemented the initial code. Its verification shell could not write the existing build directory, so root cancelled its own follow-up task and completed host verification. The abandoned 198 MiB verification tree and this run's test-cache directories were removed. No user mapping process was started or stopped, and no rosbag replay or whole-process memory benchmark was performed. The configured limit covers retained transformed point buffers; original keyframes, current local maps, allocator metadata and temporary clouds remain outside this budget.

@@ -1,0 +1,517 @@
+[0.000000] (-) TimerEvent: {}
+[0.000490] (lio_sam_hesai) JobQueued: {'identifier': 'lio_sam_hesai', 'dependencies': OrderedDict()}
+[0.000936] (lio_sam_hesai) JobStarted: {'identifier': 'lio_sam_hesai'}
+[0.013101] (lio_sam_hesai) JobProgress: {'identifier': 'lio_sam_hesai', 'progress': 'cmake'}
+[0.015012] (lio_sam_hesai) JobProgress: {'identifier': 'lio_sam_hesai', 'progress': 'build'}
+[0.016593] (lio_sam_hesai) JobProgress: {'identifier': 'lio_sam_hesai', 'progress': "build target 'test_online_dufomap'"}
+[0.016670] (lio_sam_hesai) Command: {'cmd': ['/usr/bin/cmake', '--build', '/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai', '--target', 'test_online_dufomap', '--', '-j8', '-l8'], 'cwd': '/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai', 'env': OrderedDict([('USER', 'robot'), ('SHLVL', '0'), ('LD_LIBRARY_PATH', '/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/aarch64-linux-gnu:/opt/ros/humble/opt/openvdb_vendor/lib:/opt/ros/humble/lib'), ('VIPSHOME', '/target'), ('DSH_SESSION_ID', 'session-2930570e-64b9-426b-a86e-9673f3110efc'), ('HOME', '/home/robot'), ('ROS_PYTHON_VERSION', '3'), ('PAGER', 'cat'), ('NO_COLOR', '1'), ('ROS_DISTRO', 'humble'), ('LOGNAME', 'robot'), ('_', '/usr/bin/colcon'), ('ROS_VERSION', '2'), ('TERM', 'dumb'), ('ROS_LOCALHOST_ONLY', '0'), ('PATH', '/home/robot/.codex/tmp/arg0-linux/codex-arg0ZUNSZc:/home/robot/.vscode-server/cli/servers/Stable-e646868227c3e3a9e3f24277c8c7220be42c0be7/server/bin/remote-cli:/home/robot/.local/bin:/opt/ros/humble/bin:/home/robot/.local/share/pnpm:/home/robot/.cargo/bin:/home/robot/.nvm/versions/node/v24.21.0/bin:/home/robot/.opencode/bin:/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/home/robot/.vscode-server/extensions/openai.chatgpt-26.1021.22027-linux-arm64/bin/linux-aarch64'), ('LANG', 'en_US.UTF-8'), ('AMENT_PREFIX_PATH', '/opt/ros/humble'), ('DSH_HOME', '/home/robot/.dsh'), ('SHELL', '/bin/bash'), ('DSH_SHELL', '1'), ('GIT_PAGER', 'cat'), ('PWD', '/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai'), ('PYTHONPATH', '/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages'), ('COLCON', '1'), ('CMAKE_PREFIX_PATH', '/opt/ros/humble')]), 'shell': False}
+[0.080469] (lio_sam_hesai) StdoutLine: {'line': b'-- Found glog    (include: /usr/include, library: /usr/lib/aarch64-linux-gnu/libglog.so)\n'}
+[0.082107] (lio_sam_hesai) StdoutLine: {'line': b'-- Searching for g2o ...\n'}
+[0.082384] (lio_sam_hesai) StdoutLine: {'line': b'-- Found g2o headers in: /opt/ros/humble/include\n'}
+[0.082592] (lio_sam_hesai) StdoutLine: {'line': b'-- Found libg2o: /opt/ros/humble/lib/aarch64-linux-gnu/libg2o_csparse_extension.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_core.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_stuff.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_types_slam2d.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_types_slam3d.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_solver_cholmod.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_solver_pcg.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_solver_csparse.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_solver_eigen.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_incremental.so\n'}
+[0.082724] (lio_sam_hesai) StdoutLine: {'line': b'-- Found ament_cmake: 1.3.14 (/opt/ros/humble/share/ament_cmake/cmake)\n'}
+[0.099327] (-) TimerEvent: {}
+[0.199677] (-) TimerEvent: {}
+[0.300112] (-) TimerEvent: {}
+[0.303694] (lio_sam_hesai) StdoutLine: {'line': b'-- Found rosidl_default_generators: 1.2.1 (/opt/ros/humble/share/rosidl_default_generators/cmake)\n'}
+[0.306864] (lio_sam_hesai) StdoutLine: {'line': b'-- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c\n'}
+[0.314501] (lio_sam_hesai) StdoutLine: {'line': b'-- Found rosidl_adapter: 3.1.8 (/opt/ros/humble/share/rosidl_adapter/cmake)\n'}
+[0.375409] (lio_sam_hesai) StdoutLine: {'line': b'-- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp\n'}
+[0.400214] (-) TimerEvent: {}
+[0.417248] (lio_sam_hesai) StdoutLine: {'line': b'-- Found rclcpp: 16.0.18 (/opt/ros/humble/share/rclcpp/cmake)\n'}
+[0.468581] (lio_sam_hesai) StdoutLine: {'line': b'-- Found rmw_implementation_cmake: 6.1.2 (/opt/ros/humble/share/rmw_implementation_cmake/cmake)\n'}
+[0.470354] (lio_sam_hesai) StdoutLine: {'line': b'-- Found rmw_fastrtps_cpp: 6.2.10 (/opt/ros/humble/share/rmw_fastrtps_cpp/cmake)\n'}
+[0.500410] (-) TimerEvent: {}
+[0.600845] (-) TimerEvent: {}
+[0.628394] (lio_sam_hesai) StdoutLine: {'line': b"-- Using RMW implementation 'rmw_fastrtps_cpp' as default\n"}
+[0.701011] (-) TimerEvent: {}
+[0.701983] (lio_sam_hesai) StdoutLine: {'line': b'-- Found rclpy: 3.3.21 (/opt/ros/humble/share/rclpy/cmake)\n'}
+[0.702461] (lio_sam_hesai) StdoutLine: {'line': b'-- Found cv_bridge: 3.2.1 (/opt/ros/humble/share/cv_bridge/cmake)\n'}
+[0.758758] (lio_sam_hesai) StdoutLine: {'line': b'-- Found nav_msgs: 4.9.1 (/opt/ros/humble/share/nav_msgs/cmake)\n'}
+[0.783282] (lio_sam_hesai) StdoutLine: {'line': b'-- Found diagnostic_msgs: 4.9.1 (/opt/ros/humble/share/diagnostic_msgs/cmake)\n'}
+[0.801181] (-) TimerEvent: {}
+[0.801712] (lio_sam_hesai) StdoutLine: {'line': b'-- Found visualization_msgs: 4.9.1 (/opt/ros/humble/share/visualization_msgs/cmake)\n'}
+[0.829174] (lio_sam_hesai) StdoutLine: {'line': b'-- Found pcl_conversions: 2.4.5 (/opt/ros/humble/share/pcl_conversions/cmake)\n'}
+[0.882915] (lio_sam_hesai) StdoutLine: {'line': b'-- Eigen found (include: /usr/include/eigen3, version: 3.4.0)\n'}
+[0.901347] (-) TimerEvent: {}
+[0.934813] (lio_sam_hesai) StdoutLine: {'line': b'-- FLANN found (include: /usr/include, lib: /usr/lib/aarch64-linux-gnu/libflann_cpp.so)\n'}
+[1.001525] (-) TimerEvent: {}
+[1.101964] (-) TimerEvent: {}
+[1.202399] (-) TimerEvent: {}
+[1.302827] (-) TimerEvent: {}
+[1.403275] (-) TimerEvent: {}
+[1.411961] (lio_sam_hesai) StdoutLine: {'line': b'-- OpenNI found (version: 1.5.4.0, include: /usr/include/ni, lib: /usr/lib/libOpenNI.so;libusb::libusb)\n'}
+[1.420678] (lio_sam_hesai) StdoutLine: {'line': b'-- OpenNI2 found (version: 2.2.0.33, include: /usr/include/openni2, lib: /usr/lib/aarch64-linux-gnu/libOpenNI2.so;libusb::libusb)\n'}
+[1.503467] (-) TimerEvent: {}
+[1.603934] (-) TimerEvent: {}
+[1.654892] (lio_sam_hesai) StdoutLine: {'line': b'-- Eigen found (include: /usr/include/eigen3, version: 3.4.0)\n'}
+[1.663928] (lio_sam_hesai) StdoutLine: {'line': b'-- OpenNI found (version: 1.5.4.0, include: /usr/include/ni, lib: /usr/lib/libOpenNI.so;libusb::libusb)\n'}
+[1.672418] (lio_sam_hesai) StdoutLine: {'line': b'-- OpenNI2 found (version: 2.2.0.33, include: /usr/include/openni2, lib: /usr/lib/aarch64-linux-gnu/libOpenNI2.so;libusb::libusb)\n'}
+[1.704077] (-) TimerEvent: {}
+[1.804475] (-) TimerEvent: {}
+[1.886772] (lio_sam_hesai) StdoutLine: {'line': b'-- Found Qhull version 8.0.2\n'}
+[1.904578] (-) TimerEvent: {}
+[2.004909] (-) TimerEvent: {}
+[2.105292] (-) TimerEvent: {}
+[2.111286] (lio_sam_hesai) StdoutLine: {'line': b'-- OpenNI found (version: 1.5.4.0, include: /usr/include/ni, lib: /usr/lib/libOpenNI.so;libusb::libusb)\n'}
+[2.205463] (-) TimerEvent: {}
+[2.305854] (-) TimerEvent: {}
+[2.344798] (lio_sam_hesai) StdoutLine: {'line': b'-- Found tf2: 0.25.19 (/opt/ros/humble/share/tf2/cmake)\n'}
+[2.350649] (lio_sam_hesai) StdoutLine: {'line': b'-- Found tf2_geometry_msgs: 0.25.19 (/opt/ros/humble/share/tf2_geometry_msgs/cmake)\n'}
+[2.355508] (lio_sam_hesai) StdoutLine: {'line': b'-- Found eigen3_cmake_module: 0.1.1 (/opt/ros/humble/share/eigen3_cmake_module/cmake)\n'}
+[2.357607] (lio_sam_hesai) StdoutLine: {'line': b'-- Ensuring Eigen3 include directory is part of orocos-kdl CMake target\n'}
+[2.405948] (-) TimerEvent: {}
+[2.466377] (lio_sam_hesai) StdoutLine: {'line': b'-- Found tf2_sensor_msgs: 0.25.19 (/opt/ros/humble/share/tf2_sensor_msgs/cmake)\n'}
+[2.472424] (lio_sam_hesai) StdoutLine: {'line': b'-- Found tf2_eigen: 0.25.19 (/opt/ros/humble/share/tf2_eigen/cmake)\n'}
+[2.482269] (lio_sam_hesai) StderrLine: {'line': b'CMake Warning (dev) at CMakeLists.txt:38 (find_package):\n'}
+[2.482587] (lio_sam_hesai) StderrLine: {'line': b'  Policy CMP0074 is not set: find_package uses <PackageName>_ROOT variables.\n'}
+[2.482715] (lio_sam_hesai) StderrLine: {'line': b'  Run "cmake --help-policy CMP0074" for policy details.  Use the cmake_policy\n'}
+[2.482824] (lio_sam_hesai) StderrLine: {'line': b'  command to set the policy and suppress this warning.\n'}
+[2.482940] (lio_sam_hesai) StderrLine: {'line': b'\n'}
+[2.483042] (lio_sam_hesai) StderrLine: {'line': b'  CMake variable PCL_ROOT is set to:\n'}
+[2.483143] (lio_sam_hesai) StderrLine: {'line': b'\n'}
+[2.483236] (lio_sam_hesai) StderrLine: {'line': b'    /usr\n'}
+[2.483331] (lio_sam_hesai) StderrLine: {'line': b'\n'}
+[2.483423] (lio_sam_hesai) StderrLine: {'line': b'  For compatibility, CMake is ignoring the variable.\n'}
+[2.483519] (lio_sam_hesai) StderrLine: {'line': b'This warning is for project developers.  Use -Wno-dev to suppress it.\n'}
+[2.483615] (lio_sam_hesai) StderrLine: {'line': b'\n'}
+[2.504483] (lio_sam_hesai) StdoutLine: {'line': b'-- Found pluginlib: 5.1.3 (/opt/ros/humble/share/pluginlib/cmake)\n'}
+[2.506039] (-) TimerEvent: {}
+[2.524575] (lio_sam_hesai) StdoutLine: {'line': b'-- Found rviz_common: 11.2.26 (/opt/ros/humble/share/rviz_common/cmake)\n'}
+[2.529078] (lio_sam_hesai) StdoutLine: {'line': b"-- Setting assimp_DIR to: '/opt/ros/humble/share/rviz_assimp_vendor/cmake/../../../opt/rviz_assimp_vendor/lib/cmake/assimp-4.1'\n"}
+[2.535237] (lio_sam_hesai) StdoutLine: {'line': b"-- Setting OGRE_DIR to: '/opt/ros/humble/share/rviz_ogre_vendor/cmake/../../../opt/rviz_ogre_vendor/lib/OGRE/cmake'\n"}
+[2.537250] (lio_sam_hesai) StdoutLine: {'line': b'-- Found OGRE\n'}
+[2.538024] (lio_sam_hesai) StdoutLine: {'line': b'--   static     : OFF\n'}
+[2.538535] (lio_sam_hesai) StdoutLine: {'line': b'--   components : HLMS;MeshLodGenerator;Overlay;Paging;Property;RTShaderSystem;Terrain;Volume\n'}
+[2.538965] (lio_sam_hesai) StdoutLine: {'line': b'--   plugins    : Plugin_BSPSceneManager;Plugin_OctreeSceneManager;Plugin_PCZSceneManager;Plugin_ParticleFX;RenderSystem_GL;RenderSystem_GL3Plus;Codec_STBI\n'}
+[2.539254] (lio_sam_hesai) StdoutLine: {'line': b'--   media      : /opt/ros/humble/opt/rviz_ogre_vendor/share/OGRE/Media\n'}
+[2.539506] (lio_sam_hesai) StdoutLine: {'line': b'-- OGRE_LIBRARIES: OgreHLMS;OgreMeshLodGenerator;OgreOverlay;OgrePaging;OgreProperty;OgreRTShaderSystem;OgreTerrain;OgreVolume;OgreMain\n'}
+[2.539776] (lio_sam_hesai) StdoutLine: {'line': b'-- OGRE_LIBRARY_DIRS: /opt/ros/humble/opt/rviz_ogre_vendor/lib\n'}
+[2.539878] (lio_sam_hesai) StdoutLine: {'line': b'-- OGRE_PLUGINS: Plugin_BSPSceneManager;Plugin_OctreeSceneManager;Plugin_PCZSceneManager;Plugin_ParticleFX;RenderSystem_GL;RenderSystem_GL3Plus;Codec_STBI\n'}
+[2.539976] (lio_sam_hesai) StdoutLine: {'line': b'-- OGRE_PLUGIN_DIR: /opt/ros/humble/opt/rviz_ogre_vendor/lib/OGRE\n'}
+[2.540070] (lio_sam_hesai) StdoutLine: {'line': b'-- rviz_ogre_vendor::OgreOverlay for IMPORTED_LOCATION_RELEASE: /opt/ros/humble/opt/rviz_ogre_vendor/lib/libOgreOverlay.so\n'}
+[2.540169] (lio_sam_hesai) StdoutLine: {'line': b'-- rviz_ogre_vendor::OgreOverlay for IMPORTED_LOCATION_DEBUG: /opt/ros/humble/opt/rviz_ogre_vendor/lib/libOgreOverlay.so\n'}
+[2.540282] (lio_sam_hesai) StdoutLine: {'line': b'-- rviz_ogre_vendor::OgreMain for IMPORTED_LOCATION_RELEASE: /opt/ros/humble/opt/rviz_ogre_vendor/lib/libOgreMain.so\n'}
+[2.540378] (lio_sam_hesai) StdoutLine: {'line': b'-- rviz_ogre_vendor::OgreMain for IMPORTED_LOCATION_DEBUG: /opt/ros/humble/opt/rviz_ogre_vendor/lib/libOgreMain.so\n'}
+[2.541444] (lio_sam_hesai) StdoutLine: {'line': b'-- Could not find freeimage library\n'}
+[2.606241] (-) TimerEvent: {}
+[2.638413] (lio_sam_hesai) StdoutLine: {'line': b'-- library: /usr/lib/aarch64-linux-gnu/libcurl.so\n'}
+[2.665945] (lio_sam_hesai) StdoutLine: {'line': b'-- Found GTSAM include directory: /usr/local/include\n'}
+[2.666504] (lio_sam_hesai) StdoutLine: {'line': b'-- Found GTSAM unstable include directory: /usr/local/include\n'}
+[2.666749] (lio_sam_hesai) StdoutLine: {'line': b'-- Found GTSAM libraries: /usr/local/lib/libgtsam.so;/usr/local/lib/libgtsam_unstable.so\n'}
+[2.706409] (-) TimerEvent: {}
+[2.806800] (-) TimerEvent: {}
+[2.907248] (-) TimerEvent: {}
+[3.007723] (-) TimerEvent: {}
+[3.108136] (-) TimerEvent: {}
+[3.208584] (-) TimerEvent: {}
+[3.236888] (lio_sam_hesai) StdoutLine: {'line': b'-- Found ament_cmake_ros: 0.10.0 (/opt/ros/humble/share/ament_cmake_ros/cmake)\n'}
+[3.308778] (-) TimerEvent: {}
+[3.409174] (-) TimerEvent: {}
+[3.509540] (-) TimerEvent: {}
+[3.609965] (-) TimerEvent: {}
+[3.710409] (-) TimerEvent: {}
+[3.774453] (lio_sam_hesai) StdoutLine: {'line': b'-- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c\n'}
+[3.810609] (-) TimerEvent: {}
+[3.911037] (-) TimerEvent: {}
+[4.011455] (-) TimerEvent: {}
+[4.111915] (-) TimerEvent: {}
+[4.212388] (-) TimerEvent: {}
+[4.312806] (-) TimerEvent: {}
+[4.413220] (-) TimerEvent: {}
+[4.474705] (lio_sam_hesai) StdoutLine: {'line': b'-- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp\n'}
+[4.511034] (lio_sam_hesai) StdoutLine: {'line': b'-- Found python_cmake_module: 0.10.0 (/opt/ros/humble/share/python_cmake_module/cmake)\n'}
+[4.513287] (-) TimerEvent: {}
+[4.550540] (lio_sam_hesai) StdoutLine: {'line': b'-- Using PYTHON_EXECUTABLE: /usr/bin/python3\n'}
+[4.551177] (lio_sam_hesai) StdoutLine: {'line': b'-- Using PYTHON_INCLUDE_DIRS: /usr/include/python3.10\n'}
+[4.551482] (lio_sam_hesai) StdoutLine: {'line': b'-- Using PYTHON_LIBRARIES: /usr/lib/aarch64-linux-gnu/libpython3.10.so\n'}
+[4.613501] (-) TimerEvent: {}
+[4.713924] (-) TimerEvent: {}
+[4.814423] (-) TimerEvent: {}
+[4.914847] (-) TimerEvent: {}
+[5.015247] (-) TimerEvent: {}
+[5.063282] (lio_sam_hesai) StdoutLine: {'line': b'-- Found ament_lint_auto: 0.12.15 (/opt/ros/humble/share/ament_lint_auto/cmake)\n'}
+[5.064575] (lio_sam_hesai) StdoutLine: {'line': b"-- Found gtest sources under '/opt/ros/humble/src/gtest_vendor': C++ tests using 'Google Test' will be built\n"}
+[5.115418] (-) TimerEvent: {}
+[5.215821] (-) TimerEvent: {}
+[5.251876] (lio_sam_hesai) StdoutLine: {'line': b"-- Added test 'copyright' to check source files copyright and LICENSE\n"}
+[5.315973] (-) TimerEvent: {}
+[5.416335] (-) TimerEvent: {}
+[5.516708] (-) TimerEvent: {}
+[5.575620] (lio_sam_hesai) StdoutLine: {'line': b"-- Added test 'cppcheck' to perform static code analysis on C / C++ code\n"}
+[5.589371] (lio_sam_hesai) StdoutLine: {'line': b'-- Configured cppcheck include dirs: /home/robot/slam_ws/src/lio_sam_hesai/include;/home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam;$<BUILD_INTERFACE:/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_generator_c>;$<BUILD_INTERFACE:/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_typesupport_fastrtps_c>;$<BUILD_INTERFACE:/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_typesupport_introspection_c>;$<BUILD_INTERFACE:/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_generator_cpp>;$<BUILD_INTERFACE:/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_typesupport_fastrtps_cpp>;$<BUILD_INTERFACE:/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_typesupport_introspection_cpp>;/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_generator_c;/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_generator_py;/home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/arm64;/home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include;/home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/compat;/home/robot/slam_ws/src/lio_sam_hesai/third_party/patchworkpp/cpp/common/include;/home/robot/slam_ws/src/lio_sam_hesai/third_party/patchworkpp/cpp/patchworkpp/include\n'}
+[5.589678] (lio_sam_hesai) StdoutLine: {'line': b'-- Configured cppcheck exclude dirs and/or files: \n'}
+[5.616794] (-) TimerEvent: {}
+[5.717097] (-) TimerEvent: {}
+[5.817465] (-) TimerEvent: {}
+[5.907519] (lio_sam_hesai) StdoutLine: {'line': b"-- Added test 'cpplint' to check C / C++ code against the Google style\n"}
+[5.907965] (lio_sam_hesai) StdoutLine: {'line': b'-- Configured cpplint exclude dirs and/or files: \n'}
+[5.917514] (-) TimerEvent: {}
+[5.947229] (lio_sam_hesai) StdoutLine: {'line': b"-- Added test 'flake8' to check Python code syntax and style conventions\n"}
+[6.017697] (-) TimerEvent: {}
+[6.026990] (lio_sam_hesai) StdoutLine: {'line': b"-- Added test 'lint_cmake' to check CMake code style\n"}
+[6.066879] (lio_sam_hesai) StdoutLine: {'line': b"-- Added test 'pep257' to check Python code against some of the docstring style conventions in PEP 257\n"}
+[6.117825] (-) TimerEvent: {}
+[6.218173] (-) TimerEvent: {}
+[6.318553] (-) TimerEvent: {}
+[6.381502] (lio_sam_hesai) StdoutLine: {'line': b"-- Added test 'uncrustify' to check C / C++ code style\n"}
+[6.381937] (lio_sam_hesai) StdoutLine: {'line': b'-- Configured uncrustify additional arguments: \n'}
+[6.418668] (-) TimerEvent: {}
+[6.422353] (lio_sam_hesai) StdoutLine: {'line': b"-- Added test 'xmllint' to check XML markup files\n"}
+[6.425659] (lio_sam_hesai) StdoutLine: {'line': b'-- Configuring done\n'}
+[6.518836] (-) TimerEvent: {}
+[6.619212] (-) TimerEvent: {}
+[6.719593] (-) TimerEvent: {}
+[6.819990] (-) TimerEvent: {}
+[6.920399] (-) TimerEvent: {}
+[7.020793] (-) TimerEvent: {}
+[7.121184] (-) TimerEvent: {}
+[7.221544] (-) TimerEvent: {}
+[7.322141] (-) TimerEvent: {}
+[7.422512] (-) TimerEvent: {}
+[7.429870] (lio_sam_hesai) StdoutLine: {'line': b'-- Generating done\n'}
+[7.522678] (-) TimerEvent: {}
+[7.623051] (-) TimerEvent: {}
+[7.723392] (-) TimerEvent: {}
+[7.742990] (lio_sam_hesai) StdoutLine: {'line': b'-- Build files have been written to: /home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai\n'}
+[7.823829] (-) TimerEvent: {}
+[7.904382] (lio_sam_hesai) StdoutLine: {'line': b'Consolidate compiler generated dependencies of target gtest_main\n'}
+[7.905253] (lio_sam_hesai) StdoutLine: {'line': b'Consolidate compiler generated dependencies of target gtest\n'}
+[7.906025] (lio_sam_hesai) StdoutLine: {'line': b'Consolidate compiler generated dependencies of target lio_sam_hesai_dufomap_native\n'}
+[7.924017] (-) TimerEvent: {}
+[7.924590] (lio_sam_hesai) StdoutLine: {'line': b'[ 33%] Built target gtest_main\n'}
+[7.925063] (lio_sam_hesai) StdoutLine: {'line': b'[ 33%] Building CXX object CMakeFiles/lio_sam_hesai_dufomap_native.dir/src/common/dufomap_backend.cpp.o\n'}
+[7.925483] (lio_sam_hesai) StdoutLine: {'line': b'[ 33%] Built target gtest\n'}
+[8.024169] (-) TimerEvent: {}
+[8.124638] (-) TimerEvent: {}
+[8.225067] (-) TimerEvent: {}
+[8.325456] (-) TimerEvent: {}
+[8.425846] (-) TimerEvent: {}
+[8.526235] (-) TimerEvent: {}
+[8.626641] (-) TimerEvent: {}
+[8.727042] (-) TimerEvent: {}
+[8.827469] (-) TimerEvent: {}
+[8.927883] (-) TimerEvent: {}
+[9.028313] (-) TimerEvent: {}
+[9.128736] (-) TimerEvent: {}
+[9.229153] (-) TimerEvent: {}
+[9.329555] (-) TimerEvent: {}
+[9.429955] (-) TimerEvent: {}
+[9.530355] (-) TimerEvent: {}
+[9.630751] (-) TimerEvent: {}
+[9.731143] (-) TimerEvent: {}
+[9.831547] (-) TimerEvent: {}
+[9.931961] (-) TimerEvent: {}
+[10.032359] (-) TimerEvent: {}
+[10.132766] (-) TimerEvent: {}
+[10.233177] (-) TimerEvent: {}
+[10.333599] (-) TimerEvent: {}
+[10.433999] (-) TimerEvent: {}
+[10.534422] (-) TimerEvent: {}
+[10.634826] (-) TimerEvent: {}
+[10.735239] (-) TimerEvent: {}
+[10.835664] (-) TimerEvent: {}
+[10.838359] (lio_sam_hesai) StderrLine: {'line': b'In file included from /home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/geometry/intersects.hpp:48,\n'}
+[10.838790] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/map/predicate/spatial.hpp:49,\n'}
+[10.838925] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/map/octree/octree.hpp:57,\n'}
+[10.839039] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/map/octree/octree_map.hpp:47,\n'}
+[10.839175] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/map/ufomap.hpp:63,\n'}
+[10.839280] (lio_sam_hesai) StderrLine: {'line': b'                 from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:13:\n'}
+[10.839381] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/geometry/helper.hpp: In function \xe2\x80\x98constexpr std::pair<float, float> ufo::getInterval(const ufo::AABB&, ufo::Point)\xe2\x80\x99:\n'}
+[10.839489] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/geometry/helper.hpp:174:77: note: parameter passing for argument of type \xe2\x80\x98std::pair<float, float>\xe2\x80\x99 when C++17 is enabled changed to match C++14 in GCC 10.1\n'}
+[10.839588] (lio_sam_hesai) StderrLine: {'line': b'  174 | constexpr std::pair<float, float> getInterval(AABB const& aabb, Point axis) noexcept\n'}
+[10.839684] (lio_sam_hesai) StderrLine: {'line': b'      |                                                                             ^~~~~~~~\n'}
+[10.935856] (-) TimerEvent: {}
+[11.036306] (-) TimerEvent: {}
+[11.136713] (-) TimerEvent: {}
+[11.237107] (-) TimerEvent: {}
+[11.337513] (-) TimerEvent: {}
+[11.437919] (-) TimerEvent: {}
+[11.538331] (-) TimerEvent: {}
+[11.638737] (-) TimerEvent: {}
+[11.739140] (-) TimerEvent: {}
+[11.839585] (-) TimerEvent: {}
+[11.939984] (-) TimerEvent: {}
+[12.040400] (-) TimerEvent: {}
+[12.140814] (-) TimerEvent: {}
+[12.241221] (-) TimerEvent: {}
+[12.341621] (-) TimerEvent: {}
+[12.442026] (-) TimerEvent: {}
+[12.542441] (-) TimerEvent: {}
+[12.642845] (-) TimerEvent: {}
+[12.743262] (-) TimerEvent: {}
+[12.843691] (-) TimerEvent: {}
+[12.944097] (-) TimerEvent: {}
+[13.044516] (-) TimerEvent: {}
+[13.144945] (-) TimerEvent: {}
+[13.245373] (-) TimerEvent: {}
+[13.345780] (-) TimerEvent: {}
+[13.446210] (-) TimerEvent: {}
+[13.546620] (-) TimerEvent: {}
+[13.647016] (-) TimerEvent: {}
+[13.747423] (-) TimerEvent: {}
+[13.847823] (-) TimerEvent: {}
+[13.948231] (-) TimerEvent: {}
+[14.048633] (-) TimerEvent: {}
+[14.149058] (-) TimerEvent: {}
+[14.249445] (-) TimerEvent: {}
+[14.349833] (-) TimerEvent: {}
+[14.450218] (-) TimerEvent: {}
+[14.550620] (-) TimerEvent: {}
+[14.651037] (-) TimerEvent: {}
+[14.751448] (-) TimerEvent: {}
+[14.851893] (-) TimerEvent: {}
+[14.952370] (-) TimerEvent: {}
+[15.052808] (-) TimerEvent: {}
+[15.153255] (-) TimerEvent: {}
+[15.253717] (-) TimerEvent: {}
+[15.354127] (-) TimerEvent: {}
+[15.454526] (-) TimerEvent: {}
+[15.554923] (-) TimerEvent: {}
+[15.655320] (-) TimerEvent: {}
+[15.755717] (-) TimerEvent: {}
+[15.856113] (-) TimerEvent: {}
+[15.956531] (-) TimerEvent: {}
+[16.056932] (-) TimerEvent: {}
+[16.157346] (-) TimerEvent: {}
+[16.257739] (-) TimerEvent: {}
+[16.358122] (-) TimerEvent: {}
+[16.458511] (-) TimerEvent: {}
+[16.558907] (-) TimerEvent: {}
+[16.659318] (-) TimerEvent: {}
+[16.759732] (-) TimerEvent: {}
+[16.860165] (-) TimerEvent: {}
+[16.960641] (-) TimerEvent: {}
+[17.061076] (-) TimerEvent: {}
+[17.161509] (-) TimerEvent: {}
+[17.261958] (-) TimerEvent: {}
+[17.362362] (-) TimerEvent: {}
+[17.462799] (-) TimerEvent: {}
+[17.563202] (-) TimerEvent: {}
+[17.663601] (-) TimerEvent: {}
+[17.764025] (-) TimerEvent: {}
+[17.864453] (-) TimerEvent: {}
+[17.964860] (-) TimerEvent: {}
+[18.065264] (-) TimerEvent: {}
+[18.165671] (-) TimerEvent: {}
+[18.266059] (-) TimerEvent: {}
+[18.366431] (-) TimerEvent: {}
+[18.466819] (-) TimerEvent: {}
+[18.567240] (-) TimerEvent: {}
+[18.667790] (-) TimerEvent: {}
+[18.768229] (-) TimerEvent: {}
+[18.868667] (-) TimerEvent: {}
+[18.969102] (-) TimerEvent: {}
+[19.069515] (-) TimerEvent: {}
+[19.169917] (-) TimerEvent: {}
+[19.270329] (-) TimerEvent: {}
+[19.370747] (-) TimerEvent: {}
+[19.471151] (-) TimerEvent: {}
+[19.571560] (-) TimerEvent: {}
+[19.671978] (-) TimerEvent: {}
+[19.772420] (-) TimerEvent: {}
+[19.872846] (-) TimerEvent: {}
+[19.973259] (-) TimerEvent: {}
+[20.073679] (-) TimerEvent: {}
+[20.174121] (-) TimerEvent: {}
+[20.274618] (-) TimerEvent: {}
+[20.375052] (-) TimerEvent: {}
+[20.475473] (-) TimerEvent: {}
+[20.575895] (-) TimerEvent: {}
+[20.676369] (-) TimerEvent: {}
+[20.776814] (-) TimerEvent: {}
+[20.877243] (-) TimerEvent: {}
+[20.977668] (-) TimerEvent: {}
+[21.078091] (-) TimerEvent: {}
+[21.178509] (-) TimerEvent: {}
+[21.278943] (-) TimerEvent: {}
+[21.379410] (-) TimerEvent: {}
+[21.479887] (-) TimerEvent: {}
+[21.580346] (-) TimerEvent: {}
+[21.680807] (-) TimerEvent: {}
+[21.781248] (-) TimerEvent: {}
+[21.881662] (-) TimerEvent: {}
+[21.982179] (-) TimerEvent: {}
+[22.082674] (-) TimerEvent: {}
+[22.183162] (-) TimerEvent: {}
+[22.283622] (-) TimerEvent: {}
+[22.384074] (-) TimerEvent: {}
+[22.484579] (-) TimerEvent: {}
+[22.585019] (-) TimerEvent: {}
+[22.685458] (-) TimerEvent: {}
+[22.785923] (-) TimerEvent: {}
+[22.886373] (-) TimerEvent: {}
+[22.986794] (-) TimerEvent: {}
+[23.087240] (-) TimerEvent: {}
+[23.187702] (-) TimerEvent: {}
+[23.288104] (-) TimerEvent: {}
+[23.388623] (-) TimerEvent: {}
+[23.489080] (-) TimerEvent: {}
+[23.589546] (-) TimerEvent: {}
+[23.690028] (-) TimerEvent: {}
+[23.790531] (-) TimerEvent: {}
+[23.891081] (-) TimerEvent: {}
+[23.991560] (-) TimerEvent: {}
+[24.092031] (-) TimerEvent: {}
+[24.192539] (-) TimerEvent: {}
+[24.292983] (-) TimerEvent: {}
+[24.393417] (-) TimerEvent: {}
+[24.493908] (-) TimerEvent: {}
+[24.594391] (-) TimerEvent: {}
+[24.694822] (-) TimerEvent: {}
+[24.795244] (-) TimerEvent: {}
+[24.895679] (-) TimerEvent: {}
+[24.996101] (-) TimerEvent: {}
+[25.096551] (-) TimerEvent: {}
+[25.196977] (-) TimerEvent: {}
+[25.297457] (-) TimerEvent: {}
+[25.397937] (-) TimerEvent: {}
+[25.498418] (-) TimerEvent: {}
+[25.598876] (-) TimerEvent: {}
+[25.699304] (-) TimerEvent: {}
+[25.799729] (-) TimerEvent: {}
+[25.900312] (-) TimerEvent: {}
+[26.000786] (-) TimerEvent: {}
+[26.101256] (-) TimerEvent: {}
+[26.201705] (-) TimerEvent: {}
+[26.302131] (-) TimerEvent: {}
+[26.402613] (-) TimerEvent: {}
+[26.503096] (-) TimerEvent: {}
+[26.603556] (-) TimerEvent: {}
+[26.703930] (-) TimerEvent: {}
+[26.804329] (-) TimerEvent: {}
+[26.904743] (-) TimerEvent: {}
+[27.005496] (-) TimerEvent: {}
+[27.105882] (-) TimerEvent: {}
+[27.206238] (-) TimerEvent: {}
+[27.306567] (-) TimerEvent: {}
+[27.406899] (-) TimerEvent: {}
+[27.507275] (-) TimerEvent: {}
+[27.607648] (-) TimerEvent: {}
+[27.707980] (-) TimerEvent: {}
+[27.808373] (-) TimerEvent: {}
+[27.908696] (-) TimerEvent: {}
+[28.009032] (-) TimerEvent: {}
+[28.109368] (-) TimerEvent: {}
+[28.209750] (-) TimerEvent: {}
+[28.310217] (-) TimerEvent: {}
+[28.410669] (-) TimerEvent: {}
+[28.511134] (-) TimerEvent: {}
+[28.611586] (-) TimerEvent: {}
+[28.712016] (-) TimerEvent: {}
+[28.812430] (-) TimerEvent: {}
+[28.912868] (-) TimerEvent: {}
+[29.013287] (-) TimerEvent: {}
+[29.113710] (-) TimerEvent: {}
+[29.214147] (-) TimerEvent: {}
+[29.314627] (-) TimerEvent: {}
+[29.415107] (-) TimerEvent: {}
+[29.515582] (-) TimerEvent: {}
+[29.615989] (-) TimerEvent: {}
+[29.716358] (-) TimerEvent: {}
+[29.816757] (-) TimerEvent: {}
+[29.917142] (-) TimerEvent: {}
+[30.017570] (-) TimerEvent: {}
+[30.117993] (-) TimerEvent: {}
+[30.218424] (-) TimerEvent: {}
+[30.318910] (-) TimerEvent: {}
+[30.419392] (-) TimerEvent: {}
+[30.519886] (-) TimerEvent: {}
+[30.620479] (-) TimerEvent: {}
+[30.720949] (-) TimerEvent: {}
+[30.821431] (-) TimerEvent: {}
+[30.921853] (-) TimerEvent: {}
+[31.022287] (-) TimerEvent: {}
+[31.122728] (-) TimerEvent: {}
+[31.223146] (-) TimerEvent: {}
+[31.323537] (-) TimerEvent: {}
+[31.402366] (lio_sam_hesai) StdoutLine: {'line': b'[ 66%] Linking CXX static library liblio_sam_hesai_dufomap_native.a\n'}
+[31.423737] (-) TimerEvent: {}
+[31.500857] (lio_sam_hesai) StdoutLine: {'line': b'[ 66%] Built target lio_sam_hesai_dufomap_native\n'}
+[31.523888] (-) TimerEvent: {}
+[31.541329] (lio_sam_hesai) StdoutLine: {'line': b'[ 66%] Building CXX object CMakeFiles/test_online_dufomap.dir/test/test_online_dufomap.cpp.o\n'}
+[31.541767] (lio_sam_hesai) StdoutLine: {'line': b'[100%] Building CXX object CMakeFiles/test_online_dufomap.dir/src/common/online_dufomap.cpp.o\n'}
+[31.624053] (-) TimerEvent: {}
+[31.724468] (-) TimerEvent: {}
+[31.824859] (-) TimerEvent: {}
+[31.925285] (-) TimerEvent: {}
+[32.025709] (-) TimerEvent: {}
+[32.126189] (-) TimerEvent: {}
+[32.226663] (-) TimerEvent: {}
+[32.327077] (-) TimerEvent: {}
+[32.427481] (-) TimerEvent: {}
+[32.527892] (-) TimerEvent: {}
+[32.628408] (-) TimerEvent: {}
+[32.728831] (-) TimerEvent: {}
+[32.829240] (-) TimerEvent: {}
+[32.929639] (-) TimerEvent: {}
+[33.030090] (-) TimerEvent: {}
+[33.130852] (-) TimerEvent: {}
+[33.231280] (-) TimerEvent: {}
+[33.331680] (-) TimerEvent: {}
+[33.350045] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:21:10: fatal error: lio_sam_hesai/srv/save_map_options.hpp: No such file or directory\n'}
+[33.350484] (lio_sam_hesai) StderrLine: {'line': b'   21 | #include "lio_sam_hesai/srv/save_map_options.hpp"\n'}
+[33.350617] (lio_sam_hesai) StderrLine: {'line': b'      |          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n'}
+[33.350730] (lio_sam_hesai) StderrLine: {'line': b'compilation terminated.\n'}
+[33.368968] (lio_sam_hesai) StderrLine: {'line': b'gmake[3]: *** [CMakeFiles/test_online_dufomap.dir/build.make:76: CMakeFiles/test_online_dufomap.dir/test/test_online_dufomap.cpp.o] Error 1\n'}
+[33.369530] (lio_sam_hesai) StderrLine: {'line': b'gmake[3]: *** Waiting for unfinished jobs....\n'}
+[33.431828] (-) TimerEvent: {}
+[33.532263] (-) TimerEvent: {}
+[33.632656] (-) TimerEvent: {}
+[33.733061] (-) TimerEvent: {}
+[33.833456] (-) TimerEvent: {}
+[33.933856] (-) TimerEvent: {}
+[34.034246] (-) TimerEvent: {}
+[34.134656] (-) TimerEvent: {}
+[34.235089] (-) TimerEvent: {}
+[34.335550] (-) TimerEvent: {}
+[34.436007] (-) TimerEvent: {}
+[34.536473] (-) TimerEvent: {}
+[34.636887] (-) TimerEvent: {}
+[34.737323] (-) TimerEvent: {}
+[34.837785] (-) TimerEvent: {}
+[34.938217] (-) TimerEvent: {}
+[35.038632] (-) TimerEvent: {}
+[35.139064] (-) TimerEvent: {}
+[35.239518] (-) TimerEvent: {}
+[35.340053] (-) TimerEvent: {}
+[35.440773] (-) TimerEvent: {}
+[35.541197] (-) TimerEvent: {}
+[35.641606] (-) TimerEvent: {}
+[35.742064] (-) TimerEvent: {}
+[35.842532] (-) TimerEvent: {}
+[35.942997] (-) TimerEvent: {}
+[36.043461] (-) TimerEvent: {}
+[36.143932] (-) TimerEvent: {}
+[36.244373] (-) TimerEvent: {}
+[36.344770] (-) TimerEvent: {}
+[36.445171] (-) TimerEvent: {}
+[36.545574] (-) TimerEvent: {}
+[36.645973] (-) TimerEvent: {}
+[36.746378] (-) TimerEvent: {}
+[36.846788] (-) TimerEvent: {}
+[36.947222] (-) TimerEvent: {}
+[37.013503] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/src/common/online_dufomap.cpp: In function \xe2\x80\x98std::vector<lio_sam_hesai::DufomapPoint> lio_sam_hesai::{anonymous}::CloudToDufomap(const PointCloud2&)\xe2\x80\x99:\n'}
+[37.013961] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/src/common/online_dufomap.cpp:64:8: error: \xe2\x80\x98fromROSMsg\xe2\x80\x99 is not a member of \xe2\x80\x98pcl\xe2\x80\x99\n'}
+[37.014104] (lio_sam_hesai) StderrLine: {'line': b'   64 |   pcl::fromROSMsg(message, cloud);\n'}
+[37.014219] (lio_sam_hesai) StderrLine: {'line': b'      |        ^~~~~~~~~~\n'}
+[37.038592] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/src/common/online_dufomap.cpp: In constructor \xe2\x80\x98lio_sam_hesai::OnlineDufomap::Impl::Impl(const DufomapConfig&, std::string)\xe2\x80\x99:\n'}
+[37.039065] (lio_sam_hesai) StderrLine: {'line': b'/home/robot/slam_ws/src/lio_sam_hesai/src/common/online_dufomap.cpp:159:9: error: class \xe2\x80\x98lio_sam_hesai::OnlineDufomap::Impl\xe2\x80\x99 does not have any field named \xe2\x80\x98keyframe_poses_\xe2\x80\x99\n'}
+[37.039215] (lio_sam_hesai) StderrLine: {'line': b'  159 |         keyframe_poses_(),\n'}
+[37.039322] (lio_sam_hesai) StderrLine: {'line': b'      |         ^~~~~~~~~~~~~~~\n'}
+[37.047383] (-) TimerEvent: {}
+[37.147798] (-) TimerEvent: {}
+[37.248468] (-) TimerEvent: {}
+[37.348868] (-) TimerEvent: {}
+[37.449255] (-) TimerEvent: {}
+[37.549633] (-) TimerEvent: {}
+[37.650017] (-) TimerEvent: {}
+[37.750413] (-) TimerEvent: {}
+[37.836049] (lio_sam_hesai) StderrLine: {'line': b'gmake[3]: *** [CMakeFiles/test_online_dufomap.dir/build.make:90: CMakeFiles/test_online_dufomap.dir/src/common/online_dufomap.cpp.o] Error 1\n'}
+[37.837594] (lio_sam_hesai) StderrLine: {'line': b'gmake[2]: *** [CMakeFiles/Makefile2:1465: CMakeFiles/test_online_dufomap.dir/all] Error 2\n'}
+[37.838289] (lio_sam_hesai) StderrLine: {'line': b'gmake[1]: *** [CMakeFiles/Makefile2:1472: CMakeFiles/test_online_dufomap.dir/rule] Error 2\n'}
+[37.838802] (lio_sam_hesai) StderrLine: {'line': b'gmake: *** [Makefile:738: test_online_dufomap] Error 2\n'}
+[37.844132] (lio_sam_hesai) CommandEnded: {'returncode': 2}
+[37.850850] (-) TimerEvent: {}
+[37.871889] (lio_sam_hesai) JobEnded: {'identifier': 'lio_sam_hesai', 'rc': 2}
+[37.882996] (-) EventReactorShutdown: {}

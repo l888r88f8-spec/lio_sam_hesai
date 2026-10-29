@@ -5,7 +5,9 @@
 # destinations are rejected before anything is written.
 #
 # Negative resolution values use the mapping node's configured map_save
-# resolutions. Zero keeps the existing meaning of no additional downsampling.
+# resolutions. Zero means no additional downsampling when ground-grid export
+# is disabled. With map_save.ground_grid.enable=true, saving ground requires
+# a positive ground_resolution (or a negative value to inherit a positive one).
 string destination
 float32 resolution
 float32 ground_resolution

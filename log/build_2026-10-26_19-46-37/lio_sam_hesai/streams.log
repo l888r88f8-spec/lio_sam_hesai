@@ -1,0 +1,803 @@
+[0.019s] Invoking command in '/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --build /home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai --target test_online_dufomap -- -j8 -l8
+[0.077s] -- Found glog    (include: /usr/include, library: /usr/lib/aarch64-linux-gnu/libglog.so)
+[0.080s] -- Searching for g2o ...
+[0.080s] -- Found g2o headers in: /opt/ros/humble/include
+[0.080s] -- Found libg2o: /opt/ros/humble/lib/aarch64-linux-gnu/libg2o_csparse_extension.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_core.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_stuff.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_types_slam2d.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_types_slam3d.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_solver_cholmod.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_solver_pcg.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_solver_csparse.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_solver_eigen.so;/opt/ros/humble/lib/aarch64-linux-gnu/libg2o_incremental.so
+[0.080s] -- Found ament_cmake: 1.3.14 (/opt/ros/humble/share/ament_cmake/cmake)
+[0.302s] -- Found rosidl_default_generators: 1.2.1 (/opt/ros/humble/share/rosidl_default_generators/cmake)
+[0.307s] -- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c
+[0.315s] -- Found rosidl_adapter: 3.1.8 (/opt/ros/humble/share/rosidl_adapter/cmake)
+[0.383s] -- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp
+[0.423s] -- Found rclcpp: 16.0.18 (/opt/ros/humble/share/rclcpp/cmake)
+[0.475s] -- Found rmw_implementation_cmake: 6.1.2 (/opt/ros/humble/share/rmw_implementation_cmake/cmake)
+[0.476s] -- Found rmw_fastrtps_cpp: 6.2.10 (/opt/ros/humble/share/rmw_fastrtps_cpp/cmake)
+[0.637s] -- Using RMW implementation 'rmw_fastrtps_cpp' as default
+[0.706s] -- Found rclpy: 3.3.21 (/opt/ros/humble/share/rclpy/cmake)
+[0.707s] -- Found cv_bridge: 3.2.1 (/opt/ros/humble/share/cv_bridge/cmake)
+[0.760s] -- Found nav_msgs: 4.9.1 (/opt/ros/humble/share/nav_msgs/cmake)
+[0.784s] -- Found diagnostic_msgs: 4.9.1 (/opt/ros/humble/share/diagnostic_msgs/cmake)
+[0.801s] -- Found visualization_msgs: 4.9.1 (/opt/ros/humble/share/visualization_msgs/cmake)
+[0.828s] -- Found pcl_conversions: 2.4.5 (/opt/ros/humble/share/pcl_conversions/cmake)
+[0.881s] -- Eigen found (include: /usr/include/eigen3, version: 3.4.0)
+[0.930s] -- FLANN found (include: /usr/include, lib: /usr/lib/aarch64-linux-gnu/libflann_cpp.so)
+[1.405s] -- OpenNI found (version: 1.5.4.0, include: /usr/include/ni, lib: /usr/lib/libOpenNI.so;libusb::libusb)
+[1.416s] -- OpenNI2 found (version: 2.2.0.33, include: /usr/include/openni2, lib: /usr/lib/aarch64-linux-gnu/libOpenNI2.so;libusb::libusb)
+[1.663s] -- Eigen found (include: /usr/include/eigen3, version: 3.4.0)
+[1.675s] -- OpenNI found (version: 1.5.4.0, include: /usr/include/ni, lib: /usr/lib/libOpenNI.so;libusb::libusb)
+[1.686s] -- OpenNI2 found (version: 2.2.0.33, include: /usr/include/openni2, lib: /usr/lib/aarch64-linux-gnu/libOpenNI2.so;libusb::libusb)
+[1.926s] -- Found Qhull version 8.0.2
+[2.166s] -- OpenNI found (version: 1.5.4.0, include: /usr/include/ni, lib: /usr/lib/libOpenNI.so;libusb::libusb)
+[2.403s] -- Found tf2: 0.25.19 (/opt/ros/humble/share/tf2/cmake)
+[2.408s] -- Found tf2_geometry_msgs: 0.25.19 (/opt/ros/humble/share/tf2_geometry_msgs/cmake)
+[2.413s] -- Found eigen3_cmake_module: 0.1.1 (/opt/ros/humble/share/eigen3_cmake_module/cmake)
+[2.415s] -- Ensuring Eigen3 include directory is part of orocos-kdl CMake target
+[2.525s] -- Found tf2_sensor_msgs: 0.25.19 (/opt/ros/humble/share/tf2_sensor_msgs/cmake)
+[2.531s] -- Found tf2_eigen: 0.25.19 (/opt/ros/humble/share/tf2_eigen/cmake)
+[2.541s] CMake Warning (dev) at CMakeLists.txt:38 (find_package):
+[2.541s]   Policy CMP0074 is not set: find_package uses <PackageName>_ROOT variables.
+[2.541s]   Run "cmake --help-policy CMP0074" for policy details.  Use the cmake_policy
+[2.542s]   command to set the policy and suppress this warning.
+[2.542s] 
+[2.542s]   CMake variable PCL_ROOT is set to:
+[2.542s] 
+[2.543s]     /usr
+[2.543s] 
+[2.543s]   For compatibility, CMake is ignoring the variable.
+[2.543s] This warning is for project developers.  Use -Wno-dev to suppress it.
+[2.543s] 
+[2.561s] -- Found pluginlib: 5.1.3 (/opt/ros/humble/share/pluginlib/cmake)
+[2.581s] -- Found rviz_common: 11.2.26 (/opt/ros/humble/share/rviz_common/cmake)
+[2.586s] -- Setting assimp_DIR to: '/opt/ros/humble/share/rviz_assimp_vendor/cmake/../../../opt/rviz_assimp_vendor/lib/cmake/assimp-4.1'
+[2.592s] -- Setting OGRE_DIR to: '/opt/ros/humble/share/rviz_ogre_vendor/cmake/../../../opt/rviz_ogre_vendor/lib/OGRE/cmake'
+[2.593s] -- Found OGRE
+[2.593s] --   static     : OFF
+[2.594s] --   components : HLMS;MeshLodGenerator;Overlay;Paging;Property;RTShaderSystem;Terrain;Volume
+[2.594s] --   plugins    : Plugin_BSPSceneManager;Plugin_OctreeSceneManager;Plugin_PCZSceneManager;Plugin_ParticleFX;RenderSystem_GL;RenderSystem_GL3Plus;Codec_STBI
+[2.594s] --   media      : /opt/ros/humble/opt/rviz_ogre_vendor/share/OGRE/Media
+[2.594s] -- OGRE_LIBRARIES: OgreHLMS;OgreMeshLodGenerator;OgreOverlay;OgrePaging;OgreProperty;OgreRTShaderSystem;OgreTerrain;OgreVolume;OgreMain
+[2.595s] -- OGRE_LIBRARY_DIRS: /opt/ros/humble/opt/rviz_ogre_vendor/lib
+[2.595s] -- OGRE_PLUGINS: Plugin_BSPSceneManager;Plugin_OctreeSceneManager;Plugin_PCZSceneManager;Plugin_ParticleFX;RenderSystem_GL;RenderSystem_GL3Plus;Codec_STBI
+[2.595s] -- OGRE_PLUGIN_DIR: /opt/ros/humble/opt/rviz_ogre_vendor/lib/OGRE
+[2.595s] -- rviz_ogre_vendor::OgreOverlay for IMPORTED_LOCATION_RELEASE: /opt/ros/humble/opt/rviz_ogre_vendor/lib/libOgreOverlay.so
+[2.596s] -- rviz_ogre_vendor::OgreOverlay for IMPORTED_LOCATION_DEBUG: /opt/ros/humble/opt/rviz_ogre_vendor/lib/libOgreOverlay.so
+[2.596s] -- rviz_ogre_vendor::OgreMain for IMPORTED_LOCATION_RELEASE: /opt/ros/humble/opt/rviz_ogre_vendor/lib/libOgreMain.so
+[2.596s] -- rviz_ogre_vendor::OgreMain for IMPORTED_LOCATION_DEBUG: /opt/ros/humble/opt/rviz_ogre_vendor/lib/libOgreMain.so
+[2.598s] -- Could not find freeimage library
+[2.692s] -- library: /usr/lib/aarch64-linux-gnu/libcurl.so
+[2.719s] -- Found GTSAM include directory: /usr/local/include
+[2.719s] -- Found GTSAM unstable include directory: /usr/local/include
+[2.720s] -- Found GTSAM libraries: /usr/local/lib/libgtsam.so;/usr/local/lib/libgtsam_unstable.so
+[3.292s] -- Found ament_cmake_ros: 0.10.0 (/opt/ros/humble/share/ament_cmake_ros/cmake)
+[3.796s] -- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c
+[4.508s] -- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp
+[4.548s] -- Found python_cmake_module: 0.10.0 (/opt/ros/humble/share/python_cmake_module/cmake)
+[4.588s] -- Using PYTHON_EXECUTABLE: /usr/bin/python3
+[4.588s] -- Using PYTHON_INCLUDE_DIRS: /usr/include/python3.10
+[4.588s] -- Using PYTHON_LIBRARIES: /usr/lib/aarch64-linux-gnu/libpython3.10.so
+[5.110s] -- Found ament_lint_auto: 0.12.15 (/opt/ros/humble/share/ament_lint_auto/cmake)
+[5.111s] -- Found gtest sources under '/opt/ros/humble/src/gtest_vendor': C++ tests using 'Google Test' will be built
+[5.297s] -- Added test 'copyright' to check source files copyright and LICENSE
+[5.630s] -- Added test 'cppcheck' to perform static code analysis on C / C++ code
+[5.644s] -- Configured cppcheck include dirs: /home/robot/slam_ws/src/lio_sam_hesai/include;/home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam;$<BUILD_INTERFACE:/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_generator_c>;$<BUILD_INTERFACE:/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_typesupport_fastrtps_c>;$<BUILD_INTERFACE:/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_typesupport_introspection_c>;$<BUILD_INTERFACE:/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_generator_cpp>;$<BUILD_INTERFACE:/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_typesupport_fastrtps_cpp>;$<BUILD_INTERFACE:/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_typesupport_introspection_cpp>;/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_generator_c;/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai/rosidl_generator_py;/home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/arm64;/home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include;/home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/compat;/home/robot/slam_ws/src/lio_sam_hesai/third_party/patchworkpp/cpp/common/include;/home/robot/slam_ws/src/lio_sam_hesai/third_party/patchworkpp/cpp/patchworkpp/include
+[5.644s] -- Configured cppcheck exclude dirs and/or files: 
+[5.982s] -- Added test 'cpplint' to check C / C++ code against the Google style
+[5.983s] -- Configured cpplint exclude dirs and/or files: 
+[6.025s] -- Added test 'flake8' to check Python code syntax and style conventions
+[6.113s] -- Added test 'lint_cmake' to check CMake code style
+[6.156s] -- Added test 'pep257' to check Python code against some of the docstring style conventions in PEP 257
+[6.491s] -- Added test 'uncrustify' to check C / C++ code style
+[6.491s] -- Configured uncrustify additional arguments: 
+[6.534s] -- Added test 'xmllint' to check XML markup files
+[6.537s] -- Configuring done
+[7.516s] -- Generating done
+[7.866s] -- Build files have been written to: /home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai
+[8.039s] Consolidate compiler generated dependencies of target gtest
+[8.039s] Consolidate compiler generated dependencies of target gtest_main
+[8.039s] Consolidate compiler generated dependencies of target lio_sam_hesai_dufomap_native
+[8.060s] [ 33%] Built target gtest
+[8.060s] [ 33%] Built target lio_sam_hesai_dufomap_native
+[8.060s] [ 33%] Generating C++ code for ROS interfaces
+[8.061s] [ 50%] Built target gtest_main
+[8.896s] [ 50%] Built target lio_sam_hesai__cpp
+[8.918s] [ 66%] Generating C++ type support dispatch for ROS interfaces
+[9.622s] Consolidate compiler generated dependencies of target lio_sam_hesai__rosidl_typesupport_cpp
+[9.644s] [ 66%] Building CXX object CMakeFiles/lio_sam_hesai__rosidl_typesupport_cpp.dir/rosidl_typesupport_cpp/lio_sam_hesai/srv/save_map_options__type_support.cpp.o
+[9.645s] [ 66%] Building CXX object CMakeFiles/lio_sam_hesai__rosidl_typesupport_cpp.dir/rosidl_typesupport_cpp/lio_sam_hesai/msg/cloud_info__type_support.cpp.o
+[10.186s] [ 83%] Linking CXX shared library liblio_sam_hesai__rosidl_typesupport_cpp.so
+[10.273s] [ 83%] Built target lio_sam_hesai__rosidl_typesupport_cpp
+[10.309s] Consolidate compiler generated dependencies of target test_online_dufomap
+[10.335s] [ 83%] Building CXX object CMakeFiles/test_online_dufomap.dir/test/test_online_dufomap.cpp.o
+[10.338s] [100%] Building CXX object CMakeFiles/test_online_dufomap.dir/src/common/online_dufomap.cpp.o
+[16.816s] /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:26:22: error: ‘DufomapConfig’ has not been declared in ‘lio_sam_hesai’
+[16.816s]    26 | using lio_sam_hesai::DufomapConfig;
+[16.816s]       |                      ^~~~~~~~~~~~~
+[16.895s] /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp: In function ‘std::shared_ptr<sensor_msgs::msg::PointCloud2_<std::allocator<void> > > {anonymous}::MakeCloud(const std::vector<lio_sam_hesai::DufomapPoint>&)’:
+[16.895s] /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:59:8: error: ‘toROSMsg’ is not a member of ‘pcl’
+[16.895s]    59 |   pcl::toROSMsg(cloud, *message);
+[16.895s]       |        ^~~~~~~~
+[17.442s] In file included from /usr/include/c++/11/memory:63,
+[17.444s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.445s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.445s] /usr/include/c++/11/bits/stl_algobase.h: In instantiation of ‘static bool std::__equal<_BoolType>::equal(_II1, _II1, _II2) [with _II1 = const lio_sam_hesai::DufomapPoint*; _II2 = const lio_sam_hesai::DufomapPoint*; bool _BoolType = false]’:
+[17.445s] /usr/include/c++/11/bits/stl_algobase.h:1211:43:   required from ‘bool std::__equal_aux1(_II1, _II1, _II2) [with _II1 = const lio_sam_hesai::DufomapPoint*; _II2 = const lio_sam_hesai::DufomapPoint*]’
+[17.445s] /usr/include/c++/11/bits/stl_algobase.h:1219:31:   required from ‘bool std::__equal_aux(_II1, _II1, _II2) [with _II1 = __gnu_cxx::__normal_iterator<const lio_sam_hesai::DufomapPoint*, std::vector<lio_sam_hesai::DufomapPoint> >; _II2 = __gnu_cxx::__normal_iterator<const lio_sam_hesai::DufomapPoint*, std::vector<lio_sam_hesai::DufomapPoint> >]’
+[17.445s] /usr/include/c++/11/bits/stl_algobase.h:1556:30:   required from ‘bool std::equal(_II1, _II1, _II2) [with _II1 = __gnu_cxx::__normal_iterator<const lio_sam_hesai::DufomapPoint*, std::vector<lio_sam_hesai::DufomapPoint> >; _II2 = __gnu_cxx::__normal_iterator<const lio_sam_hesai::DufomapPoint*, std::vector<lio_sam_hesai::DufomapPoint> >]’
+[17.445s] /usr/include/c++/11/bits/stl_vector.h:1894:21:   required from ‘bool std::operator==(const std::vector<_Tp, _Alloc>&, const std::vector<_Tp, _Alloc>&) [with _Tp = lio_sam_hesai::DufomapPoint; _Alloc = std::allocator<lio_sam_hesai::DufomapPoint>]’
+[17.446s] /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:1527:11:   required from ‘testing::AssertionResult testing::internal::CmpHelperEQ(const char*, const char*, const T1&, const T2&) [with T1 = std::vector<lio_sam_hesai::DufomapPoint>; T2 = std::vector<lio_sam_hesai::DufomapPoint>]’
+[17.446s] /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:1554:23:   required from ‘static testing::AssertionResult testing::internal::EqHelper::Compare(const char*, const char*, const T1&, const T2&) [with T1 = std::vector<lio_sam_hesai::DufomapPoint>; T2 = std::vector<lio_sam_hesai::DufomapPoint>; typename std::enable_if<((! std::is_integral<_Tp>::value) || (! std::is_pointer<_Dp>::value))>::type* <anonymous> = 0]’
+[17.446s] /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:203:3:   required from here
+[17.446s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: error: no match for ‘operator==’ (operand types are ‘const lio_sam_hesai::DufomapPoint’ and ‘const lio_sam_hesai::DufomapPoint’)
+[17.446s]  1162 |             if (!(*__first1 == *__first2))
+[17.446s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.446s] In file included from /usr/include/c++/11/bits/stl_algobase.h:64,
+[17.446s]                  from /usr/include/c++/11/memory:63,
+[17.446s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.447s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.447s] /usr/include/c++/11/bits/stl_pair.h:466:5: note: candidate: ‘template<class _T1, class _T2> constexpr bool std::operator==(const std::pair<_T1, _T2>&, const std::pair<_T1, _T2>&)’
+[17.447s]   466 |     operator==(const pair<_T1, _T2>& __x, const pair<_T1, _T2>& __y)
+[17.447s]       |     ^~~~~~~~
+[17.447s] /usr/include/c++/11/bits/stl_pair.h:466:5: note:   template argument deduction/substitution failed:
+[17.447s] In file included from /usr/include/c++/11/memory:63,
+[17.447s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.447s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.447s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘const lio_sam_hesai::DufomapPoint’ is not derived from ‘const std::pair<_T1, _T2>’
+[17.448s]  1162 |             if (!(*__first1 == *__first2))
+[17.448s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.448s] In file included from /usr/include/c++/11/bits/stl_algobase.h:67,
+[17.448s]                  from /usr/include/c++/11/memory:63,
+[17.448s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.448s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.448s] /usr/include/c++/11/bits/stl_iterator.h:420:5: note: candidate: ‘template<class _Iterator> constexpr bool std::operator==(const std::reverse_iterator<_Iterator>&, const std::reverse_iterator<_Iterator>&)’
+[17.448s]   420 |     operator==(const reverse_iterator<_Iterator>& __x,
+[17.448s]       |     ^~~~~~~~
+[17.449s] /usr/include/c++/11/bits/stl_iterator.h:420:5: note:   template argument deduction/substitution failed:
+[17.449s] In file included from /usr/include/c++/11/memory:63,
+[17.449s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.449s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.449s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘const lio_sam_hesai::DufomapPoint’ is not derived from ‘const std::reverse_iterator<_Iterator>’
+[17.449s]  1162 |             if (!(*__first1 == *__first2))
+[17.449s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.449s] In file included from /usr/include/c++/11/bits/stl_algobase.h:67,
+[17.449s]                  from /usr/include/c++/11/memory:63,
+[17.449s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.449s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.450s] /usr/include/c++/11/bits/stl_iterator.h:459:5: note: candidate: ‘template<class _IteratorL, class _IteratorR> constexpr bool std::operator==(const std::reverse_iterator<_Iterator>&, const std::reverse_iterator<_IteratorR>&)’
+[17.450s]   459 |     operator==(const reverse_iterator<_IteratorL>& __x,
+[17.450s]       |     ^~~~~~~~
+[17.450s] /usr/include/c++/11/bits/stl_iterator.h:459:5: note:   template argument deduction/substitution failed:
+[17.450s] In file included from /usr/include/c++/11/memory:63,
+[17.450s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.450s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.450s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘const lio_sam_hesai::DufomapPoint’ is not derived from ‘const std::reverse_iterator<_Iterator>’
+[17.450s]  1162 |             if (!(*__first1 == *__first2))
+[17.450s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.451s] In file included from /usr/include/c++/11/bits/stl_algobase.h:67,
+[17.451s]                  from /usr/include/c++/11/memory:63,
+[17.451s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.451s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.451s] /usr/include/c++/11/bits/stl_iterator.h:1585:5: note: candidate: ‘template<class _IteratorL, class _IteratorR> constexpr bool std::operator==(const std::move_iterator<_IteratorL>&, const std::move_iterator<_IteratorR>&)’
+[17.451s]  1585 |     operator==(const move_iterator<_IteratorL>& __x,
+[17.451s]       |     ^~~~~~~~
+[17.451s] /usr/include/c++/11/bits/stl_iterator.h:1585:5: note:   template argument deduction/substitution failed:
+[17.451s] In file included from /usr/include/c++/11/memory:63,
+[17.451s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.451s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.452s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘const lio_sam_hesai::DufomapPoint’ is not derived from ‘const std::move_iterator<_IteratorL>’
+[17.452s]  1162 |             if (!(*__first1 == *__first2))
+[17.452s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.452s] In file included from /usr/include/c++/11/bits/stl_algobase.h:67,
+[17.452s]                  from /usr/include/c++/11/memory:63,
+[17.452s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.452s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.452s] /usr/include/c++/11/bits/stl_iterator.h:1648:5: note: candidate: ‘template<class _Iterator> constexpr bool std::operator==(const std::move_iterator<_IteratorL>&, const std::move_iterator<_IteratorL>&)’
+[17.452s]  1648 |     operator==(const move_iterator<_Iterator>& __x,
+[17.452s]       |     ^~~~~~~~
+[17.453s] /usr/include/c++/11/bits/stl_iterator.h:1648:5: note:   template argument deduction/substitution failed:
+[17.453s] In file included from /usr/include/c++/11/memory:63,
+[17.453s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.453s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.453s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘const lio_sam_hesai::DufomapPoint’ is not derived from ‘const std::move_iterator<_IteratorL>’
+[17.453s]  1162 |             if (!(*__first1 == *__first2))
+[17.453s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.453s] In file included from /usr/include/c++/11/memory:64,
+[17.454s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.454s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.454s] /usr/include/c++/11/bits/allocator.h:218:5: note: candidate: ‘template<class _T1, class _T2> bool std::operator==(const std::allocator<_Tp1>&, const std::allocator<_T2>&)’
+[17.454s]   218 |     operator==(const allocator<_T1>&, const allocator<_T2>&)
+[17.454s]       |     ^~~~~~~~
+[17.454s] /usr/include/c++/11/bits/allocator.h:218:5: note:   template argument deduction/substitution failed:
+[17.454s] In file included from /usr/include/c++/11/memory:63,
+[17.454s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.454s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.454s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘const lio_sam_hesai::DufomapPoint’ is not derived from ‘const std::allocator<_Tp1>’
+[17.455s]  1162 |             if (!(*__first1 == *__first2))
+[17.455s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.455s] In file included from /usr/include/c++/11/tuple:39,
+[17.455s]                  from /usr/include/c++/11/bits/unique_ptr.h:37,
+[17.455s]                  from /usr/include/c++/11/memory:76,
+[17.455s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.455s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.455s] /usr/include/c++/11/array:276:5: note: candidate: ‘template<class _Tp, long unsigned int _Nm> bool std::operator==(const std::array<_Tp, _Nm>&, const std::array<_Tp, _Nm>&)’
+[17.456s]   276 |     operator==(const array<_Tp, _Nm>& __one, const array<_Tp, _Nm>& __two)
+[17.456s]       |     ^~~~~~~~
+[17.456s] /usr/include/c++/11/array:276:5: note:   template argument deduction/substitution failed:
+[17.456s] In file included from /usr/include/c++/11/memory:63,
+[17.456s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.456s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.456s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘const lio_sam_hesai::DufomapPoint’ is not derived from ‘const std::array<_Tp, _Nm>’
+[17.456s]  1162 |             if (!(*__first1 == *__first2))
+[17.456s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.457s] In file included from /usr/include/c++/11/bits/unique_ptr.h:37,
+[17.457s]                  from /usr/include/c++/11/memory:76,
+[17.457s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.457s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.457s] /usr/include/c++/11/tuple:1524:5: note: candidate: ‘template<class ... _TElements, class ... _UElements> constexpr bool std::operator==(const std::tuple<_Tps ...>&, const std::tuple<_UTypes ...>&)’
+[17.457s]  1524 |     operator==(const tuple<_TElements...>& __t,
+[17.457s]       |     ^~~~~~~~
+[17.457s] /usr/include/c++/11/tuple:1524:5: note:   template argument deduction/substitution failed:
+[17.457s] In file included from /usr/include/c++/11/memory:63,
+[17.457s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.458s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.458s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘const lio_sam_hesai::DufomapPoint’ is not derived from ‘const std::tuple<_Tps ...>’
+[17.458s]  1162 |             if (!(*__first1 == *__first2))
+[17.458s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.458s] In file included from /usr/include/c++/11/memory:76,
+[17.458s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.458s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.458s] /usr/include/c++/11/bits/unique_ptr.h:753:5: note: candidate: ‘template<class _Tp, class _Dp, class _Up, class _Ep> bool std::operator==(const std::unique_ptr<_Tp, _Dp>&, const std::unique_ptr<_Up, _Ep>&)’
+[17.458s]   753 |     operator==(const unique_ptr<_Tp, _Dp>& __x,
+[17.459s]       |     ^~~~~~~~
+[17.459s] /usr/include/c++/11/bits/unique_ptr.h:753:5: note:   template argument deduction/substitution failed:
+[17.459s] In file included from /usr/include/c++/11/memory:63,
+[17.459s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.459s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.459s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘const lio_sam_hesai::DufomapPoint’ is not derived from ‘const std::unique_ptr<_Tp, _Dp>’
+[17.459s]  1162 |             if (!(*__first1 == *__first2))
+[17.459s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.459s] In file included from /usr/include/c++/11/memory:76,
+[17.460s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.460s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.460s] /usr/include/c++/11/bits/unique_ptr.h:760:5: note: candidate: ‘template<class _Tp, class _Dp> bool std::operator==(const std::unique_ptr<_Tp, _Dp>&, std::nullptr_t)’
+[17.460s]   760 |     operator==(const unique_ptr<_Tp, _Dp>& __x, nullptr_t) noexcept
+[17.460s]       |     ^~~~~~~~
+[17.460s] /usr/include/c++/11/bits/unique_ptr.h:760:5: note:   template argument deduction/substitution failed:
+[17.460s] In file included from /usr/include/c++/11/memory:63,
+[17.460s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.460s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.461s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘const lio_sam_hesai::DufomapPoint’ is not derived from ‘const std::unique_ptr<_Tp, _Dp>’
+[17.461s]  1162 |             if (!(*__first1 == *__first2))
+[17.461s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.461s] In file included from /usr/include/c++/11/memory:76,
+[17.461s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.461s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.461s] /usr/include/c++/11/bits/unique_ptr.h:767:5: note: candidate: ‘template<class _Tp, class _Dp> bool std::operator==(std::nullptr_t, const std::unique_ptr<_Tp, _Dp>&)’
+[17.461s]   767 |     operator==(nullptr_t, const unique_ptr<_Tp, _Dp>& __x) noexcept
+[17.462s]       |     ^~~~~~~~
+[17.462s] /usr/include/c++/11/bits/unique_ptr.h:767:5: note:   template argument deduction/substitution failed:
+[17.462s] In file included from /usr/include/c++/11/memory:63,
+[17.462s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.462s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.462s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘const lio_sam_hesai::DufomapPoint’ is not derived from ‘const std::unique_ptr<_Tp, _Dp>’
+[17.462s]  1162 |             if (!(*__first1 == *__first2))
+[17.462s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.462s] In file included from /usr/include/c++/11/iosfwd:40,
+[17.462s]                  from /usr/include/c++/11/bits/shared_ptr.h:52,
+[17.463s]                  from /usr/include/c++/11/memory:77,
+[17.463s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.463s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.463s] /usr/include/c++/11/bits/postypes.h:222:5: note: candidate: ‘template<class _StateT> bool std::operator==(const std::fpos<_StateT>&, const std::fpos<_StateT>&)’
+[17.463s]   222 |     operator==(const fpos<_StateT>& __lhs, const fpos<_StateT>& __rhs)
+[17.463s]       |     ^~~~~~~~
+[17.463s] /usr/include/c++/11/bits/postypes.h:222:5: note:   template argument deduction/substitution failed:
+[17.463s] In file included from /usr/include/c++/11/memory:63,
+[17.463s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.464s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.464s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘const lio_sam_hesai::DufomapPoint’ is not derived from ‘const std::fpos<_StateT>’
+[17.464s]  1162 |             if (!(*__first1 == *__first2))
+[17.464s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.464s] In file included from /usr/include/c++/11/bits/shared_ptr.h:53,
+[17.464s]                  from /usr/include/c++/11/memory:77,
+[17.464s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.464s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.465s] /usr/include/c++/11/bits/shared_ptr_base.h:1410:5: note: candidate: ‘template<class _Tp1, class _Tp2, __gnu_cxx::_Lock_policy _Lp> bool std::operator==(const std::__shared_ptr<_Tp1, _Lp>&, const std::__shared_ptr<_Tp2, _Lp>&)’
+[17.465s]  1410 |     operator==(const __shared_ptr<_Tp1, _Lp>& __a,
+[17.465s]       |     ^~~~~~~~
+[17.465s] /usr/include/c++/11/bits/shared_ptr_base.h:1410:5: note:   template argument deduction/substitution failed:
+[17.465s] In file included from /usr/include/c++/11/memory:63,
+[17.465s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.465s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.465s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘const lio_sam_hesai::DufomapPoint’ is not derived from ‘const std::__shared_ptr<_Tp1, _Lp>’
+[17.466s]  1162 |             if (!(*__first1 == *__first2))
+[17.466s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.466s] In file included from /usr/include/c++/11/bits/shared_ptr.h:53,
+[17.466s]                  from /usr/include/c++/11/memory:77,
+[17.466s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.466s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.466s] /usr/include/c++/11/bits/shared_ptr_base.h:1416:5: note: candidate: ‘template<class _Tp, __gnu_cxx::_Lock_policy _Lp> bool std::operator==(const std::__shared_ptr<_Tp, _Lp>&, std::nullptr_t)’
+[17.466s]  1416 |     operator==(const __shared_ptr<_Tp, _Lp>& __a, nullptr_t) noexcept
+[17.466s]       |     ^~~~~~~~
+[17.466s] /usr/include/c++/11/bits/shared_ptr_base.h:1416:5: note:   template argument deduction/substitution failed:
+[17.466s] In file included from /usr/include/c++/11/memory:63,
+[17.467s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.467s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.467s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘const lio_sam_hesai::DufomapPoint’ is not derived from ‘const std::__shared_ptr<_Tp, _Lp>’
+[17.467s]  1162 |             if (!(*__first1 == *__first2))
+[17.467s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.467s] In file included from /usr/include/c++/11/bits/shared_ptr.h:53,
+[17.467s]                  from /usr/include/c++/11/memory:77,
+[17.467s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.467s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.468s] /usr/include/c++/11/bits/shared_ptr_base.h:1436:5: note: candidate: ‘template<class _Tp, __gnu_cxx::_Lock_policy _Lp> bool std::operator==(std::nullptr_t, const std::__shared_ptr<_Tp, _Lp>&)’
+[17.468s]  1436 |     operator==(nullptr_t, const __shared_ptr<_Tp, _Lp>& __a) noexcept
+[17.468s]       |     ^~~~~~~~
+[17.468s] /usr/include/c++/11/bits/shared_ptr_base.h:1436:5: note:   template argument deduction/substitution failed:
+[17.468s] In file included from /usr/include/c++/11/memory:63,
+[17.468s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.468s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.468s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘const lio_sam_hesai::DufomapPoint’ is not derived from ‘const std::__shared_ptr<_Tp, _Lp>’
+[17.468s]  1162 |             if (!(*__first1 == *__first2))
+[17.469s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.469s] In file included from /usr/include/c++/11/memory:77,
+[17.469s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.469s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.469s] /usr/include/c++/11/bits/shared_ptr.h:437:5: note: candidate: ‘template<class _Tp, class _Up> bool std::operator==(const std::shared_ptr<_Tp>&, const std::shared_ptr<_Tp>&)’
+[17.469s]   437 |     operator==(const shared_ptr<_Tp>& __a, const shared_ptr<_Up>& __b) noexcept
+[17.469s]       |     ^~~~~~~~
+[17.469s] /usr/include/c++/11/bits/shared_ptr.h:437:5: note:   template argument deduction/substitution failed:
+[17.469s] In file included from /usr/include/c++/11/memory:63,
+[17.469s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.469s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.470s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘const lio_sam_hesai::DufomapPoint’ is not derived from ‘const std::shared_ptr<_Tp>’
+[17.470s]  1162 |             if (!(*__first1 == *__first2))
+[17.470s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.470s] In file included from /usr/include/c++/11/memory:77,
+[17.470s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.470s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.470s] /usr/include/c++/11/bits/shared_ptr.h:443:5: note: candidate: ‘template<class _Tp> bool std::operator==(const std::shared_ptr<_Tp>&, std::nullptr_t)’
+[17.470s]   443 |     operator==(const shared_ptr<_Tp>& __a, nullptr_t) noexcept
+[17.470s]       |     ^~~~~~~~
+[17.470s] /usr/include/c++/11/bits/shared_ptr.h:443:5: note:   template argument deduction/substitution failed:
+[17.471s] In file included from /usr/include/c++/11/memory:63,
+[17.471s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.471s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.471s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘const lio_sam_hesai::DufomapPoint’ is not derived from ‘const std::shared_ptr<_Tp>’
+[17.471s]  1162 |             if (!(*__first1 == *__first2))
+[17.471s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.471s] In file included from /usr/include/c++/11/memory:77,
+[17.471s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.472s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.472s] /usr/include/c++/11/bits/shared_ptr.h:464:5: note: candidate: ‘template<class _Tp> bool std::operator==(std::nullptr_t, const std::shared_ptr<_Tp>&)’
+[17.472s]   464 |     operator==(nullptr_t, const shared_ptr<_Tp>& __a) noexcept
+[17.472s]       |     ^~~~~~~~
+[17.472s] /usr/include/c++/11/bits/shared_ptr.h:464:5: note:   template argument deduction/substitution failed:
+[17.472s] In file included from /usr/include/c++/11/memory:63,
+[17.472s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.472s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.472s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘const lio_sam_hesai::DufomapPoint’ is not derived from ‘const std::shared_ptr<_Tp>’
+[17.472s]  1162 |             if (!(*__first1 == *__first2))
+[17.473s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.473s] In file included from /usr/include/c++/11/bits/basic_string.h:48,
+[17.473s]                  from /usr/include/c++/11/string:55,
+[17.473s]                  from /usr/include/c++/11/bits/locale_classes.h:40,
+[17.473s]                  from /usr/include/c++/11/bits/ios_base.h:41,
+[17.473s]                  from /usr/include/c++/11/ios:42,
+[17.473s]                  from /usr/include/c++/11/ostream:38,
+[17.473s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:58,
+[17.473s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.474s] /usr/include/c++/11/string_view:535:5: note: candidate: ‘template<class _CharT, class _Traits> constexpr bool std::operator==(std::basic_string_view<_CharT, _Traits>, std::basic_string_view<_CharT, _Traits>)’
+[17.474s]   535 |     operator==(basic_string_view<_CharT, _Traits> __x,
+[17.474s]       |     ^~~~~~~~
+[17.474s] /usr/include/c++/11/string_view:535:5: note:   template argument deduction/substitution failed:
+[17.474s] In file included from /usr/include/c++/11/memory:63,
+[17.474s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.474s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.474s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘lio_sam_hesai::DufomapPoint’ is not derived from ‘std::basic_string_view<_CharT, _Traits>’
+[17.474s]  1162 |             if (!(*__first1 == *__first2))
+[17.475s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.475s] In file included from /usr/include/c++/11/bits/basic_string.h:48,
+[17.475s]                  from /usr/include/c++/11/string:55,
+[17.475s]                  from /usr/include/c++/11/bits/locale_classes.h:40,
+[17.475s]                  from /usr/include/c++/11/bits/ios_base.h:41,
+[17.475s]                  from /usr/include/c++/11/ios:42,
+[17.475s]                  from /usr/include/c++/11/ostream:38,
+[17.475s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:58,
+[17.475s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.475s] /usr/include/c++/11/string_view:541:5: note: candidate: ‘template<class _CharT, class _Traits> constexpr bool std::operator==(std::basic_string_view<_CharT, _Traits>, std::__type_identity_t<std::basic_string_view<_CharT, _Traits> >)’
+[17.475s]   541 |     operator==(basic_string_view<_CharT, _Traits> __x,
+[17.476s]       |     ^~~~~~~~
+[17.476s] /usr/include/c++/11/string_view:541:5: note:   template argument deduction/substitution failed:
+[17.476s] In file included from /usr/include/c++/11/memory:63,
+[17.476s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.476s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.476s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘lio_sam_hesai::DufomapPoint’ is not derived from ‘std::basic_string_view<_CharT, _Traits>’
+[17.476s]  1162 |             if (!(*__first1 == *__first2))
+[17.476s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.476s] In file included from /usr/include/c++/11/bits/basic_string.h:48,
+[17.477s]                  from /usr/include/c++/11/string:55,
+[17.477s]                  from /usr/include/c++/11/bits/locale_classes.h:40,
+[17.477s]                  from /usr/include/c++/11/bits/ios_base.h:41,
+[17.477s]                  from /usr/include/c++/11/ios:42,
+[17.477s]                  from /usr/include/c++/11/ostream:38,
+[17.477s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:58,
+[17.477s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.477s] /usr/include/c++/11/string_view:564:5: note: candidate: ‘template<class _CharT, class _Traits> constexpr bool std::operator==(std::__type_identity_t<std::basic_string_view<_CharT, _Traits> >, std::basic_string_view<_CharT, _Traits>)’
+[17.478s]   564 |     operator==(__type_identity_t<basic_string_view<_CharT, _Traits>> __x,
+[17.478s]       |     ^~~~~~~~
+[17.478s] /usr/include/c++/11/string_view:564:5: note:   template argument deduction/substitution failed:
+[17.478s] In file included from /usr/include/c++/11/memory:63,
+[17.478s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.478s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.478s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘lio_sam_hesai::DufomapPoint’ is not derived from ‘std::basic_string_view<_CharT, _Traits>’
+[17.478s]  1162 |             if (!(*__first1 == *__first2))
+[17.478s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.478s] In file included from /usr/include/c++/11/string:55,
+[17.478s]                  from /usr/include/c++/11/bits/locale_classes.h:40,
+[17.479s]                  from /usr/include/c++/11/bits/ios_base.h:41,
+[17.479s]                  from /usr/include/c++/11/ios:42,
+[17.479s]                  from /usr/include/c++/11/ostream:38,
+[17.479s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:58,
+[17.479s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.479s] /usr/include/c++/11/bits/basic_string.h:6226:5: note: candidate: ‘template<class _CharT, class _Traits, class _Alloc> bool std::operator==(const std::__cxx11::basic_string<_CharT, _Traits, _Allocator>&, const std::__cxx11::basic_string<_CharT, _Traits, _Allocator>&)’
+[17.479s]  6226 |     operator==(const basic_string<_CharT, _Traits, _Alloc>& __lhs,
+[17.479s]       |     ^~~~~~~~
+[17.479s] /usr/include/c++/11/bits/basic_string.h:6226:5: note:   template argument deduction/substitution failed:
+[17.479s] In file included from /usr/include/c++/11/memory:63,
+[17.479s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.480s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.480s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘const lio_sam_hesai::DufomapPoint’ is not derived from ‘const std::__cxx11::basic_string<_CharT, _Traits, _Allocator>’
+[17.480s]  1162 |             if (!(*__first1 == *__first2))
+[17.480s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.480s] In file included from /usr/include/c++/11/string:55,
+[17.480s]                  from /usr/include/c++/11/bits/locale_classes.h:40,
+[17.480s]                  from /usr/include/c++/11/bits/ios_base.h:41,
+[17.480s]                  from /usr/include/c++/11/ios:42,
+[17.480s]                  from /usr/include/c++/11/ostream:38,
+[17.480s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:58,
+[17.481s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.481s] /usr/include/c++/11/bits/basic_string.h:6234:5: note: candidate: ‘template<class _CharT> typename __gnu_cxx::__enable_if<std::__is_char<_Tp>::__value, bool>::__type std::operator==(const std::__cxx11::basic_string<_CharT>&, const std::__cxx11::basic_string<_CharT>&)’
+[17.481s]  6234 |     operator==(const basic_string<_CharT>& __lhs,
+[17.481s]       |     ^~~~~~~~
+[17.481s] /usr/include/c++/11/bits/basic_string.h:6234:5: note:   template argument deduction/substitution failed:
+[17.481s] In file included from /usr/include/c++/11/memory:63,
+[17.481s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.481s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.481s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘const lio_sam_hesai::DufomapPoint’ is not derived from ‘const std::__cxx11::basic_string<_CharT>’
+[17.481s]  1162 |             if (!(*__first1 == *__first2))
+[17.481s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.482s] In file included from /usr/include/c++/11/string:55,
+[17.482s]                  from /usr/include/c++/11/bits/locale_classes.h:40,
+[17.482s]                  from /usr/include/c++/11/bits/ios_base.h:41,
+[17.482s]                  from /usr/include/c++/11/ios:42,
+[17.482s]                  from /usr/include/c++/11/ostream:38,
+[17.482s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:58,
+[17.482s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.482s] /usr/include/c++/11/bits/basic_string.h:6248:5: note: candidate: ‘template<class _CharT, class _Traits, class _Alloc> bool std::operator==(const std::__cxx11::basic_string<_CharT, _Traits, _Allocator>&, const _CharT*)’
+[17.482s]  6248 |     operator==(const basic_string<_CharT, _Traits, _Alloc>& __lhs,
+[17.482s]       |     ^~~~~~~~
+[17.482s] /usr/include/c++/11/bits/basic_string.h:6248:5: note:   template argument deduction/substitution failed:
+[17.483s] In file included from /usr/include/c++/11/memory:63,
+[17.483s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.483s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.483s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘const lio_sam_hesai::DufomapPoint’ is not derived from ‘const std::__cxx11::basic_string<_CharT, _Traits, _Allocator>’
+[17.483s]  1162 |             if (!(*__first1 == *__first2))
+[17.483s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.483s] In file included from /usr/include/c++/11/string:55,
+[17.483s]                  from /usr/include/c++/11/bits/locale_classes.h:40,
+[17.483s]                  from /usr/include/c++/11/bits/ios_base.h:41,
+[17.483s]                  from /usr/include/c++/11/ios:42,
+[17.483s]                  from /usr/include/c++/11/ostream:38,
+[17.484s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:58,
+[17.484s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.484s] /usr/include/c++/11/bits/basic_string.h:6289:5: note: candidate: ‘template<class _CharT, class _Traits, class _Alloc> bool std::operator==(const _CharT*, const std::__cxx11::basic_string<_CharT, _Traits, _Allocator>&)’
+[17.484s]  6289 |     operator==(const _CharT* __lhs,
+[17.484s]       |     ^~~~~~~~
+[17.484s] /usr/include/c++/11/bits/basic_string.h:6289:5: note:   template argument deduction/substitution failed:
+[17.484s] In file included from /usr/include/c++/11/memory:63,
+[17.484s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.484s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.484s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   mismatched types ‘const _CharT*’ and ‘lio_sam_hesai::DufomapPoint’
+[17.484s]  1162 |             if (!(*__first1 == *__first2))
+[17.485s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.485s] In file included from /usr/include/c++/11/bits/locale_facets.h:48,
+[17.485s]                  from /usr/include/c++/11/bits/basic_ios.h:37,
+[17.485s]                  from /usr/include/c++/11/ios:44,
+[17.485s]                  from /usr/include/c++/11/ostream:38,
+[17.485s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:58,
+[17.485s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.485s] /usr/include/c++/11/bits/streambuf_iterator.h:226:5: note: candidate: ‘template<class _CharT, class _Traits> bool std::operator==(const std::istreambuf_iterator<_CharT, _Traits>&, const std::istreambuf_iterator<_CharT, _Traits>&)’
+[17.485s]   226 |     operator==(const istreambuf_iterator<_CharT, _Traits>& __a,
+[17.485s]       |     ^~~~~~~~
+[17.486s] /usr/include/c++/11/bits/streambuf_iterator.h:226:5: note:   template argument deduction/substitution failed:
+[17.486s] In file included from /usr/include/c++/11/memory:63,
+[17.486s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.486s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.486s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘const lio_sam_hesai::DufomapPoint’ is not derived from ‘const std::istreambuf_iterator<_CharT, _Traits>’
+[17.486s]  1162 |             if (!(*__first1 == *__first2))
+[17.486s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.486s] In file included from /usr/include/c++/11/vector:67,
+[17.486s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:60,
+[17.486s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.486s] /usr/include/c++/11/bits/stl_vector.h:1892:5: note: candidate: ‘template<class _Tp, class _Alloc> bool std::operator==(const std::vector<_Tp, _Alloc>&, const std::vector<_Tp, _Alloc>&)’
+[17.487s]  1892 |     operator==(const vector<_Tp, _Alloc>& __x, const vector<_Tp, _Alloc>& __y)
+[17.487s]       |     ^~~~~~~~
+[17.487s] /usr/include/c++/11/bits/stl_vector.h:1892:5: note:   template argument deduction/substitution failed:
+[17.487s] In file included from /usr/include/c++/11/memory:63,
+[17.487s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.487s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.487s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘const lio_sam_hesai::DufomapPoint’ is not derived from ‘const std::vector<_Tp, _Alloc>’
+[17.487s]  1162 |             if (!(*__first1 == *__first2))
+[17.487s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.487s] In file included from /usr/include/c++/11/functional:59,
+[17.488s]                  from /usr/include/c++/11/pstl/glue_algorithm_defs.h:13,
+[17.488s]                  from /usr/include/c++/11/algorithm:74,
+[17.488s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/internal/gtest-port.h:264,
+[17.488s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/internal/gtest-internal.h:40,
+[17.488s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:62,
+[17.488s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.488s] /usr/include/c++/11/bits/std_function.h:718:5: note: candidate: ‘template<class _Res, class ... _Args> bool std::operator==(const std::function<_Res(_ArgTypes ...)>&, std::nullptr_t)’
+[17.488s]   718 |     operator==(const function<_Res(_Args...)>& __f, nullptr_t) noexcept
+[17.488s]       |     ^~~~~~~~
+[17.488s] /usr/include/c++/11/bits/std_function.h:718:5: note:   template argument deduction/substitution failed:
+[17.488s] In file included from /usr/include/c++/11/memory:63,
+[17.489s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.489s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.489s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘const lio_sam_hesai::DufomapPoint’ is not derived from ‘const std::function<_Res(_ArgTypes ...)>’
+[17.489s]  1162 |             if (!(*__first1 == *__first2))
+[17.489s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.489s] In file included from /usr/include/c++/11/functional:59,
+[17.489s]                  from /usr/include/c++/11/pstl/glue_algorithm_defs.h:13,
+[17.489s]                  from /usr/include/c++/11/algorithm:74,
+[17.489s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/internal/gtest-port.h:264,
+[17.490s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/internal/gtest-internal.h:40,
+[17.490s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:62,
+[17.490s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.490s] /usr/include/c++/11/bits/std_function.h:725:5: note: candidate: ‘template<class _Res, class ... _Args> bool std::operator==(std::nullptr_t, const std::function<_Res(_ArgTypes ...)>&)’
+[17.490s]   725 |     operator==(nullptr_t, const function<_Res(_Args...)>& __f) noexcept
+[17.490s]       |     ^~~~~~~~
+[17.490s] /usr/include/c++/11/bits/std_function.h:725:5: note:   template argument deduction/substitution failed:
+[17.490s] In file included from /usr/include/c++/11/memory:63,
+[17.490s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.491s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.491s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘const lio_sam_hesai::DufomapPoint’ is not derived from ‘const std::function<_Res(_ArgTypes ...)>’
+[17.491s]  1162 |             if (!(*__first1 == *__first2))
+[17.491s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.491s] In file included from /usr/include/c++/11/unordered_map:47,
+[17.491s]                  from /usr/include/c++/11/functional:61,
+[17.491s]                  from /usr/include/c++/11/pstl/glue_algorithm_defs.h:13,
+[17.491s]                  from /usr/include/c++/11/algorithm:74,
+[17.491s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/internal/gtest-port.h:264,
+[17.491s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/internal/gtest-internal.h:40,
+[17.491s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:62,
+[17.492s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.492s] /usr/include/c++/11/bits/unordered_map.h:2134:5: note: candidate: ‘template<class _Key1, class _Tp1, class _Hash1, class _Pred1, class _Alloc1> bool std::operator==(const std::unordered_map<_Key1, _Tp1, _Hash1, _Pred1, _Alloc1>&, const std::unordered_map<_Key1, _Tp1, _Hash1, _Pred1, _Alloc1>&)’
+[17.492s]  2134 |     operator==(const unordered_map<_Key, _Tp, _Hash, _Pred, _Alloc>& __x,
+[17.492s]       |     ^~~~~~~~
+[17.492s] /usr/include/c++/11/bits/unordered_map.h:2134:5: note:   template argument deduction/substitution failed:
+[17.492s] In file included from /usr/include/c++/11/memory:63,
+[17.492s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.492s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.492s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘const lio_sam_hesai::DufomapPoint’ is not derived from ‘const std::unordered_map<_Key1, _Tp1, _Hash1, _Pred1, _Alloc1>’
+[17.492s]  1162 |             if (!(*__first1 == *__first2))
+[17.493s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.493s] In file included from /usr/include/c++/11/unordered_map:47,
+[17.493s]                  from /usr/include/c++/11/functional:61,
+[17.493s]                  from /usr/include/c++/11/pstl/glue_algorithm_defs.h:13,
+[17.493s]                  from /usr/include/c++/11/algorithm:74,
+[17.493s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/internal/gtest-port.h:264,
+[17.493s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/internal/gtest-internal.h:40,
+[17.493s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:62,
+[17.493s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.493s] /usr/include/c++/11/bits/unordered_map.h:2148:5: note: candidate: ‘template<class _Key1, class _Tp1, class _Hash1, class _Pred1, class _Alloc1> bool std::operator==(const std::unordered_multimap<_Key1, _Tp1, _Hash1, _Pred1, _Alloc1>&, const std::unordered_multimap<_Key1, _Tp1, _Hash1, _Pred1, _Alloc1>&)’
+[17.494s]  2148 |     operator==(const unordered_multimap<_Key, _Tp, _Hash, _Pred, _Alloc>& __x,
+[17.494s]       |     ^~~~~~~~
+[17.494s] /usr/include/c++/11/bits/unordered_map.h:2148:5: note:   template argument deduction/substitution failed:
+[17.494s] In file included from /usr/include/c++/11/memory:63,
+[17.494s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.494s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.494s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘const lio_sam_hesai::DufomapPoint’ is not derived from ‘const std::unordered_multimap<_Key1, _Tp1, _Hash1, _Pred1, _Alloc1>’
+[17.494s]  1162 |             if (!(*__first1 == *__first2))
+[17.495s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.495s] In file included from /usr/include/c++/11/map:61,
+[17.495s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/internal/gtest-internal.h:58,
+[17.495s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:62,
+[17.495s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.495s] /usr/include/c++/11/bits/stl_map.h:1463:5: note: candidate: ‘template<class _Key, class _Tp, class _Compare, class _Alloc> bool std::operator==(const std::map<_Key, _Tp, _Compare, _Allocator>&, const std::map<_Key, _Tp, _Compare, _Allocator>&)’
+[17.495s]  1463 |     operator==(const map<_Key, _Tp, _Compare, _Alloc>& __x,
+[17.495s]       |     ^~~~~~~~
+[17.496s] /usr/include/c++/11/bits/stl_map.h:1463:5: note:   template argument deduction/substitution failed:
+[17.496s] In file included from /usr/include/c++/11/memory:63,
+[17.496s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.496s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.496s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘const lio_sam_hesai::DufomapPoint’ is not derived from ‘const std::map<_Key, _Tp, _Compare, _Allocator>’
+[17.496s]  1162 |             if (!(*__first1 == *__first2))
+[17.496s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.496s] In file included from /usr/include/c++/11/map:62,
+[17.496s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/internal/gtest-internal.h:58,
+[17.497s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:62,
+[17.497s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.497s] /usr/include/c++/11/bits/stl_multimap.h:1128:5: note: candidate: ‘template<class _Key, class _Tp, class _Compare, class _Alloc> bool std::operator==(const std::multimap<_Key, _Tp, _Compare, _Allocator>&, const std::multimap<_Key, _Tp, _Compare, _Allocator>&)’
+[17.497s]  1128 |     operator==(const multimap<_Key, _Tp, _Compare, _Alloc>& __x,
+[17.497s]       |     ^~~~~~~~
+[17.497s] /usr/include/c++/11/bits/stl_multimap.h:1128:5: note:   template argument deduction/substitution failed:
+[17.497s] In file included from /usr/include/c++/11/memory:63,
+[17.497s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.498s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.498s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘const lio_sam_hesai::DufomapPoint’ is not derived from ‘const std::multimap<_Key, _Tp, _Compare, _Allocator>’
+[17.498s]  1162 |             if (!(*__first1 == *__first2))
+[17.498s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.498s] In file included from /usr/include/c++/11/set:61,
+[17.498s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/internal/gtest-internal.h:59,
+[17.498s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:62,
+[17.498s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.499s] /usr/include/c++/11/bits/stl_set.h:985:5: note: candidate: ‘template<class _Key, class _Compare, class _Alloc> bool std::operator==(const std::set<_Key, _Compare, _Allocator>&, const std::set<_Key, _Compare, _Allocator>&)’
+[17.499s]   985 |     operator==(const set<_Key, _Compare, _Alloc>& __x,
+[17.499s]       |     ^~~~~~~~
+[17.499s] /usr/include/c++/11/bits/stl_set.h:985:5: note:   template argument deduction/substitution failed:
+[17.499s] In file included from /usr/include/c++/11/memory:63,
+[17.499s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.499s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.499s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘const lio_sam_hesai::DufomapPoint’ is not derived from ‘const std::set<_Key, _Compare, _Allocator>’
+[17.499s]  1162 |             if (!(*__first1 == *__first2))
+[17.500s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.500s] In file included from /usr/include/c++/11/set:62,
+[17.500s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/internal/gtest-internal.h:59,
+[17.500s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:62,
+[17.500s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.500s] /usr/include/c++/11/bits/stl_multiset.h:971:5: note: candidate: ‘template<class _Key, class _Compare, class _Alloc> bool std::operator==(const std::multiset<_Key, _Compare, _Allocator>&, const std::multiset<_Key, _Compare, _Allocator>&)’
+[17.500s]   971 |     operator==(const multiset<_Key, _Compare, _Alloc>& __x,
+[17.500s]       |     ^~~~~~~~
+[17.500s] /usr/include/c++/11/bits/stl_multiset.h:971:5: note:   template argument deduction/substitution failed:
+[17.500s] In file included from /usr/include/c++/11/memory:63,
+[17.501s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.501s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.501s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘const lio_sam_hesai::DufomapPoint’ is not derived from ‘const std::multiset<_Key, _Compare, _Allocator>’
+[17.501s]  1162 |             if (!(*__first1 == *__first2))
+[17.501s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.501s] In file included from /usr/include/eigen3/Eigen/Core:50,
+[17.501s]                  from /usr/include/pcl-1.12/pcl/memory.h:48,
+[17.501s]                  from /usr/include/pcl-1.12/pcl/PCLPointField.h:3,
+[17.502s]                  from /usr/include/pcl-1.12/pcl/conversions.h:46,
+[17.502s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:14:
+[17.502s] /usr/include/c++/11/complex:464:5: note: candidate: ‘template<class _Tp> constexpr bool std::operator==(const std::complex<_Tp>&, const std::complex<_Tp>&)’
+[17.502s]   464 |     operator==(const complex<_Tp>& __x, const complex<_Tp>& __y)
+[17.502s]       |     ^~~~~~~~
+[17.502s] /usr/include/c++/11/complex:464:5: note:   template argument deduction/substitution failed:
+[17.502s] In file included from /usr/include/c++/11/memory:63,
+[17.502s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.502s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.502s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘const lio_sam_hesai::DufomapPoint’ is not derived from ‘const std::complex<_Tp>’
+[17.503s]  1162 |             if (!(*__first1 == *__first2))
+[17.503s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.503s] In file included from /usr/include/eigen3/Eigen/Core:50,
+[17.503s]                  from /usr/include/pcl-1.12/pcl/memory.h:48,
+[17.503s]                  from /usr/include/pcl-1.12/pcl/PCLPointField.h:3,
+[17.503s]                  from /usr/include/pcl-1.12/pcl/conversions.h:46,
+[17.503s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:14:
+[17.503s] /usr/include/c++/11/complex:469:5: note: candidate: ‘template<class _Tp> constexpr bool std::operator==(const std::complex<_Tp>&, const _Tp&)’
+[17.503s]   469 |     operator==(const complex<_Tp>& __x, const _Tp& __y)
+[17.503s]       |     ^~~~~~~~
+[17.504s] /usr/include/c++/11/complex:469:5: note:   template argument deduction/substitution failed:
+[17.504s] In file included from /usr/include/c++/11/memory:63,
+[17.504s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.504s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.504s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘const lio_sam_hesai::DufomapPoint’ is not derived from ‘const std::complex<_Tp>’
+[17.504s]  1162 |             if (!(*__first1 == *__first2))
+[17.504s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.504s] In file included from /usr/include/eigen3/Eigen/Core:50,
+[17.504s]                  from /usr/include/pcl-1.12/pcl/memory.h:48,
+[17.505s]                  from /usr/include/pcl-1.12/pcl/PCLPointField.h:3,
+[17.505s]                  from /usr/include/pcl-1.12/pcl/conversions.h:46,
+[17.505s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:14:
+[17.505s] /usr/include/c++/11/complex:475:5: note: candidate: ‘template<class _Tp> constexpr bool std::operator==(const _Tp&, const std::complex<_Tp>&)’
+[17.505s]   475 |     operator==(const _Tp& __x, const complex<_Tp>& __y)
+[17.505s]       |     ^~~~~~~~
+[17.505s] /usr/include/c++/11/complex:475:5: note:   template argument deduction/substitution failed:
+[17.505s] In file included from /usr/include/c++/11/memory:63,
+[17.505s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.505s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.506s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘const lio_sam_hesai::DufomapPoint’ is not derived from ‘const std::complex<_Tp>’
+[17.506s]  1162 |             if (!(*__first1 == *__first2))
+[17.506s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.506s] In file included from /home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/online_dufomap.h:9,
+[17.506s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:20:
+[17.506s] /usr/include/c++/11/optional:1045:5: note: candidate: ‘template<class _Tp, class _Up> constexpr std::__optional_eq_t<_Tp, _Up> std::operator==(const std::optional<_Tp>&, const std::optional<_Up>&)’
+[17.507s]  1045 |     operator==(const optional<_Tp>& __lhs, const optional<_Up>& __rhs)
+[17.507s]       |     ^~~~~~~~
+[17.507s] /usr/include/c++/11/optional:1045:5: note:   template argument deduction/substitution failed:
+[17.507s] In file included from /usr/include/c++/11/memory:63,
+[17.507s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.507s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.507s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘const lio_sam_hesai::DufomapPoint’ is not derived from ‘const std::optional<_Tp>’
+[17.507s]  1162 |             if (!(*__first1 == *__first2))
+[17.508s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.508s] In file included from /home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/online_dufomap.h:9,
+[17.508s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:20:
+[17.508s] /usr/include/c++/11/optional:1105:5: note: candidate: ‘template<class _Tp> constexpr bool std::operator==(const std::optional<_Tp>&, std::nullopt_t)’
+[17.508s]  1105 |     operator==(const optional<_Tp>& __lhs, nullopt_t) noexcept
+[17.508s]       |     ^~~~~~~~
+[17.508s] /usr/include/c++/11/optional:1105:5: note:   template argument deduction/substitution failed:
+[17.508s] In file included from /usr/include/c++/11/memory:63,
+[17.508s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.508s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.508s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘const lio_sam_hesai::DufomapPoint’ is not derived from ‘const std::optional<_Tp>’
+[17.509s]  1162 |             if (!(*__first1 == *__first2))
+[17.509s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.509s] In file included from /home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/online_dufomap.h:9,
+[17.509s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:20:
+[17.509s] /usr/include/c++/11/optional:1116:5: note: candidate: ‘template<class _Tp> constexpr bool std::operator==(std::nullopt_t, const std::optional<_Tp>&)’
+[17.509s]  1116 |     operator==(nullopt_t, const optional<_Tp>& __rhs) noexcept
+[17.509s]       |     ^~~~~~~~
+[17.509s] /usr/include/c++/11/optional:1116:5: note:   template argument deduction/substitution failed:
+[17.510s] In file included from /usr/include/c++/11/memory:63,
+[17.510s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.510s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.510s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘const lio_sam_hesai::DufomapPoint’ is not derived from ‘const std::optional<_Tp>’
+[17.510s]  1162 |             if (!(*__first1 == *__first2))
+[17.510s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.510s] In file included from /home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/online_dufomap.h:9,
+[17.510s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:20:
+[17.510s] /usr/include/c++/11/optional:1173:5: note: candidate: ‘template<class _Tp, class _Up> constexpr std::__optional_eq_t<_Tp, _Up> std::operator==(const std::optional<_Tp>&, const _Up&)’
+[17.510s]  1173 |     operator==(const optional<_Tp>& __lhs, const _Up& __rhs)
+[17.511s]       |     ^~~~~~~~
+[17.511s] /usr/include/c++/11/optional:1173:5: note:   template argument deduction/substitution failed:
+[17.511s] In file included from /usr/include/c++/11/memory:63,
+[17.511s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.511s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.511s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘const lio_sam_hesai::DufomapPoint’ is not derived from ‘const std::optional<_Tp>’
+[17.511s]  1162 |             if (!(*__first1 == *__first2))
+[17.511s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.511s] In file included from /home/robot/slam_ws/src/lio_sam_hesai/include/lio_sam/online_dufomap.h:9,
+[17.511s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:20:
+[17.512s] /usr/include/c++/11/optional:1179:5: note: candidate: ‘template<class _Tp, class _Up> constexpr std::__optional_eq_t<_Up, _Tp> std::operator==(const _Up&, const std::optional<_Tp>&)’
+[17.512s]  1179 |     operator==(const _Up& __lhs, const optional<_Tp>& __rhs)
+[17.512s]       |     ^~~~~~~~
+[17.512s] /usr/include/c++/11/optional:1179:5: note:   template argument deduction/substitution failed:
+[17.512s] In file included from /usr/include/c++/11/memory:63,
+[17.512s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:57,
+[17.512s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.512s] /usr/include/c++/11/bits/stl_algobase.h:1162:29: note:   ‘const lio_sam_hesai::DufomapPoint’ is not derived from ‘const std::optional<_Tp>’
+[17.513s]  1162 |             if (!(*__first1 == *__first2))
+[17.513s]       |                  ~~~~~~~~~~~^~~~~~~~~~~~~
+[17.513s] In file included from /usr/include/c++/11/bits/ios_base.h:46,
+[17.513s]                  from /usr/include/c++/11/ios:42,
+[17.513s]                  from /usr/include/c++/11/ostream:38,
+[17.513s]                  from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:58,
+[17.513s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:1:
+[17.513s] /usr/include/c++/11/system_error:362:3: note: candidate: ‘bool std::operator==(const std::error_code&, const std::error_code&)’
+[17.513s]   362 |   operator==(const error_code& __lhs, const error_code& __rhs) noexcept
+[17.513s]       |   ^~~~~~~~
+[17.514s] /usr/include/c++/11/system_error:362:32: note:   no known conversion for argument 1 from ‘const lio_sam_hesai::DufomapPoint’ to ‘const std::error_code&’
+[17.514s]   362 |   operator==(const error_code& __lhs, const error_code& __rhs) noexcept
+[17.514s]       |              ~~~~~~~~~~~~~~~~~~^~~~~
+[17.514s] /usr/include/c++/11/system_error:368:3: note: candidate: ‘bool std::operator==(const std::error_code&, const std::error_condition&)’
+[17.514s]   368 |   operator==(const error_code& __lhs, const error_condition& __rhs) noexcept
+[17.514s]       |   ^~~~~~~~
+[17.514s] /usr/include/c++/11/system_error:368:32: note:   no known conversion for argument 1 from ‘const lio_sam_hesai::DufomapPoint’ to ‘const std::error_code&’
+[17.514s]   368 |   operator==(const error_code& __lhs, const error_condition& __rhs) noexcept
+[17.514s]       |              ~~~~~~~~~~~~~~~~~~^~~~~
+[17.514s] /usr/include/c++/11/system_error:376:3: note: candidate: ‘bool std::operator==(const std::error_condition&, const std::error_condition&)’
+[17.514s]   376 |   operator==(const error_condition& __lhs,
+[17.515s]       |   ^~~~~~~~
+[17.515s] /usr/include/c++/11/system_error:376:37: note:   no known conversion for argument 1 from ‘const lio_sam_hesai::DufomapPoint’ to ‘const std::error_condition&’
+[17.515s]   376 |   operator==(const error_condition& __lhs,
+[17.515s]       |              ~~~~~~~~~~~~~~~~~~~~~~~^~~~~
+[17.515s] /usr/include/c++/11/system_error:408:3: note: candidate: ‘bool std::operator==(const std::error_condition&, const std::error_code&)’
+[17.515s]   408 |   operator==(const error_condition& __lhs, const error_code& __rhs) noexcept
+[17.515s]       |   ^~~~~~~~
+[17.515s] /usr/include/c++/11/system_error:408:37: note:   no known conversion for argument 1 from ‘const lio_sam_hesai::DufomapPoint’ to ‘const std::error_condition&’
+[17.515s]   408 |   operator==(const error_condition& __lhs, const error_code& __rhs) noexcept
+[17.515s]       |              ~~~~~~~~~~~~~~~~~~~~~~~^~~~~
+[17.515s] In file included from /usr/include/c++/11/thread:43,
+[17.516s]                  from /home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:10:
+[17.516s] /usr/include/c++/11/bits/std_thread.h:287:3: note: candidate: ‘bool std::operator==(std::thread::id, std::thread::id)’
+[17.516s]   287 |   operator==(thread::id __x, thread::id __y) noexcept
+[17.516s]       |   ^~~~~~~~
+[17.516s] /usr/include/c++/11/bits/std_thread.h:287:25: note:   no known conversion for argument 1 from ‘const lio_sam_hesai::DufomapPoint’ to ‘std::thread::id’
+[17.516s]   287 |   operator==(thread::id __x, thread::id __y) noexcept
+[17.516s]       |              ~~~~~~~~~~~^~~
+[18.164s] gmake[3]: *** [CMakeFiles/test_online_dufomap.dir/build.make:76: CMakeFiles/test_online_dufomap.dir/test/test_online_dufomap.cpp.o] Error 1
+[18.164s] gmake[3]: *** Waiting for unfinished jobs....
+[24.918s] gmake[2]: *** [CMakeFiles/Makefile2:1467: CMakeFiles/test_online_dufomap.dir/all] Error 2
+[24.918s] gmake[1]: *** [CMakeFiles/Makefile2:1474: CMakeFiles/test_online_dufomap.dir/rule] Error 2
+[24.919s] gmake: *** [Makefile:738: test_online_dufomap] Error 2
+[24.926s] Invoked command in '/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai' returned '2': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --build /home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai --target test_online_dufomap -- -j8 -l8

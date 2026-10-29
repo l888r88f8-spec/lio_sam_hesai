@@ -49,8 +49,14 @@ void expectPresentInParameterSurface(const std::string & token)
   // The shared loader declares and validates these; the mapping nodes no
   // longer declare any of them.
   const std::string text = readProjectFile("src/common/slam_config.cpp");
-  EXPECT_NE(text.find("\"" + token + "\""), std::string::npos)
-    << token << " is missing from src/common/slam_config.cpp";
+  // Shared loader constructs the stage-specific prefix once; the real
+  // parameter loading regression covers every field and alias at runtime.
+  const std::string prefix = "ring_plane.";
+  ASSERT_EQ(token.find(prefix), 0U);
+  EXPECT_NE(text.find("\"ring_plane.\""), std::string::npos);
+  EXPECT_NE(text.find("ReadGroundParam"), std::string::npos);
+  EXPECT_NE(text.find("\"" + token.substr(prefix.size()) + "\""), std::string::npos)
+    << token << " is missing from the shared ground parameter reader";
 }
 
 std::size_t findYamlBlockEnd(
@@ -76,7 +82,7 @@ std::size_t findYamlBlockEnd(
 
 bool hasNestedGridPatchLeaf(const std::string & text, const std::string & leaf)
 {
-  const std::size_t ground = text.find("\n    ground_segmentation:");
+  const std::size_t ground = text.find("\n    ring_plane:");
   if (ground == std::string::npos) {
     return false;
   }
@@ -95,7 +101,7 @@ void expectPresentInMappingYaml(const std::string & leaf)
 {
   const std::string text = readProjectFile("config/mapping.yaml");
   EXPECT_TRUE(hasNestedGridPatchLeaf(text, leaf))
-    << "ground_segmentation.grid_patch." << leaf
+    << "ring_plane.grid_patch." << leaf
     << " is missing from config/mapping.yaml";
 }
 
@@ -106,7 +112,7 @@ TEST(GroundPatchParameterSurface, AcceptsCanonicalNestedYamlFixture)
   const std::string yaml =
     "/**:\n"
     "  ros__parameters:\n"
-    "    ground_segmentation:\n"
+    "    ring_plane:\n"
     "      grid_patch:\n"
     "        enable: true\n"
     "        resolution: 0.10\n"
@@ -131,7 +137,7 @@ TEST(GroundPatchParameterSurface, RejectsGridPatchKeysUnderWrongParent)
   const std::string yaml =
     "/**:\n"
     "  ros__parameters:\n"
-    "    ground_segmentation:\n"
+    "    ring_plane:\n"
     "      leaf_size: 0.10\n"
     "    unrelated:\n"
     "      grid_patch:\n"
@@ -176,16 +182,16 @@ TEST(GroundPatchParameterSurface, RemovesDeprecatedPatchParameters)
 TEST(GroundPatchParameterSurface, KeepsGroundGridPatchParameters)
 {
   const std::array<std::string, 10> canonical_names = {
-    "ground_segmentation.grid_patch.enable",
-    "ground_segmentation.grid_patch.resolution",
-    "ground_segmentation.grid_patch.search_radius",
-    "ground_segmentation.grid_patch.max_slope_deg",
-    "ground_segmentation.grid_patch.max_height_range",
-    "ground_segmentation.grid_patch.max_roughness",
-    "ground_segmentation.grid_patch.max_prediction_margin",
-    "ground_segmentation.grid_patch.min_inlier_ratio",
-    "ground_segmentation.grid_patch.min_neighbor_cells",
-    "ground_segmentation.grid_patch.min_support_quadrants",
+    "ring_plane.grid_patch.enable",
+    "ring_plane.grid_patch.resolution",
+    "ring_plane.grid_patch.search_radius",
+    "ring_plane.grid_patch.max_slope_deg",
+    "ring_plane.grid_patch.max_height_range",
+    "ring_plane.grid_patch.max_roughness",
+    "ring_plane.grid_patch.max_prediction_margin",
+    "ring_plane.grid_patch.min_inlier_ratio",
+    "ring_plane.grid_patch.min_neighbor_cells",
+    "ring_plane.grid_patch.min_support_quadrants",
   };
   for (const auto & name : canonical_names) {
     expectPresentInParameterSurface(name);

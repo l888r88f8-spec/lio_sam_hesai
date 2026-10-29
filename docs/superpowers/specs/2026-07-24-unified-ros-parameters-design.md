@@ -162,7 +162,6 @@ mounting.
 | `generateScDb` | `map_save.generate_scan_context_db` |
 | `savePCDDirectory` | `map_save.directory` |
 | `savePCDResolution` | `map_save.resolution` |
-| `saveGroundPCD` | `map_save.save_ground_map` |
 | `saveGroundPCDResolution` | `map_save.ground_resolution` |
 | `groundPCDDirectory` | `map_save.ground_directory` |
 | `groundPCDDirectoryGlobal` | `map_save.ground_global_directory` |

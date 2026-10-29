@@ -1,0 +1,185 @@
+[0.000000] (-) TimerEvent: {}
+[0.000471] (lio_sam_hesai) JobQueued: {'identifier': 'lio_sam_hesai', 'dependencies': OrderedDict()}
+[0.001271] (lio_sam_hesai) JobStarted: {'identifier': 'lio_sam_hesai'}
+[0.013485] (lio_sam_hesai) JobProgress: {'identifier': 'lio_sam_hesai', 'progress': 'cmake'}
+[0.016715] (lio_sam_hesai) JobProgress: {'identifier': 'lio_sam_hesai', 'progress': 'build'}
+[0.016842] (lio_sam_hesai) JobProgress: {'identifier': 'lio_sam_hesai', 'progress': "build target 'test_online_dufomap'"}
+[0.017534] (lio_sam_hesai) Command: {'cmd': ['/usr/bin/cmake', '--build', '/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai', '--target', 'test_online_dufomap', '--', '-j8', '-l8'], 'cwd': '/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai', 'env': OrderedDict([('USER', 'robot'), ('SHLVL', '1'), ('LD_LIBRARY_PATH', '/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/aarch64-linux-gnu:/opt/ros/humble/opt/openvdb_vendor/lib:/opt/ros/humble/lib'), ('VIPSHOME', '/target'), ('DSH_SESSION_ID', 'session-2930570e-64b9-426b-a86e-9673f3110efc'), ('HOME', '/home/robot'), ('ROS_PYTHON_VERSION', '3'), ('PAGER', 'cat'), ('NO_COLOR', '1'), ('ROS_DISTRO', 'humble'), ('LOGNAME', 'robot'), ('_', '/usr/bin/colcon'), ('ROS_VERSION', '2'), ('TERM', 'dumb'), ('ROS_LOCALHOST_ONLY', '0'), ('PATH', '/home/robot/.codex/tmp/arg0-linux/codex-arg0ZUNSZc:/home/robot/.vscode-server/cli/servers/Stable-e646868227c3e3a9e3f24277c8c7220be42c0be7/server/bin/remote-cli:/home/robot/.local/bin:/opt/ros/humble/bin:/home/robot/.local/share/pnpm:/home/robot/.cargo/bin:/home/robot/.nvm/versions/node/v24.21.0/bin:/home/robot/.opencode/bin:/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/home/robot/.vscode-server/extensions/openai.chatgpt-26.1021.22027-linux-arm64/bin/linux-aarch64'), ('LANG', 'en_US.UTF-8'), ('AMENT_PREFIX_PATH', '/opt/ros/humble'), ('DSH_HOME', '/home/robot/.dsh'), ('SHELL', '/bin/bash'), ('DSH_SHELL', '1'), ('GIT_PAGER', 'cat'), ('PWD', '/home/robot/slam_ws/src/lio_sam_hesai/.tmp_colcon/build/lio_sam_hesai'), ('PYTHONPATH', '/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages'), ('COLCON', '1'), ('CMAKE_PREFIX_PATH', '/opt/ros/humble')]), 'shell': False}
+[0.099233] (-) TimerEvent: {}
+[0.157663] (lio_sam_hesai) StdoutLine: {'line': b'Consolidate compiler generated dependencies of target lio_sam_hesai_dufomap_native\n'}
+[0.169700] (lio_sam_hesai) StdoutLine: {'line': b'[ 16%] Built target gtest\n'}
+[0.170161] (lio_sam_hesai) StdoutLine: {'line': b'[ 16%] Built target lio_sam_hesai__cpp\n'}
+[0.172462] (lio_sam_hesai) StdoutLine: {'line': b'[ 33%] Built target gtest_main\n'}
+[0.182539] (lio_sam_hesai) StdoutLine: {'line': b'[ 50%] Built target lio_sam_hesai_dufomap_native\n'}
+[0.199394] (-) TimerEvent: {}
+[0.214979] (lio_sam_hesai) StdoutLine: {'line': b'[ 83%] Built target lio_sam_hesai__rosidl_typesupport_cpp\n'}
+[0.290713] (lio_sam_hesai) StdoutLine: {'line': b'[100%] Building CXX object CMakeFiles/test_online_dufomap.dir/src/common/online_dufomap.cpp.o\n'}
+[0.291554] (lio_sam_hesai) StdoutLine: {'line': b'[100%] Building CXX object CMakeFiles/test_online_dufomap.dir/test/test_online_dufomap.cpp.o\n'}
+[0.299544] (-) TimerEvent: {}
+[0.399898] (-) TimerEvent: {}
+[0.500272] (-) TimerEvent: {}
+[0.600657] (-) TimerEvent: {}
+[0.701049] (-) TimerEvent: {}
+[0.801452] (-) TimerEvent: {}
+[0.901854] (-) TimerEvent: {}
+[1.002258] (-) TimerEvent: {}
+[1.102651] (-) TimerEvent: {}
+[1.203065] (-) TimerEvent: {}
+[1.303478] (-) TimerEvent: {}
+[1.403895] (-) TimerEvent: {}
+[1.504295] (-) TimerEvent: {}
+[1.604711] (-) TimerEvent: {}
+[1.705120] (-) TimerEvent: {}
+[1.805547] (-) TimerEvent: {}
+[1.905944] (-) TimerEvent: {}
+[2.006340] (-) TimerEvent: {}
+[2.106733] (-) TimerEvent: {}
+[2.207129] (-) TimerEvent: {}
+[2.307522] (-) TimerEvent: {}
+[2.407920] (-) TimerEvent: {}
+[2.508327] (-) TimerEvent: {}
+[2.608744] (-) TimerEvent: {}
+[2.709161] (-) TimerEvent: {}
+[2.809570] (-) TimerEvent: {}
+[2.909978] (-) TimerEvent: {}
+[3.010456] (-) TimerEvent: {}
+[3.110917] (-) TimerEvent: {}
+[3.211370] (-) TimerEvent: {}
+[3.311799] (-) TimerEvent: {}
+[3.412222] (-) TimerEvent: {}
+[3.512630] (-) TimerEvent: {}
+[3.613039] (-) TimerEvent: {}
+[3.713468] (-) TimerEvent: {}
+[3.813886] (-) TimerEvent: {}
+[3.914285] (-) TimerEvent: {}
+[4.014679] (-) TimerEvent: {}
+[4.115072] (-) TimerEvent: {}
+[4.215486] (-) TimerEvent: {}
+[4.315890] (-) TimerEvent: {}
+[4.416295] (-) TimerEvent: {}
+[4.516696] (-) TimerEvent: {}
+[4.617113] (-) TimerEvent: {}
+[4.717544] (-) TimerEvent: {}
+[4.817954] (-) TimerEvent: {}
+[4.918393] (-) TimerEvent: {}
+[5.018828] (-) TimerEvent: {}
+[5.119241] (-) TimerEvent: {}
+[5.219671] (-) TimerEvent: {}
+[5.320082] (-) TimerEvent: {}
+[5.420507] (-) TimerEvent: {}
+[5.520931] (-) TimerEvent: {}
+[5.621370] (-) TimerEvent: {}
+[5.721775] (-) TimerEvent: {}
+[5.822204] (-) TimerEvent: {}
+[5.922618] (-) TimerEvent: {}
+[6.023037] (-) TimerEvent: {}
+[6.123460] (-) TimerEvent: {}
+[6.223885] (-) TimerEvent: {}
+[6.324303] (-) TimerEvent: {}
+[6.424727] (-) TimerEvent: {}
+[6.525170] (-) TimerEvent: {}
+[6.625586] (-) TimerEvent: {}
+[6.725990] (-) TimerEvent: {}
+[6.826396] (-) TimerEvent: {}
+[6.926806] (-) TimerEvent: {}
+[7.027245] (-) TimerEvent: {}
+[7.127662] (-) TimerEvent: {}
+[7.228074] (-) TimerEvent: {}
+[7.328499] (-) TimerEvent: {}
+[7.428927] (-) TimerEvent: {}
+[7.529323] (-) TimerEvent: {}
+[7.629731] (-) TimerEvent: {}
+[7.730133] (-) TimerEvent: {}
+[7.830547] (-) TimerEvent: {}
+[7.930961] (-) TimerEvent: {}
+[8.031378] (-) TimerEvent: {}
+[8.131798] (-) TimerEvent: {}
+[8.232210] (-) TimerEvent: {}
+[8.332620] (-) TimerEvent: {}
+[8.433030] (-) TimerEvent: {}
+[8.533464] (-) TimerEvent: {}
+[8.633887] (-) TimerEvent: {}
+[8.734294] (-) TimerEvent: {}
+[8.834722] (-) TimerEvent: {}
+[8.935183] (-) TimerEvent: {}
+[9.035602] (-) TimerEvent: {}
+[9.136031] (-) TimerEvent: {}
+[9.236491] (-) TimerEvent: {}
+[9.336939] (-) TimerEvent: {}
+[9.437383] (-) TimerEvent: {}
+[9.537776] (-) TimerEvent: {}
+[9.638154] (-) TimerEvent: {}
+[9.738570] (-) TimerEvent: {}
+[9.838992] (-) TimerEvent: {}
+[9.939436] (-) TimerEvent: {}
+[10.039873] (-) TimerEvent: {}
+[10.140290] (-) TimerEvent: {}
+[10.240705] (-) TimerEvent: {}
+[10.341116] (-) TimerEvent: {}
+[10.441536] (-) TimerEvent: {}
+[10.541958] (-) TimerEvent: {}
+[10.642363] (-) TimerEvent: {}
+[10.742768] (-) TimerEvent: {}
+[10.843189] (-) TimerEvent: {}
+[10.943594] (-) TimerEvent: {}
+[11.044004] (-) TimerEvent: {}
+[11.144436] (-) TimerEvent: {}
+[11.244859] (-) TimerEvent: {}
+[11.345288] (-) TimerEvent: {}
+[11.445706] (-) TimerEvent: {}
+[11.546108] (-) TimerEvent: {}
+[11.646515] (-) TimerEvent: {}
+[11.746921] (-) TimerEvent: {}
+[11.847334] (-) TimerEvent: {}
+[11.947752] (-) TimerEvent: {}
+[12.048183] (-) TimerEvent: {}
+[12.148602] (-) TimerEvent: {}
+[12.249019] (-) TimerEvent: {}
+[12.349463] (-) TimerEvent: {}
+[12.449886] (-) TimerEvent: {}
+[12.550300] (-) TimerEvent: {}
+[12.650722] (-) TimerEvent: {}
+[12.751145] (-) TimerEvent: {}
+[12.851566] (-) TimerEvent: {}
+[12.952003] (-) TimerEvent: {}
+[13.052420] (-) TimerEvent: {}
+[13.152851] (-) TimerEvent: {}
+[13.253413] (-) TimerEvent: {}
+[13.354044] (-) TimerEvent: {}
+[13.454448] (-) TimerEvent: {}
+[13.554855] (-) TimerEvent: {}
+[13.655258] (-) TimerEvent: {}
+[13.755678] (-) TimerEvent: {}
+[13.856085] (-) TimerEvent: {}
+[13.956541] (-) TimerEvent: {}
+[14.056979] (-) TimerEvent: {}
+[14.157436] (-) TimerEvent: {}
+[14.257833] (-) TimerEvent: {}
+[14.358242] (-) TimerEvent: {}
+[14.458654] (-) TimerEvent: {}
+[14.559045] (-) TimerEvent: {}
+[14.659465] (-) TimerEvent: {}
+[14.759936] (-) TimerEvent: {}
+[14.860404] (-) TimerEvent: {}
+[14.960888] (-) TimerEvent: {}
+[15.061369] (-) TimerEvent: {}
+[15.161794] (-) TimerEvent: {}
+[15.262214] (-) TimerEvent: {}
+[15.362638] (-) TimerEvent: {}
+[15.463094] (-) TimerEvent: {}
+[15.563540] (-) TimerEvent: {}
+[15.663989] (-) TimerEvent: {}
+[15.764412] (-) TimerEvent: {}
+[15.864852] (-) TimerEvent: {}
+[15.924236] (lio_sam_hesai) StdoutLine: {'line': b'[100%] Linking CXX executable test_online_dufomap\n'}
+[15.965173] (-) TimerEvent: {}
+[16.065630] (-) TimerEvent: {}
+[16.166134] (-) TimerEvent: {}
+[16.266606] (-) TimerEvent: {}
+[16.367046] (-) TimerEvent: {}
+[16.467555] (-) TimerEvent: {}
+[16.568264] (-) TimerEvent: {}
+[16.573075] (lio_sam_hesai) StdoutLine: {'line': b'[100%] Built target test_online_dufomap\n'}
+[16.596497] (lio_sam_hesai) CommandEnded: {'returncode': 0}
+[16.644553] (lio_sam_hesai) JobEnded: {'identifier': 'lio_sam_hesai', 'rc': 0}
+[16.646403] (-) EventReactorShutdown: {}

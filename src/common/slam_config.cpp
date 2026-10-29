@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+#include "common/dufomap_temporal_guard.h"
 #include "common/lidar_imu_calibration.h"
 
 namespace {
@@ -34,7 +35,13 @@ void RejectRemovedMappingParameters(rclcpp::Node& node) {
     if (overrides.count(name) != 0U) {
       Reject(name,
              "was removed with Ctrl+C automatic map saving; use "
-             "/lio_sam/save_map instead");
+             "/lio_sam/save_map_options instead");
+    }
+  }
+  for (const auto& parameter : overrides) {
+    if (parameter.first.rfind("dufomap_export.", 0) == 0) {
+      Reject(parameter.first,
+             "was removed; use the online dufomap.* parameter group");
     }
   }
 }
@@ -422,87 +429,108 @@ void LoadCommonTopics(rclcpp::Node& node, SlamMode mode, SlamConfig& config,
   RequireNonEmpty(config.sensors.imu, "sensor_topic.imu_topic");
 }
 
+// Mapping renamed its public group; localization retains its established
+// canonical group. Use the existing peer-alias resolver unchanged: aliases
+// work alone or with equal values, while differing overrides are rejected.
+template <typename T>
+T ReadGroundParam(rclcpp::Node& node, bool mapping, const std::string& leaf,
+                  const std::optional<std::string>& flat_legacy,
+                  const T& default_value, LegacyWarningSet& warnings) {
+  const std::string original = "ground_segmentation." + leaf;
+  if (!mapping) {
+    return ReadParam<T>(node, original, flat_legacy, default_value, warnings);
+  }
+  std::vector<std::string> aliases{original};
+  if (flat_legacy) aliases.push_back(*flat_legacy);
+  return ReadParam<T>(node, "ring_plane." + leaf, aliases, default_value, warnings);
+}
+
 void LoadGroundSegmentation(rclcpp::Node& node,
                             GroundSegmentationConfig& ground,
-                            LegacyWarningSet& warnings) {
-  ground.only_mode = ReadParam<bool>(
-      node, "ground_segmentation.only_mode", std::string("segmentation_only_mode"),
+                            LegacyWarningSet& warnings, bool mapping = false) {
+  const std::string prefix = mapping ? "ring_plane." : "ground_segmentation.";
+  ground.mode = ReadGroundParam<std::string>(
+      node, mapping, "mode", std::nullopt, ground.mode, warnings);
+  if (ground.mode != "off" && ground.mode != "online" && ground.mode != "export")
+    Reject(prefix + "mode", "must be off, online, or export");
+  ground.only_mode = ReadGroundParam<bool>(
+      node, mapping, "only_mode", std::string("segmentation_only_mode"),
       ground.only_mode, warnings);
-  ground.leaf_size = ReadParam<double>(
-      node, "ground_segmentation.leaf_size", std::string("groundLeafSize"),
+  ground.leaf_size = ReadGroundParam<double>(
+      node, mapping, "leaf_size", std::string("groundLeafSize"),
       ground.leaf_size, warnings);
-  ground.scan_start_index = ReadParam<int>(
-      node, "ground_segmentation.scan_start_index",
+  ground.scan_start_index = ReadGroundParam<int>(
+      node, mapping, "scan_start_index",
       std::string("groundScanStartIndex"), ground.scan_start_index, warnings);
-  ground.scan_end_index = ReadParam<int>(
-      node, "ground_segmentation.scan_end_index",
+  ground.scan_end_index = ReadGroundParam<int>(
+      node, mapping, "scan_end_index",
       std::string("groundScanEndIndex"), ground.scan_end_index, warnings);
-  ground.angle_threshold_deg = ReadParam<double>(
-      node, "ground_segmentation.angle_threshold_deg",
+  ground.angle_threshold_deg = ReadGroundParam<double>(
+      node, mapping, "angle_threshold_deg",
       std::string("groundAngleThreshold"), ground.angle_threshold_deg,
       warnings);
-  ground.plane_distance = ReadParam<double>(
-      node, "ground_segmentation.plane_distance",
+  ground.plane_distance = ReadGroundParam<double>(
+      node, mapping, "plane_distance",
       std::string("groundPlaneDistance"), ground.plane_distance, warnings);
-  ground.plane_max_angle_deg = ReadParam<double>(
-      node, "ground_segmentation.plane_max_angle_deg",
+  ground.plane_max_angle_deg = ReadGroundParam<double>(
+      node, mapping, "plane_max_angle_deg",
       std::string("groundPlaneMaxAngle"), ground.plane_max_angle_deg, warnings);
-  ground.plane_min_points = ReadParam<int>(
-      node, "ground_segmentation.plane_min_points",
+  ground.plane_min_points = ReadGroundParam<int>(
+      node, mapping, "plane_min_points",
       std::string("groundPlaneMinPoints"), ground.plane_min_points, warnings);
-  ground.flatten_z = ReadParam<bool>(
-      node, "ground_segmentation.flatten_z", std::string("groundFlattenZ"),
+  ground.flatten_z = ReadGroundParam<bool>(
+      node, mapping, "flatten_z", std::string("groundFlattenZ"),
       ground.flatten_z, warnings);
-  ground.flatten_value = ReadParam<double>(
-      node, "ground_segmentation.flatten_value",
+  ground.flatten_value = ReadGroundParam<double>(
+      node, mapping, "flatten_value",
       std::string("groundFlattenValue"), ground.flatten_value, warnings);
 
   GroundGridPatchConfig& patch = ground.grid_patch;
-  patch.enable = ReadParam<bool>(
-      node, "ground_segmentation.grid_patch.enable",
+  patch.enable = ReadGroundParam<bool>(
+      node, mapping, "grid_patch.enable",
       std::string("groundGridPatchEnable"), patch.enable, warnings);
-  patch.resolution = ReadParam<double>(
-      node, "ground_segmentation.grid_patch.resolution",
+  patch.resolution = ReadGroundParam<double>(
+      node, mapping, "grid_patch.resolution",
       std::string("groundGridPatchResolution"), patch.resolution, warnings);
-  patch.search_radius = ReadParam<double>(
-      node, "ground_segmentation.grid_patch.search_radius",
+  patch.search_radius = ReadGroundParam<double>(
+      node, mapping, "grid_patch.search_radius",
       std::string("groundGridPatchSearchRadius"), patch.search_radius, warnings);
-  patch.max_slope_deg = ReadParam<double>(
-      node, "ground_segmentation.grid_patch.max_slope_deg",
+  patch.max_slope_deg = ReadGroundParam<double>(
+      node, mapping, "grid_patch.max_slope_deg",
       std::string("groundGridPatchMaxSlopeDeg"), patch.max_slope_deg, warnings);
-  patch.max_height_range = ReadParam<double>(
-      node, "ground_segmentation.grid_patch.max_height_range",
+  patch.max_height_range = ReadGroundParam<double>(
+      node, mapping, "grid_patch.max_height_range",
       std::string("groundGridPatchMaxHeightRange"), patch.max_height_range,
       warnings);
-  patch.max_roughness = ReadParam<double>(
-      node, "ground_segmentation.grid_patch.max_roughness",
+  patch.max_roughness = ReadGroundParam<double>(
+      node, mapping, "grid_patch.max_roughness",
       std::string("groundGridPatchMaxRoughness"), patch.max_roughness, warnings);
-  patch.max_prediction_margin = ReadParam<double>(
-      node, "ground_segmentation.grid_patch.max_prediction_margin",
+  patch.max_prediction_margin = ReadGroundParam<double>(
+      node, mapping, "grid_patch.max_prediction_margin",
       std::string("groundGridPatchMaxPredictionMargin"),
       patch.max_prediction_margin, warnings);
-  patch.min_inlier_ratio = ReadParam<double>(
-      node, "ground_segmentation.grid_patch.min_inlier_ratio",
+  patch.min_inlier_ratio = ReadGroundParam<double>(
+      node, mapping, "grid_patch.min_inlier_ratio",
       std::string("groundGridPatchMinInlierRatio"), patch.min_inlier_ratio,
       warnings);
-  patch.min_neighbor_cells = ReadParam<int>(
-      node, "ground_segmentation.grid_patch.min_neighbor_cells",
+  patch.min_neighbor_cells = ReadGroundParam<int>(
+      node, mapping, "grid_patch.min_neighbor_cells",
       std::string("groundGridPatchMinNeighborCells"), patch.min_neighbor_cells,
       warnings);
-  patch.min_support_quadrants = ReadParam<int>(
-      node, "ground_segmentation.grid_patch.min_support_quadrants",
+  patch.min_support_quadrants = ReadGroundParam<int>(
+      node, mapping, "grid_patch.min_support_quadrants",
       std::string("groundGridPatchMinSupportQuadrants"),
       patch.min_support_quadrants, warnings);
 
-  RequireNonNegative(ground.leaf_size, "ground_segmentation.leaf_size");
+  RequireNonNegative(ground.leaf_size, prefix + "leaf_size");
   RequireNonNegative(ground.plane_distance,
-                     "ground_segmentation.plane_distance");
+                     prefix + "plane_distance");
   RequirePositive(ground.plane_min_points,
-                  "ground_segmentation.plane_min_points");
+                  prefix + "plane_min_points");
   RequirePositive(patch.resolution,
-                  "ground_segmentation.grid_patch.resolution");
+                  prefix + "grid_patch.resolution");
   RequirePositive(patch.search_radius,
-                  "ground_segmentation.grid_patch.search_radius");
+                  prefix + "grid_patch.search_radius");
 }
 
 void LoadMappingConfig(rclcpp::Node& node, SlamConfig& config,
@@ -525,9 +553,6 @@ void LoadMappingConfig(rclcpp::Node& node, SlamConfig& config,
       gps.pose_covariance_threshold, warnings);
 
   MapSaveConfig& map_save = mapping.map_save;
-  map_save.save_tiled_map = ReadParam<bool>(
-      node, "map_save.save_tiled_map", std::nullopt, map_save.save_tiled_map,
-      warnings);
   map_save.tiled_map.tile_size_m = ReadParam<double>(
       node, "map_save.tiled_map.tile_size_m", std::nullopt,
       map_save.tiled_map.tile_size_m, warnings);
@@ -537,6 +562,24 @@ void LoadMappingConfig(rclcpp::Node& node, SlamConfig& config,
   map_save.tiled_map.overview_resolution_m = ReadParam<double>(
       node, "map_save.tiled_map.overview_resolution_m", std::nullopt,
       map_save.tiled_map.overview_resolution_m, warnings);
+  map_save.ground_grid.enable = ReadParam<bool>(
+      node, "map_save.ground_grid.enable", std::nullopt,
+      map_save.ground_grid.enable, warnings);
+  map_save.ground_grid.max_hole_cells = ReadParam<int>(
+      node, "map_save.ground_grid.max_hole_cells", std::nullopt,
+      map_save.ground_grid.max_hole_cells, warnings);
+  map_save.ground_mesh.enable = ReadParam<bool>(
+      node, "map_save.ground_mesh.enable", std::nullopt,
+      map_save.ground_mesh.enable, warnings);
+  map_save.ground_mesh.max_edge_length = ReadParam<double>(
+      node, "map_save.ground_mesh.max_edge_length", std::nullopt,
+      map_save.ground_mesh.max_edge_length, warnings);
+  map_save.ground_mesh.edge_length_per_meter = ReadParam<double>(
+      node, "map_save.ground_mesh.edge_length_per_meter", std::nullopt,
+      map_save.ground_mesh.edge_length_per_meter, warnings);
+  map_save.ground_mesh.max_range_ratio = ReadParam<double>(
+      node, "map_save.ground_mesh.max_range_ratio", std::nullopt,
+      map_save.ground_mesh.max_range_ratio, warnings);
   map_save.generate_scan_context_db = ReadParam<bool>(
       node, "map_save.generate_scan_context_db", std::string("generateScDb"),
       map_save.generate_scan_context_db, warnings);
@@ -550,9 +593,6 @@ void LoadMappingConfig(rclcpp::Node& node, SlamConfig& config,
       node, "map_save.ground_resolution",
       std::string("saveGroundPCDResolution"), map_save.ground_resolution,
       warnings);
-  map_save.save_ground_map = ReadParam<bool>(
-      node, "map_save.save_ground_map", std::string("saveGroundPCD"),
-      map_save.save_ground_map, warnings);
   map_save.ground_directory = ReadParam<std::string>(
       node, "map_save.ground_directory", std::string("groundPCDDirectory"),
       map_save.ground_directory, warnings);
@@ -575,6 +615,35 @@ void LoadMappingConfig(rclcpp::Node& node, SlamConfig& config,
   map_save.ground_z_offset = ReadParam<double>(
       node, "map_save.ground_z_offset", std::string("savedMapGroundZOffset"),
       map_save.ground_z_offset, warnings);
+
+  DufomapConfig& dufomap = mapping.dufomap;
+  dufomap.enable = ReadParam<bool>(
+      node, "dufomap.enable", std::nullopt, dufomap.enable, warnings);
+  dufomap.resolution = ReadParam<double>(
+      node, "dufomap.resolution", std::nullopt, dufomap.resolution, warnings);
+  dufomap.d_s = ReadParam<double>(
+      node, "dufomap.d_s", std::nullopt, dufomap.d_s, warnings);
+  dufomap.d_p = ReadParam<int>(
+      node, "dufomap.d_p", std::nullopt, dufomap.d_p, warnings);
+  dufomap.num_threads = ReadParam<int>(
+      node, "dufomap.num_threads", std::nullopt, dufomap.num_threads, warnings);
+  dufomap.min_range = ReadParam<double>(
+      node, "dufomap.min_range", std::nullopt, dufomap.min_range, warnings);
+  dufomap.max_range = ReadParam<double>(
+      node, "dufomap.max_range", std::nullopt, dufomap.max_range, warnings);
+  dufomap.cache_directory = ReadParam<std::string>(
+      node, "dufomap.cache_directory", std::nullopt, dufomap.cache_directory,
+      warnings);
+  DufomapTemporalGuardConfig& temporal_guard = dufomap.temporal_guard;
+  temporal_guard.enable = ReadParam<bool>(
+      node, "dufomap.temporal_guard.enable", std::nullopt,
+      temporal_guard.enable, warnings);
+  temporal_guard.coarse_resolution = ReadParam<double>(
+      node, "dufomap.temporal_guard.coarse_resolution", std::nullopt,
+      temporal_guard.coarse_resolution, warnings);
+  temporal_guard.min_keyframe_support = ReadParam<int>(
+      node, "dufomap.temporal_guard.min_keyframe_support", std::nullopt,
+      temporal_guard.min_keyframe_support, warnings);
 
   MappingSystemConfig& system = mapping.system;
   system.mapping_mode = ReadParam<bool>(node, "system.mapping_mode",
@@ -608,7 +677,45 @@ void LoadMappingConfig(rclcpp::Node& node, SlamConfig& config,
                                       std::string("lidarMaxRange"),
                                       lidar.max_range, warnings);
 
-  LoadGroundSegmentation(node, mapping.ground_segmentation, warnings);
+  LoadGroundSegmentation(node, mapping.ground_segmentation, warnings, true);
+
+  auto& patchwork = mapping.patchworkpp;
+  patchwork.mode = ReadParam<std::string>(
+      node, "patchworkpp.mode", std::nullopt, patchwork.mode, warnings);
+  if (patchwork.mode != "off" && patchwork.mode != "online" &&
+      patchwork.mode != "export")
+    Reject("patchworkpp.mode", "must be off, online, or export");
+  patchwork.sensor_height = ReadParam<double>(
+      node, "patchworkpp.sensor_height", std::nullopt,
+      patchwork.sensor_height, warnings);
+  patchwork.min_range = ReadParam<double>(
+      node, "patchworkpp.min_range", std::nullopt, patchwork.min_range, warnings);
+  patchwork.max_range = ReadParam<double>(
+      node, "patchworkpp.max_range", std::nullopt, patchwork.max_range, warnings);
+  patchwork.uprightness_thr = ReadParam<double>(
+      node, "patchworkpp.uprightness_thr", std::nullopt,
+      patchwork.uprightness_thr, warnings);
+  patchwork.th_seeds = ReadParam<double>(
+      node, "patchworkpp.th_seeds", std::nullopt, patchwork.th_seeds, warnings);
+  patchwork.th_dist = ReadParam<double>(
+      node, "patchworkpp.th_dist", std::nullopt, patchwork.th_dist, warnings);
+  patchwork.enable_rnr = ReadParam<bool>(
+      node, "patchworkpp.enable_rnr", std::nullopt, patchwork.enable_rnr, warnings);
+  patchwork.rnr_intensity_threshold = ReadParam<double>(
+      node, "patchworkpp.rnr_intensity_threshold", std::nullopt,
+      patchwork.rnr_intensity_threshold, warnings);
+  RequirePositive(patchwork.sensor_height, "patchworkpp.sensor_height");
+  RequireNonNegative(patchwork.min_range, "patchworkpp.min_range");
+  RequirePositive(patchwork.max_range, "patchworkpp.max_range");
+  if (patchwork.max_range <= patchwork.min_range)
+    Reject("patchworkpp.max_range", "must exceed patchworkpp.min_range");
+  RequirePositive(patchwork.uprightness_thr, "patchworkpp.uprightness_thr");
+  if (patchwork.uprightness_thr > 1.0)
+    Reject("patchworkpp.uprightness_thr", "must not exceed 1");
+  RequirePositive(patchwork.th_seeds, "patchworkpp.th_seeds");
+  RequirePositive(patchwork.th_dist, "patchworkpp.th_dist");
+  RequireNonNegative(patchwork.rnr_intensity_threshold,
+                     "patchworkpp.rnr_intensity_threshold");
 
   MappingImuConfig& imu = mapping.imu;
   imu.type = ReadParam<int>(node, "imu.type", std::string("imuType"), imu.type,
@@ -713,6 +820,9 @@ void LoadMappingConfig(rclcpp::Node& node, SlamConfig& config,
   local_map.search_radius = ReadParam<double>(
       node, "local_map.search_radius", std::string("surroundingKeyframeSearchRadius"),
       local_map.search_radius, warnings);
+  local_map.transformed_cache_max_mb = ReadParam<int>(
+      node, "local_map.transformed_cache_max_mb", std::nullopt,
+      local_map.transformed_cache_max_mb, warnings);
 
   MappingLoopClosureConfig& loop = mapping.loop_closure;
   loop.enable = ReadParam<bool>(node, "loop_closure.enable",
@@ -774,7 +884,19 @@ void LoadMappingConfig(rclcpp::Node& node, SlamConfig& config,
   RequireVoxelLeaf(voxel.mapping_surface_leaf_size, "voxel_filter.mapping_surface_leaf_size");
   RequireVoxelLeaf(local_map.keyframe_density, "local_map.keyframe_density");
   RequirePositive(local_map.search_radius, "local_map.search_radius");
+  RequireNonNegative(local_map.transformed_cache_max_mb,
+                     "local_map.transformed_cache_max_mb");
   RequirePositive(system.number_of_cores, "system.number_of_cores");
+  RequirePositive(map_save.ground_grid.max_hole_cells,
+                  "map_save.ground_grid.max_hole_cells");
+  RequirePositive(map_save.ground_mesh.max_edge_length,
+                  "map_save.ground_mesh.max_edge_length");
+  RequireNonNegative(map_save.ground_mesh.edge_length_per_meter,
+                     "map_save.ground_mesh.edge_length_per_meter");
+  RequireFinite(map_save.ground_mesh.max_range_ratio,
+                "map_save.ground_mesh.max_range_ratio");
+  if (map_save.ground_mesh.max_range_ratio < 1.0)
+    Reject("map_save.ground_mesh.max_range_ratio", "must be at least one");
   RequirePositive(map_save.tiled_map.tile_size_m,
                   "map_save.tiled_map.tile_size_m");
   RequirePositive(system.mapping_process_interval,
@@ -784,6 +906,36 @@ void LoadMappingConfig(rclcpp::Node& node, SlamConfig& config,
                   "map_save.tiled_map.overview_resolution_m");
   RequireNonEmpty(map_save.tiled_map.output_subdirectory,
                   "map_save.tiled_map.output_subdirectory");
+  if (mapping.dufomap.enable) {
+    RequirePositive(mapping.dufomap.resolution, "dufomap.resolution");
+    RequireNonNegative(mapping.dufomap.d_s, "dufomap.d_s");
+    if (mapping.dufomap.d_p < 0 || mapping.dufomap.d_p > 4)
+      Reject("dufomap.d_p", "must be between 0 and 4");
+    if (mapping.dufomap.num_threads != 0 && mapping.dufomap.num_threads < 2)
+      Reject("dufomap.num_threads", "must be 0 (automatic) or at least 2");
+    RequireNonNegative(mapping.dufomap.min_range, "dufomap.min_range");
+    if (mapping.dufomap.max_range < 0.0 ||
+        (mapping.dufomap.max_range != 0.0 &&
+         mapping.dufomap.max_range < mapping.dufomap.min_range))
+      Reject("dufomap.max_range", "must be zero or at least min_range");
+    if (mapping.dufomap.temporal_guard.enable) {
+      std::string temporal_error;
+      if (!lio_sam_hesai::ValidateTemporalGuardConfig(
+              mapping.dufomap.temporal_guard, &temporal_error)) {
+        throw std::invalid_argument(temporal_error);
+      }
+      if (mapping.dufomap.temporal_guard.coarse_resolution <=
+          mapping.dufomap.resolution) {
+        Reject("dufomap.temporal_guard.coarse_resolution",
+               "must exceed dufomap.resolution so the auxiliary grid is "
+               "actually coarser");
+      }
+    }
+    if (mapping.static_map_filter.enable)
+      Reject("dufomap.enable",
+             "cannot run together with static_map_filter.enable; choose one "
+             "dynamic/ghost filter instead of silently applying both");
+  }
 }
 
 void LoadLocalizationConfig(rclcpp::Node& node, SlamConfig& config,

@@ -1,0 +1,40 @@
+CMake Warning (dev) at CMakeLists.txt:38 (find_package):
+  Policy CMP0074 is not set: find_package uses <PackageName>_ROOT variables.
+  Run "cmake --help-policy CMP0074" for policy details.  Use the cmake_policy
+  command to set the policy and suppress this warning.
+
+  CMake variable PCL_ROOT is set to:
+
+    /usr
+
+  For compatibility, CMake is ignoring the variable.
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+In file included from /home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/geometry/intersects.hpp:48,
+                 from /home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/map/predicate/spatial.hpp:49,
+                 from /home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/map/octree/octree.hpp:57,
+                 from /home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/map/octree/octree_map.hpp:47,
+                 from /home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/map/ufomap.hpp:63,
+                 from /home/robot/slam_ws/src/lio_sam_hesai/src/common/dufomap_backend.cpp:13:
+/home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/geometry/helper.hpp: In function ‘constexpr std::pair<float, float> ufo::getInterval(const ufo::AABB&, ufo::Point)’:
+/home/robot/slam_ws/src/lio_sam_hesai/third_party/ufomap/include/ufo/geometry/helper.hpp:174:77: note: parameter passing for argument of type ‘std::pair<float, float>’ when C++17 is enabled changed to match C++14 in GCC 10.1
+  174 | constexpr std::pair<float, float> getInterval(AABB const& aabb, Point axis) noexcept
+      |                                                                             ^~~~~~~~
+/home/robot/slam_ws/src/lio_sam_hesai/test/test_online_dufomap.cpp:21:10: fatal error: lio_sam_hesai/srv/save_map_options.hpp: No such file or directory
+   21 | #include "lio_sam_hesai/srv/save_map_options.hpp"
+      |          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+compilation terminated.
+gmake[3]: *** [CMakeFiles/test_online_dufomap.dir/build.make:76: CMakeFiles/test_online_dufomap.dir/test/test_online_dufomap.cpp.o] Error 1
+gmake[3]: *** Waiting for unfinished jobs....
+/home/robot/slam_ws/src/lio_sam_hesai/src/common/online_dufomap.cpp: In function ‘std::vector<lio_sam_hesai::DufomapPoint> lio_sam_hesai::{anonymous}::CloudToDufomap(const PointCloud2&)’:
+/home/robot/slam_ws/src/lio_sam_hesai/src/common/online_dufomap.cpp:64:8: error: ‘fromROSMsg’ is not a member of ‘pcl’
+   64 |   pcl::fromROSMsg(message, cloud);
+      |        ^~~~~~~~~~
+/home/robot/slam_ws/src/lio_sam_hesai/src/common/online_dufomap.cpp: In constructor ‘lio_sam_hesai::OnlineDufomap::Impl::Impl(const DufomapConfig&, std::string)’:
+/home/robot/slam_ws/src/lio_sam_hesai/src/common/online_dufomap.cpp:159:9: error: class ‘lio_sam_hesai::OnlineDufomap::Impl’ does not have any field named ‘keyframe_poses_’
+  159 |         keyframe_poses_(),
+      |         ^~~~~~~~~~~~~~~
+gmake[3]: *** [CMakeFiles/test_online_dufomap.dir/build.make:90: CMakeFiles/test_online_dufomap.dir/src/common/online_dufomap.cpp.o] Error 1
+gmake[2]: *** [CMakeFiles/Makefile2:1465: CMakeFiles/test_online_dufomap.dir/all] Error 2
+gmake[1]: *** [CMakeFiles/Makefile2:1472: CMakeFiles/test_online_dufomap.dir/rule] Error 2
+gmake: *** [Makefile:738: test_online_dufomap] Error 2

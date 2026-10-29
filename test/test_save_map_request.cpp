@@ -1,15 +1,13 @@
 // Focused contract tests for the shared save-map request/export options.
 //
-// Both /lio_sam/save_map (legacy, HOME-relative destination) and
-// /lio_sam/save_map_options (absolute destination, per-save toggles) resolve
-// their request into the same lio_sam_hesai::SaveMapExportOptions struct before
-// the mapOptimization export body touches the filesystem. These tests pin the
-// path resolution, the unsafe-destination rejection, and the artifact cleanup
-// rules without needing a running mapping node.
+// /lio_sam/save_map_options resolves its request into a
+// lio_sam_hesai::SaveMapExportOptions struct before the mapOptimization export
+// body touches the filesystem. These tests pin the path resolution, the
+// unsafe-destination rejection, and the artifact cleanup rules without needing
+// a running mapping node.
 
 #include "common/map_artifact_layout.h"
 #include "common/save_map_request.h"
-#include "lio_sam_hesai/srv/save_map.hpp"
 #include "lio_sam_hesai/srv/save_map_options.hpp"
 
 #include <gtest/gtest.h>
@@ -68,54 +66,6 @@ void WriteFile(const fs::path& path)
 }
 
 }  // namespace
-
-TEST(SaveMapRequest, LegacyDestinationIsHomeRelative)
-{
-  std::string error;
-  const auto options = lio_sam_hesai::MakeLegacySaveMapExportOptions(
-      "/map/site", 0.25F, 0.1F, "/home/robot", "/maps/default",
-      /*configured_save_ground_map=*/true,
-      /*configured_save_tiled_map=*/true, &error);
-
-  ASSERT_TRUE(options.has_value()) << error;
-  EXPECT_EQ(options->directory, fs::path("/home/robot/map/site"));
-  EXPECT_FLOAT_EQ(options->resolution, 0.25F);
-  EXPECT_FLOAT_EQ(options->ground_resolution, 0.1F);
-  EXPECT_TRUE(options->save_ground_map);
-  EXPECT_TRUE(options->save_tiled_map);
-  EXPECT_TRUE(error.empty());
-}
-
-TEST(SaveMapRequest, LegacyEmptyDestinationFallsBackToConfiguredDirectory)
-{
-  std::string error;
-  const auto options = lio_sam_hesai::MakeLegacySaveMapExportOptions(
-      "", 0.0F, 0.0F, "/home/robot", "/maps/default",
-      /*configured_save_ground_map=*/false,
-      /*configured_save_tiled_map=*/false, &error);
-
-  ASSERT_TRUE(options.has_value()) << error;
-  EXPECT_EQ(options->directory, fs::path("/home/robot/maps/default"));
-  EXPECT_FALSE(options->save_ground_map);
-  EXPECT_FALSE(options->save_tiled_map);
-}
-
-TEST(SaveMapRequest, LegacyRejectsUnresolvableOrHomeDestination)
-{
-  std::string error;
-  EXPECT_FALSE(lio_sam_hesai::MakeLegacySaveMapExportOptions(
-                   "", 0.0F, 0.0F, "", "", true, true, &error)
-                   .has_value());
-  EXPECT_FALSE(error.empty());
-
-  error.clear();
-  // An empty request with an empty configured directory resolves to HOME
-  // itself, which the shared validation rejects.
-  EXPECT_FALSE(lio_sam_hesai::MakeLegacySaveMapExportOptions(
-                   "", 0.0F, 0.0F, "/home/robot", "", true, true, &error)
-                   .has_value());
-  EXPECT_FALSE(error.empty());
-}
 
 TEST(SaveMapRequest, ValidationRejectsEmptyRelativeRootAndHomeDestinations)
 {
@@ -203,8 +153,8 @@ TEST(SaveMapRequest, OptionsRequestUsesAbsoluteDestinationExactly)
   std::string error;
   const auto options = lio_sam_hesai::MakeSaveMapExportOptions(
       "/tmp/site/out/", 0.3F, -1.0F,
-      /*save_ground_map=*/true, /*save_tiled_map=*/false, "/home/robot",
-      &error);
+      /*save_ground_map=*/true, /*save_tiled_map=*/false,
+      "/home/robot", &error);
 
   ASSERT_TRUE(options.has_value()) << error;
   EXPECT_EQ(options->directory.string(), "/tmp/site/out/");
@@ -225,7 +175,8 @@ TEST(SaveMapRequest, OptionsRequestRejectsMissingRelativeAndUnsafeDestination)
 
   error.clear();
   EXPECT_FALSE(lio_sam_hesai::MakeSaveMapExportOptions(
-                   "maps/site", 0.0F, 0.0F, true, true, "/home/robot", &error)
+                   "maps/site", 0.0F, 0.0F, true, true, "/home/robot",
+                   &error)
                    .has_value());
   EXPECT_FALSE(error.empty());
 
@@ -237,7 +188,8 @@ TEST(SaveMapRequest, OptionsRequestRejectsMissingRelativeAndUnsafeDestination)
 
   error.clear();
   EXPECT_FALSE(lio_sam_hesai::MakeSaveMapExportOptions(
-                   "/home/robot", 0.0F, 0.0F, true, true, "/home/robot", &error)
+                   "/home/robot", 0.0F, 0.0F, true, true, "/home/robot",
+                   &error)
                    .has_value());
   EXPECT_FALSE(error.empty());
 }
@@ -357,15 +309,4 @@ TEST(SaveMapRequest, OptionsServiceRequestDefaultsAreInert)
   lio_sam_hesai::srv::SaveMapOptions::Response response;
   EXPECT_FALSE(response.success);
   EXPECT_TRUE(response.message.empty());
-}
-
-TEST(SaveMapRequest, LegacyServiceRequestShapeIsUnchanged)
-{
-  lio_sam_hesai::srv::SaveMap::Request request;
-  EXPECT_TRUE(request.destination.empty());
-  EXPECT_FLOAT_EQ(request.resolution, 0.0F);
-  EXPECT_FLOAT_EQ(request.ground_resolution, 0.0F);
-
-  lio_sam_hesai::srv::SaveMap::Response response;
-  EXPECT_FALSE(response.success);
 }

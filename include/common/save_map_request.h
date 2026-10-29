@@ -7,17 +7,13 @@
 
 #include "common/map_artifact_layout.h"
 
-namespace lio_sam_hesai
-{
+namespace lio_sam_hesai {
 
-// One resolved map export request. The legacy /lio_sam/save_map service and the
-// /lio_sam/save_map_options service both build this struct and hand it to the
-// same export body in mapOptimization, so destination handling and per-save
-// toggles cannot drift apart between the two services.
-struct SaveMapExportOptions
-{
-  // Absolute map directory. The legacy service resolves it from HOME; the
-  // options service uses its absolute request value exactly as given.
+// One resolved map export request. The /lio_sam/save_map_options service
+// builds this struct and hands it to the export body in mapOptimization, so
+// destination handling and per-save toggles stay in one place.
+struct SaveMapExportOptions {
+  // Absolute map directory, used exactly as given in the request.
   std::filesystem::path directory;
   // Raw request values. A negative value selects the configured map_save
   // resolution; zero keeps the historical meaning of no additional
@@ -37,20 +33,11 @@ bool ValidateSaveMapDestination(const std::filesystem::path& destination,
                                 const std::filesystem::path& home_directory,
                                 std::string* error);
 
-// Legacy /lio_sam/save_map semantics: an empty `requested_destination` uses
-// `configured_directory`, and either value is appended to HOME exactly as the
-// historical implementation did. Ground and tiled exports follow the
-// configured flags. Returns nullopt and fills `error` when the destination
-// cannot be resolved or is rejected by ValidateSaveMapDestination.
-std::optional<SaveMapExportOptions> MakeLegacySaveMapExportOptions(
-    const std::string& requested_destination, float resolution,
-    float ground_resolution, const std::string& home_directory,
-    const std::string& configured_directory, bool configured_save_ground_map,
-    bool configured_save_tiled_map, std::string* error = nullptr);
-
 // /lio_sam/save_map_options semantics: `requested_destination` is required,
-// must be absolute, and is used exactly as given. The ground and tiled toggles
-// are honoured per request. Returns nullopt and fills `error` on rejection.
+// must be absolute, and is used exactly as given. The ground, tiled, and
+// per-request toggles are honoured. DUFOMap is configured online, not here.
+// Returns nullopt and fills `error`
+// on rejection.
 std::optional<SaveMapExportOptions> MakeSaveMapExportOptions(
     const std::string& requested_destination, float resolution,
     float ground_resolution, bool save_ground_map, bool save_tiled_map,
@@ -62,7 +49,8 @@ std::optional<SaveMapExportOptions> MakeSaveMapExportOptions(
 // directories at fixed file names before removing anything. Unrelated files
 // survive, and a symlinked tiled directory is unlinked without touching its
 // target. Returns false and fills `error` on the first filesystem failure.
-bool RemovePriorMapArtifacts(const MapArtifactLayout& layout, std::string* error);
+bool RemovePriorMapArtifacts(const MapArtifactLayout& layout,
+                             std::string* error);
 
 }  // namespace lio_sam_hesai
 

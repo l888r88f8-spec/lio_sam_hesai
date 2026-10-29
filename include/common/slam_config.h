@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 
+#include "common/dufomap_config.h"
 #include "common/parameter_alias.h"
 #include "common/rigid_transform.h"
 #include "common/ros_pose_adapter.h"
@@ -97,14 +98,26 @@ struct TiledMapSaveConfig {
   double overview_resolution_m{5.0};
 };
 
+struct GroundGridSaveConfig {
+  bool enable{false};
+  int max_hole_cells{14};
+};
+
+struct GroundMeshSaveConfig {
+  bool enable{false};
+  double max_edge_length{0.5};
+  double edge_length_per_meter{0.25};
+  double max_range_ratio{2.0};
+};
+
 struct MapSaveConfig {
-  bool save_tiled_map{false};
   TiledMapSaveConfig tiled_map;
+  GroundGridSaveConfig ground_grid;
+  GroundMeshSaveConfig ground_mesh;
   bool generate_scan_context_db{true};
   std::string directory{"/Downloads/LOAM/"};
   double resolution{0.0};
   double ground_resolution{0.0};
-  bool save_ground_map{false};
   std::string ground_directory{"/Downloads/LOAM_ground/"};
   std::string ground_global_directory{"/Downloads/LOAM_ground_global/"};
   bool ground_final_use_odometry{true};
@@ -127,6 +140,8 @@ struct GroundGridPatchConfig {
 };
 
 struct GroundSegmentationConfig {
+  // Exactly one execution stage: off, online, or export.
+  std::string mode{"online"};
   bool only_mode{false};
   double leaf_size{0.1};
   int scan_start_index{0};
@@ -138,6 +153,19 @@ struct GroundSegmentationConfig {
   int plane_min_points{80};
   bool flatten_z{false};
   double flatten_value{0.0};
+};
+
+struct PatchworkppConfig {
+  std::string mode{"off"};
+  double sensor_height{1.723};
+  double min_range{0.5};
+  double max_range{80.0};
+  double uprightness_thr{0.707};
+  double th_seeds{0.125};
+  double th_dist{0.125};
+  // Raw sensor intensity scales differ; enable only after calibration.
+  bool enable_rnr{false};
+  double rnr_intensity_threshold{0.2};
 };
 
 struct MappingSystemConfig {
@@ -201,6 +229,7 @@ struct LocalMapConfig {
   double keyframe_angle_threshold{0.2};
   double keyframe_density{2.0};
   double search_radius{50.0};
+  int transformed_cache_max_mb{128};
 };
 
 struct MappingLoopClosureConfig {
@@ -222,9 +251,11 @@ struct VisualizationConfig {
 struct MappingConfig {
   GpsConfig gps;
   MapSaveConfig map_save;
+  DufomapConfig dufomap;
   MappingSystemConfig system;
   MappingLidarConfig lidar;
   GroundSegmentationConfig ground_segmentation;
+  PatchworkppConfig patchworkpp;
   MappingImuConfig imu;
   FeatureExtractionConfig feature_extraction;
   VoxelFilterConfig voxel_filter;

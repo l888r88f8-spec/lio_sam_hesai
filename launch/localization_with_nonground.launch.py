@@ -128,7 +128,7 @@ def generate_launch_description():
             output="screen",
             emulate_tty=True,
             condition=IfCondition(use_rviz),
-        ),
+        )
     ]
 
     return LaunchDescription(
