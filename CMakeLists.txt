@@ -14,6 +14,9 @@ add_definitions(-DPROJECT_SOURCE_DIR=\"${PROJECT_SOURCE_DIR}\")
 include(cmake/glog.cmake)
 include(cmake/g2o.cmake)
 
+# Keep normal builds independent of test sources and test dependencies.
+option(BUILD_TESTING "Build the testing tree." OFF)
+
 # find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
@@ -433,9 +436,11 @@ if(BUILD_TESTING)
   add_test(NAME test_launch_sim_clock
     COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/test/test_launch_sim_clock.py)
-  add_test(NAME test_relocalization_diagnostics_launch
-    COMMAND ${Python3_EXECUTABLE}
-      ${CMAKE_CURRENT_SOURCE_DIR}/test/test_relocalization_diagnostics_launch.py)
+  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test/test_relocalization_diagnostics_launch.py")
+    add_test(NAME test_relocalization_diagnostics_launch
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/test/test_relocalization_diagnostics_launch.py)
+  endif()
   add_test(NAME test_tiled_map_integration
     COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/test/test_tiled_map_integration.py)
@@ -450,15 +455,19 @@ if(BUILD_TESTING)
     COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/test/test_dufomap_export_filter.py)
   find_package(ament_cmake_gtest REQUIRED)
-  ament_add_gtest(test_cloud_time_bounds test/test_cloud_time_bounds.cpp)
-  target_include_directories(test_cloud_time_bounds PRIVATE include ${PCL_INCLUDE_DIRS})
-  target_link_libraries(test_cloud_time_bounds ${PCL_LIBRARIES} ${LIO_SAM_EIGEN_TARGET})
-  ament_add_gtest(test_relocalization_failure_handler
-    test/test_relocalization_failure_handler.cpp)
-  target_include_directories(test_relocalization_failure_handler PRIVATE
-    ${GLOG_INCLUDE_DIRS})
-  target_link_libraries(test_relocalization_failure_handler
-    ${GLOG_LIBRARIES} Threads::Threads)
+  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test/test_cloud_time_bounds.cpp")
+    ament_add_gtest(test_cloud_time_bounds test/test_cloud_time_bounds.cpp)
+    target_include_directories(test_cloud_time_bounds PRIVATE include ${PCL_INCLUDE_DIRS})
+    target_link_libraries(test_cloud_time_bounds ${PCL_LIBRARIES} ${LIO_SAM_EIGEN_TARGET})
+  endif()
+  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test/test_relocalization_failure_handler.cpp")
+    ament_add_gtest(test_relocalization_failure_handler
+      test/test_relocalization_failure_handler.cpp)
+    target_include_directories(test_relocalization_failure_handler PRIVATE
+      ${GLOG_INCLUDE_DIRS})
+    target_link_libraries(test_relocalization_failure_handler
+      ${GLOG_LIBRARIES} Threads::Threads)
+  endif()
   find_package(ament_lint_auto REQUIRED)
   ament_add_gtest(test_online_ground_pipeline test/test_online_ground_pipeline.cpp)
   target_include_directories(test_online_ground_pipeline PRIVATE include)
@@ -505,11 +514,13 @@ if(BUILD_TESTING)
   ament_add_gtest(test_map_artifact_layout test/test_map_artifact_layout.cpp)
   target_include_directories(test_map_artifact_layout PRIVATE include)
   target_link_libraries(test_map_artifact_layout ${PROJECT_NAME}_contracts)
-  ament_add_gtest(test_keyframe_scan_cache
-    test/test_keyframe_scan_cache.cpp)
-  target_include_directories(test_keyframe_scan_cache PRIVATE include)
-  target_link_libraries(test_keyframe_scan_cache
-    ${PROJECT_NAME}_keyframe_scan_cache)
+  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test/test_keyframe_scan_cache.cpp")
+    ament_add_gtest(test_keyframe_scan_cache
+      test/test_keyframe_scan_cache.cpp)
+    target_include_directories(test_keyframe_scan_cache PRIVATE include)
+    target_link_libraries(test_keyframe_scan_cache
+      ${PROJECT_NAME}_keyframe_scan_cache)
+  endif()
   ament_add_gtest(test_transformed_keyframe_cache
     test/test_transformed_keyframe_cache.cpp)
   target_include_directories(test_transformed_keyframe_cache PRIVATE
@@ -521,33 +532,41 @@ if(BUILD_TESTING)
   ament_add_gtest(test_dufomap_native test/test_dufomap_native.cpp)
   target_include_directories(test_dufomap_native PRIVATE include)
   target_link_libraries(test_dufomap_native ${PROJECT_NAME}_dufomap_native)
-  ament_add_gtest(test_online_dufomap test/test_online_dufomap.cpp)
-  target_include_directories(test_online_dufomap PRIVATE include ${PCL_INCLUDE_DIRS})
-  ament_target_dependencies(test_online_dufomap sensor_msgs pcl_conversions)
-  target_link_libraries(test_online_dufomap
-    ${PROJECT_NAME}_dufomap_online "${cpp_typesupport_target}")
+  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test/test_online_dufomap.cpp")
+    ament_add_gtest(test_online_dufomap test/test_online_dufomap.cpp)
+    target_include_directories(test_online_dufomap PRIVATE include ${PCL_INCLUDE_DIRS})
+    ament_target_dependencies(test_online_dufomap sensor_msgs pcl_conversions)
+    target_link_libraries(test_online_dufomap
+      ${PROJECT_NAME}_dufomap_online "${cpp_typesupport_target}")
+  endif()
   # Temporal-guard tests are intentionally independent of the existing online
   # test target so RED/green progress on the guard cannot hide regressions in
   # the 22 established online behavior tests.
-  ament_add_gtest(test_dufomap_temporal_guard
-    test/test_dufomap_temporal_guard.cpp)
-  target_include_directories(test_dufomap_temporal_guard PRIVATE include)
-  target_link_libraries(test_dufomap_temporal_guard
-    ${PROJECT_NAME}_dufomap_temporal_guard)
-  ament_add_gtest(test_dufomap_temporal_guard_config
-    test/test_dufomap_temporal_guard_config.cpp)
-  target_include_directories(test_dufomap_temporal_guard_config PRIVATE include)
-  target_link_libraries(test_dufomap_temporal_guard_config
-    ${PROJECT_NAME}_contracts)
-  ament_add_gtest(test_online_dufomap_temporal_guard
-    test/test_online_dufomap_temporal_guard.cpp)
-  target_include_directories(test_online_dufomap_temporal_guard
-    PRIVATE include ${PCL_INCLUDE_DIRS})
-  ament_target_dependencies(test_online_dufomap_temporal_guard
-    sensor_msgs pcl_conversions)
-  target_link_libraries(test_online_dufomap_temporal_guard
-    ${PROJECT_NAME}_dufomap_online ${PROJECT_NAME}_contracts
-    "${cpp_typesupport_target}")
+  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test/test_dufomap_temporal_guard.cpp")
+    ament_add_gtest(test_dufomap_temporal_guard
+      test/test_dufomap_temporal_guard.cpp)
+    target_include_directories(test_dufomap_temporal_guard PRIVATE include)
+    target_link_libraries(test_dufomap_temporal_guard
+      ${PROJECT_NAME}_dufomap_temporal_guard)
+  endif()
+  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test/test_dufomap_temporal_guard_config.cpp")
+    ament_add_gtest(test_dufomap_temporal_guard_config
+      test/test_dufomap_temporal_guard_config.cpp)
+    target_include_directories(test_dufomap_temporal_guard_config PRIVATE include)
+    target_link_libraries(test_dufomap_temporal_guard_config
+      ${PROJECT_NAME}_contracts)
+  endif()
+  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test/test_online_dufomap_temporal_guard.cpp")
+    ament_add_gtest(test_online_dufomap_temporal_guard
+      test/test_online_dufomap_temporal_guard.cpp)
+    target_include_directories(test_online_dufomap_temporal_guard
+      PRIVATE include ${PCL_INCLUDE_DIRS})
+    ament_target_dependencies(test_online_dufomap_temporal_guard
+      sensor_msgs pcl_conversions)
+    target_link_libraries(test_online_dufomap_temporal_guard
+      ${PROJECT_NAME}_dufomap_online ${PROJECT_NAME}_contracts
+      "${cpp_typesupport_target}")
+  endif()
   ament_add_gtest(test_save_map_request test/test_save_map_request.cpp)
   target_include_directories(test_save_map_request PRIVATE include)
   target_link_libraries(test_save_map_request
@@ -583,12 +602,14 @@ if(BUILD_TESTING)
   ament_add_gtest(test_rigid_transform test/test_rigid_transform.cpp)
   target_include_directories(test_rigid_transform PRIVATE include)
   target_link_libraries(test_rigid_transform ${LIO_SAM_EIGEN_TARGET})
-  ament_add_gtest(test_pre_integration_rotation
-    test/test_pre_integration_rotation.cpp src/imu/pre_integration.cpp)
-  target_include_directories(test_pre_integration_rotation PRIVATE
-    include ${PCL_INCLUDE_DIRS})
-  target_link_libraries(test_pre_integration_rotation
-    ${LIO_SAM_EIGEN_TARGET} ${GLOG_LIBRARIES})
+  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test/test_pre_integration_rotation.cpp")
+    ament_add_gtest(test_pre_integration_rotation
+      test/test_pre_integration_rotation.cpp src/imu/pre_integration.cpp)
+    target_include_directories(test_pre_integration_rotation PRIVATE
+      include ${PCL_INCLUDE_DIRS})
+    target_link_libraries(test_pre_integration_rotation
+      ${LIO_SAM_EIGEN_TARGET} ${GLOG_LIBRARIES})
+  endif()
   ament_add_gtest(test_ros_pose_adapter test/test_ros_pose_adapter.cpp)
   target_include_directories(test_ros_pose_adapter PRIVATE include)
   target_link_libraries(test_ros_pose_adapter ${PROJECT_NAME}_contracts)
