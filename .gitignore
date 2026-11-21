@@ -6,26 +6,10 @@ __pycache__/
 /log/
 test/
 tests/
-docs/*
-!docs/PROJECT_STATUS.md
-# DUFOMap export plan and usage documentation.
-!docs/superpowers/
-docs/superpowers/*
-!docs/superpowers/plans/
-docs/superpowers/plans/*
-!docs/superpowers/plans/2026-10-23-dufomap-export.md
-!docs/dufomap-export.md
-# Ground segmentation plans and usage documentation.
-!docs/superpowers/plans/2026-10-24-ground-segmentation-modes.md
-!docs/superpowers/plans/2026-10-24-dufomap-cpp-service-control.md
-!docs/ground-segmentation-modes.md
-# Transformed keyframe cache plan.
-!docs/superpowers/plans/2026-10-28-transformed-keyframe-cache.md
-# GroundMap grid export plans and documentation.
-!docs/superpowers/plans/2026-10-28-ground-map-grid.md
-!docs/superpowers/plans/2026-10-28-ground-map-hole-fill.md
-!docs/ground-map-grid.md
-# Ground scan mesh plan.
-!docs/superpowers/plans/2026-10-29-ground-scan-mesh.md
+/docs/
+/image/
+/README.md
+/result.md
+/scripts/dufomap_native/README.md
 .worktrees/
 measure_localization_jitter.py
