@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <iomanip>
 #include <sstream>
 
@@ -163,6 +164,16 @@ std::filesystem::path MakeDufomapSessionDirectory(
                                    ? std::filesystem::temp_directory_path(
                                          filesystem_error)
                                    : std::filesystem::path(configured_base);
+  if (configured_base == "~" || configured_base.rfind("~/", 0) == 0) {
+    const char* home = std::getenv("HOME");
+    if (home == nullptr || *home == '\0') {
+      if (error != nullptr) {
+        *error = "Unable to expand the DUFOMap cache base directory: HOME is unset or empty";
+      }
+      return {};
+    }
+    base = std::string(home) + configured_base.substr(1);
+  }
   if (filesystem_error || base.empty()) {
     if (error != nullptr) {
       *error = "Unable to resolve the DUFOMap cache base directory: " +

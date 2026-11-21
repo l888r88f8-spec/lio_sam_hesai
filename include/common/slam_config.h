@@ -115,6 +115,10 @@ struct MapSaveConfig {
   GroundGridSaveConfig ground_grid;
   GroundMeshSaveConfig ground_mesh;
   bool generate_scan_context_db{true};
+  // Root of the persistent keyframe scan cache. Every mapping session creates
+  // its own directory below it and keeps its scans after the node exits.
+  // Empty selects a per-session directory below the system temp directory.
+  std::string cache_directory;
   std::string directory{"/Downloads/LOAM/"};
   double resolution{0.0};
   double ground_resolution{0.0};

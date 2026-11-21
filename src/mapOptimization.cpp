@@ -456,7 +456,7 @@ public:
         // map destination and retains it after node exit. Online DUFOMap has
         // its own worker cache below this session directory.
         dufomapCacheDirectory_ = lio_sam_hesai::MakeDufomapSessionDirectory(
-            config_.mapping.dufomap.cache_directory,
+            config_.mapping.map_save.cache_directory,
             static_cast<unsigned long>(::getpid()), &dufomapCacheError_);
         if (dufomapCacheDirectory_.empty())
         {

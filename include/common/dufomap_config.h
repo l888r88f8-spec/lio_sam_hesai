@@ -31,10 +31,6 @@ struct DufomapConfig {
   // Cooperative timeout only: checked between frames and classification
   // batches, never inside one upstream core call.
   double timeout_seconds{3600.0};
-  // Root of the persistent keyframe scan cache. Every mapping session creates
-  // its own directory below it and keeps its scans after the node exits.
-  // Empty selects a per-session directory below the system temp directory.
-  std::string cache_directory;
   // Fine-grid decisions always win; the guard can only add coarse-only
   // removals that lack repeated complete-keyframe support.
   DufomapTemporalGuardConfig temporal_guard;

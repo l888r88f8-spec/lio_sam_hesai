@@ -59,7 +59,8 @@ std::string SerializeDufomapManifest(const DufomapManifest& manifest);
 
 // Creates a fresh per-session directory below the configured cache root. The
 // caller owns the directory and keeps it after the session ends. An empty
-// `configured_base` selects the system temp directory.
+// `configured_base` selects the system temp directory. A leading `~` path
+// component is expanded using HOME.
 std::filesystem::path MakeDufomapSessionDirectory(
     const std::string& configured_base, std::uint64_t process_id,
     std::string* error);

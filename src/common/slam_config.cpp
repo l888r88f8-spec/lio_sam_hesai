@@ -583,6 +583,9 @@ void LoadMappingConfig(rclcpp::Node& node, SlamConfig& config,
   map_save.generate_scan_context_db = ReadParam<bool>(
       node, "map_save.generate_scan_context_db", std::string("generateScDb"),
       map_save.generate_scan_context_db, warnings);
+  map_save.cache_directory = ReadParam<std::string>(
+      node, "map_save.cache_directory", std::string("dufomap.cache_directory"),
+      map_save.cache_directory, warnings);
   map_save.directory = ReadParam<std::string>(
       node, "map_save.directory", std::string("savePCDDirectory"),
       map_save.directory, warnings);
@@ -631,9 +634,6 @@ void LoadMappingConfig(rclcpp::Node& node, SlamConfig& config,
       node, "dufomap.min_range", std::nullopt, dufomap.min_range, warnings);
   dufomap.max_range = ReadParam<double>(
       node, "dufomap.max_range", std::nullopt, dufomap.max_range, warnings);
-  dufomap.cache_directory = ReadParam<std::string>(
-      node, "dufomap.cache_directory", std::nullopt, dufomap.cache_directory,
-      warnings);
   DufomapTemporalGuardConfig& temporal_guard = dufomap.temporal_guard;
   temporal_guard.enable = ReadParam<bool>(
       node, "dufomap.temporal_guard.enable", std::nullopt,

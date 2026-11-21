@@ -88,6 +88,7 @@
 
     # 地图与点云导出参数
     map_save:
+      cache_directory: "~/slam_ws/keyframe_cache"        # 关键帧磁盘缓存根路径；每次建图创建独立会话目录，退出后保留；留空用临时目录
       directory: "/map/hesai_outdoor_yifu/"              # 全局地图导出目录，程序会删除后重建该目录
       resolution: 0.3                                    # 自动导出全局地图时的下采样分辨率，0表示不额外下采样
       ground_resolution: 0.1                             # 地面网格间距；ground_grid开启时必须>0，关闭时0表示不额外下采样
@@ -129,7 +130,6 @@
       num_threads: 2                                     # 在线建议 2，避免抢占 LIO 线程；0 表示自动，其余必须 >=2
       min_range: 0.2                                     # 参与射线证据的最近距离，用于去掉车体/雷达自身点，单位米
       max_range: 100.0                                   # 参与射线证据的最远距离，0 表示不限制，单位米
-      cache_directory: "/home/robot/slam_ws/keyframe_cache"  # 在线证据磁盘缓存根路径；每次建图在其下建独立 session，退出保留；留空用临时目录
       temporal_guard:
         enable: true                                     # 辅助粗网格 + 完整关键帧持久性保护；关闭时保持 fine-only
         coarse_resolution: 0.4                           # 仅补删的辅助粗网格，必须大于 resolution
