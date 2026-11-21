@@ -1,0 +1,190 @@
+# LIO_SAM_HESAI (ROS 2)
+
+适配Hesai XT16的LIO-SAM。这个分支将包名重命名为`lio_sam_hesai`，并针对Hesai XT16的使用场景更新了配置和launch文件。已在Jetson Orin NX上验证。
+
+## 功能特性
+- 适配Hesai XT16的点云格式与时间戳假设
+- 简洁的ROS 2启动文件（`mapping.launch.py`）
+- 与LIO-SAM保持相同的节点图（image projection、feature extraction、imu preintegration、map optimization）
+- 同时支持6轴和9轴imu
+- 使用局部几何一致性过滤（KNN和平面一致性）
+- 使用体素持久性过滤和边缘过滤来过滤动态障碍物
+- 使用iVox提升建图速度
+- 修复TF树
+- 增加重定位功能
+- 增加地面点云和非地面点云输出（用于3D导航）
+- 增强建图、定位稳定性
+
+## 依赖要求
+- Ubuntu 22.04 + Humble / Ubuntu 24.04 + Jazzy
+- GTSAM 4.x（`libgtsam-dev`和`libgtsam-unstable-dev`）
+- PCL、OpenCV（可通过下面的ROS软件包安装）
+
+1. 安装ROS软件包（将`<ros2>`替换为你的发行版，例如`humble`）：
+```bash
+sudo apt update
+sudo apt install \
+  ros-<ros2>-perception-pcl \
+  ros-<ros2>-pcl-msgs \
+  ros-<ros2>-vision-opencv \
+  libgtsam-dev libgtsam-unstable-dev
+```
+
+2. 安装glog、gflags和gtest：
+```bash
+sudo apt-get install libgoogle-glog-dev libgflags-dev libgtest-dev
+```
+
+3. 安装g2o：
+```bash
+sudo apt install libeigen3-dev libspdlog-dev libsuitesparse-dev qtdeclarative5-dev qt5-qmake libqglviewer-dev-qt5 # g2o requirements
+
+git clone https://github.com/RainerKuemmerle/g2o.git
+cd g2o
+mkdir build
+cd build
+cmake ..
+make -j
+sudo make install
+```
+
+## 编译
+```bash
+cd ~/ros2_ws/src
+cd ..
+colcon build --symlink-install
+source install/setup.bash
+```
+
+## 针对机械雷达的配置
+编辑`config/mapping.yaml`和`config/relocalization.yaml`：
+- 将传感器参数设置为适用于的你雷达的配置（ring、Horizon等）
+- 将topic设置为与你的雷达驱动输出一致
+- 设置IMU外参，使IMU -> lidar坐标关系符合REP-105（x向前，y向左，z向上）
+- 其它参数参考配置文件注释。
+
+`launch/mapping.launch.py`中默认的静态TF假设IMU和lidar共点安装；如果你的安装位置不同，需要自行调整。
+
+还需要修改雷达的视场角（FOV）设置。对于Hesai XT16（默认参数），范围为-15到15度。
+
+## 一、建图
+### 1. 运行
+```bash
+ros2 launch lio_sam_hesai mapping.launch.py
+```
+
+在另一个终端播放bag：
+```bash
+ros2 bag play your_data
+```
+
+### 2. 在 RViz 保存地图
+在线 DUFOMap 由 `dufomap.enable` 控制（`config/mapping.yaml` 默认开启），在
+建图过程中持续更新关键帧标签；保存时只等待与冻结关键帧/poses 同一 generation
+的标签快照。开启时 `GlobalMap.pcd` 来自每个关键帧持久化的完整 deskewed 扫描，
+由 worker 在最终位姿下过滤；关闭时仍是 legacy corner+surface 拼接。保存服务
+本身没有 DUFOMap 开关。
+
+建图启动后，在 RViz 的 **Save Map** 面板点击 **Save Map**，会弹出保存对话框；
+对话框中的 ground/tiled 复选框只控制本次保存的地面和瓦片产物。RViz 默认显示
+清理后的 `/lio_sam/mapping/map_global`；原始配准点云
+`/lio_sam/mapping/cloud_registered` 对应的 `mapping_cloud_registered_raw`
+显示默认关闭，避免动态原始点覆盖清理图。局部地图/完整清理图更新有发布周期，
+回环后也要等下一次重建完成才会切换。
+
+也可以直接调用：
+
+```bash
+ros2 service call /lio_sam/save_map_options lio_sam_hesai/srv/SaveMapOptions "{destination: '/tmp/LOAM', resolution: 0.2, ground_resolution: 0.05, save_ground_map: true, save_tiled_map: false}"
+```
+
+<img width="1387" height="992" alt="image" src="image/image.png" />
+<img width="1453" height="964" alt="image_1" src="image/image_1.png" />
+<img width="1453" height="964" alt="image_4" src="image/image_4.png" />
+
+## 二、重定位
+### 1. 运行
+```bash
+ros2 launch lio_sam_hesai localization.launch.py
+```
+
+重定位节点会根据雷达匹配和IMU预积分直接发布`map -> base_link`，不再发布`odom`相关TF，也不再需要外部小车里程计。默认launch会发布`base_link -> hesai_lidar`和`base_link -> imu_link`静态TF；如果你的机器人URDF或其他节点已经发布这两条静态TF，请使用：
+
+```bash
+ros2 launch lio_sam_hesai localization.launch.py publish_static_tf:=false
+```
+
+### 2. 自动重定位或者在RViz中设置初始位置
+
+<img width="1453" height="650" alt="image_2" src="image/image_2.png" />
+
+## 三、重定位加非地面点输出
+```bash
+ros2 launch lio_sam_hesai localization_with_nonground.launch.py
+```
+
+同样支持`publish_static_tf:=false`以关闭launch内置的传感器静态TF发布。
+
+<img width="1453" height="650" alt="image_3" src="image/image_3.png" />
+
+## 四、仿真时钟（use_sim）
+三个launch文件（`mapping`、`localization`、`localization_with_nonground`）的`use_sim`参数共享同一个环境变量覆盖入口`USE_SIM_TIME`；环境变量未设置或为空字符串时，各launch使用自己的默认值：`mapping=false`、`localization=true`、`localization_with_nonground=false`。
+
+```bash
+export USE_SIM_TIME=true
+ros2 launch lio_sam_hesai mapping.launch.py
+
+# 只对本次启动生效
+USE_SIM_TIME=true ros2 launch lio_sam_hesai localization.launch.py
+```
+
+## 注意
+- 请确保Livox点类型包含每个点的时间信息（扫描内相对时间）以及ring/channel索引。如果字段定义不同，请修改`imageProjection.cpp`。
+- DDS/QoS：如果运行Livox驱动，请根据实际情况调整相关参数。
+- 地面分割只适合机械雷达。
+
+## 更新日志
+
+### 2026-09-18
+- 新增自动重定位
+- 引入多种门控增强定位稳定性
+- 重定位与跟踪支持按需加载瓦片地图，加入地图清单校验、异步加载和有界缓存，减少大地图常驻内存占用。
+- RViz 的 **Save Map** 面板新增目标目录选择、地面地图与瓦片地图开关及覆盖确认；新增 `/lio_sam/save_map_options` 服务，支持按次指定保存选项；旧版 `/lio_sam/save_map` 服务已移除，保存统一走 `/lio_sam/save_map_options`。
+- 整理建图与定位的坐标系、位姿变换和共享配置，增加参数校验；修复相对地图路径解析及瓦片覆盖范围判断。
+- 调整定位 TF 的发布时间以匹配当前 IMU 时间，并完善传感器中断及时间跳变时的 TF 处理；三个 launch 的仿真时间可通过 `USE_SIM_TIME` 或 `use_sim:=...` 设置。
+
+### 2026-05-30
+- 输出的所有RING的非地面点。
+
+### 2026-05-29
+- 适配Ubuntu 24.04编译环境，改进GTSAM、Eigen和g2o的查找与链接方式。
+- `SaveMap`服务新增`ground_resolution`参数，支持全局地图和地面地图使用不同保存分辨率。
+
+### 2026-05-21
+- 增加基于局部高程栅格的地面补点能力，用于生成更连续的地面地图。
+- 调整地面地图构建流程：关键帧保留真实地面量测，全局地面补点在全局坐标系中统一执行。
+
+### 2026-05-08
+- 重定位流程不再依赖外部小车里程计。
+- 重定位节点直接发布`map -> base_link`，简化TF树。
+- 调整重定位配置、RViz显示和launch文件，支持`publish_static_tf`参数控制内置静态TF。
+
+### 2026-04-23
+- 修复重定位过程中TF树中断的问题。
+- 调整重定位状态发布逻辑，提高TF连续性。
+
+### 2026-04-09
+- 增加地面点云构建和非地面点云输出。
+- 新增`localization_with_nonground.launch.py`，用于重定位时同步输出非地面点云。
+
+### 2026-03-28
+- 增加重定位功能，新增`localization.launch.py`和`relocalization.yaml`。
+- 将建图配置整理为`mapping.yaml`，保留LIO-SAM建图主流程。
+
+### 2025-12-23
+- 初始化ROS 2版本工程，完成Hesai XT16适配基础。
+
+## 致谢
+- 适配与维护：LRF
+- 基于Tixiao Shan的原始项目[LIO-SAM](https://github.com/TixiaoShan/LIO-SAM)以及Vishnura的[LIO_SAM_MID360](https://github.com/rajvishnu07/lio_sam_mid360)开发，引用信息请参见`LICENSE`和原始仓库。
+- 本项目的重定位功能参考了[funny_lidar_slam](https://github.com/zm0612/funny_lidar_slam)。

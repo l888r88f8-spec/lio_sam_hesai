@@ -7,9 +7,6 @@ __pycache__/
 test/
 tests/
 /docs/
-/image/
-/README.md
 /result.md
-/scripts/dufomap_native/README.md
 .worktrees/
 measure_localization_jitter.py
