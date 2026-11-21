@@ -13,6 +13,7 @@ def generate_launch_description():
     use_sim = LaunchConfiguration("use_sim")
     use_rviz = LaunchConfiguration("use_rviz")
     rviz_config_file = os.path.join(share_dir, "config", "rviz2.rviz")
+    publish_static_tf = LaunchConfiguration("publish_static_tf")
 
     params_declare = DeclareLaunchArgument(
         "params_file",
@@ -32,6 +33,11 @@ def generate_launch_description():
         "use_rviz",
         default_value="false",
         description="Launch RViz if true.",
+    )
+    publish_static_tf_declare = DeclareLaunchArgument(
+        "publish_static_tf",
+        default_value="false",
+        description="Publish base_link->lidar and base_link->imu static transforms.",
     )
 
     nodes = [
@@ -54,6 +60,7 @@ def generate_launch_description():
             ],
             parameters=[{"use_sim_time": use_sim}],
             output="screen",
+            condition=IfCondition(publish_static_tf),
         ),
         # base_link -> imu_link
         Node(
@@ -66,6 +73,7 @@ def generate_launch_description():
             ],
             parameters=[{"use_sim_time": use_sim}],
             output="screen",
+            condition=IfCondition(publish_static_tf),
         ),
         Node(
             package="lio_sam_hesai",
@@ -108,5 +116,5 @@ def generate_launch_description():
     ]
 
     return LaunchDescription(
-        [params_declare, use_sim_declare, use_rviz_declare] + nodes
+        [params_declare, use_sim_declare, publish_static_tf_declare, use_rviz_declare] + nodes
     )

@@ -66,9 +66,6 @@ class PreProcessing {
       const pcl::PointCloud<relocalization::PointXYZIRT>::Ptr& cloud,
       double lidar_rate = 10.0);
 
-  static std::pair<float, float> GetLidarPointMinMaxOffsetTime(
-      const pcl::PointCloud<relocalization::PointXYZIRT>::Ptr& cloud);
-
  private:
   std::shared_ptr<const SlamConfig> config_;
 

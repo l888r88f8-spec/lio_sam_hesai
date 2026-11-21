@@ -9,6 +9,7 @@
 #include <optional>
 
 #include "common/constant_variable.h"
+#include "common/cloud_time_bounds.h"
 #include "common/pointcloud_utility.h"
 #include "common/timer.h"
 #include "imu/imu_interpolator.h"
@@ -322,8 +323,16 @@ void PreProcessing::Run() {
       raw_cloud_ptr = temp_cloud_ptr_;
     }
 
-    const auto min_max_offset_time =
-        GetLidarPointMinMaxOffsetTime(raw_cloud_ptr);
+    const auto time_bounds = relocalization::CloudTimeBounds(raw_cloud_ptr);
+    if (!time_bounds) {
+      pop_raw_cloud_work_item_if_front_matches(raw_cloud_work_item);
+      temp_cloud_ptr_.reset();
+      pending_raw_cloud_work_item.reset();
+      LOG(WARNING) << "Drop lidar cloud: empty cloud or invalid point times";
+      complete_frame_without_timeout();
+      continue;
+    }
+    const auto& min_max_offset_time = *time_bounds;
 
     TimeStampUs curr_cloud_timestamp = raw_cloud_ptr->header.stamp;
 
@@ -353,16 +362,6 @@ void PreProcessing::Run() {
     DLOG(INFO) << std::setprecision(15) << "  cloud  end  timestamp: "
                << static_cast<double>(cloud_end_timestamp) *
                       kMicroseconds2Seconds;
-
-    // Make sure the pointcloud is not empty
-    if (raw_cloud_ptr->empty()) {
-      pop_raw_cloud_work_item_if_front_matches(raw_cloud_work_item);
-      temp_cloud_ptr_.reset();
-      pending_raw_cloud_work_item.reset();
-      LOG(WARNING) << "Lidar cloud data empty";
-      complete_frame_without_timeout();
-      continue;
-    }
 
     if (last_cloud_timestamp != std::numeric_limits<TimeStampUs>::max() &&
         curr_cloud_timestamp <= last_cloud_timestamp) {
@@ -917,23 +916,4 @@ void PreProcessing::ComputePointOffsetTime(
 
     time_last[ring] = cloud->points[i].time;
   }
-}
-
-std::pair<float, float> PreProcessing::GetLidarPointMinMaxOffsetTime(
-    const pcl::PointCloud<relocalization::PointXYZIRT>::Ptr& cloud) {
-  CHECK_NE(cloud->empty(), true);
-  float min = cloud->points[0].time;
-  float max = cloud->points[0].time;
-
-  for (const auto point : cloud->points) {
-    if (point.time < min) {
-      min = point.time;
-    }
-
-    if (point.time > max) {
-      max = point.time;
-    }
-  }
-
-  return {min, max};
 }

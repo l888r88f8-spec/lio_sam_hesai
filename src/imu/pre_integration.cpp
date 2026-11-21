@@ -79,7 +79,9 @@ void PreIntegration::Integrate(const IMUData &curr_imu_data) {
     // 注意更新顺序是P, V, R. 如果顺序反了，将会带来较大的误差
     delta_P_ = delta_P_ + delta_V_ * delta_t + 0.5 * delta_R_ * acc_unbias * delta_t * delta_t; // formula (3)
     delta_V_ = delta_V_ + delta_R_ * acc_unbias * delta_t; // formula (2)
-    delta_R_ = delta_R_ * R_step; // formula (1)
+    // Keep the accumulated rotation on SO(3): unnormalized matrix products
+    // eventually violate the rigid-transform invariant even for a still IMU.
+    delta_R_ = Eigen::Quaterniond(delta_R_ * R_step).normalized().toRotationMatrix(); // formula (1)
 
     // formula (14)
     cov_ = A * cov_ * A.transpose() + B * (gyro_acc_noise_cov_ / delta_t) * B.transpose();
@@ -101,7 +103,9 @@ NavStateData PreIntegration::Predict(const NavStateData &last_nav_state) {
 
     pre_nav_state.P_ = R_last * delta_P_ + P_last + V_last * total_time_ + 0.5 * gravity_ * total_time_ * total_time_;
     pre_nav_state.V_ = R_last * delta_V_ + V_last + gravity_ * total_time_;
-    pre_nav_state.R_ = R_last * delta_R_;
+    // Segment resets do not reset the local navigation state. Normalize this
+    // composition too, so roundoff cannot accumulate across tracking frames.
+    pre_nav_state.R_ = Eigen::Quaterniond(R_last * delta_R_).normalized().toRotationMatrix();
 
     return pre_nav_state;
 }

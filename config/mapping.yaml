@@ -99,7 +99,7 @@
         enable: true                                    # 最终GroundMap按XY单层栅格导出，保留坡度
         max_hole_cells: 14                              # 仅当完整连通空洞总格数不超过该值时整体填充，大洞不分块补
       ground_mesh:
-        enable: true                                    # 仅Current/RingPlane export；在最终单层栅格前补扫描线间缺失样本
+        enable: true                                    # RingPlane:export
         max_edge_length: 0.5                            # 三角边长基础阈值，单位米
         edge_length_per_meter: 0.25                     # 随距离放宽的三角边长系数，单位米/米
         max_range_ratio: 2.0                            # 三角顶点到雷达的最远/最近距离比上限

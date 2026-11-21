@@ -11,6 +11,9 @@ int main(int argc, char** argv) {
   google::InitGoogleLogging(argv[0]);
   FLAGS_logtostderr = true;
   FLAGS_colorlogtostderr = true;
+  // Dump fatal-signal stacks to stderr before the process terminates. The
+  // launch files keep that stream in the persistent launch log.
+  google::InstallFailureSignalHandler();
 
   rclcpp::init(argc, argv);
   auto options = rclcpp::NodeOptions();

@@ -351,10 +351,13 @@ void System::InitPublisher() {
   localization_global_cloud_map_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
           outputs.global_map,
           rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable());
-  localization_local_cloud_map_pub_ =
-      create_publisher<sensor_msgs::msg::PointCloud2>(
-          outputs.local_map,
-          rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable());
+  if (localization_ptr_->MapDiagnostics().mode ==
+      localization_map::MapMode::kTiled) {
+    localization_local_cloud_map_pub_ =
+        create_publisher<sensor_msgs::msg::PointCloud2>(
+            outputs.local_map,
+            rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable());
+  }
   localization_current_lidar_cloud_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
           outputs.current_lidar, 5);
 
@@ -688,7 +691,8 @@ void System::Run() {
     }
   }
 
-  if (localization_local_cloud_map_pub_->get_subscription_count() > 0) {
+  if (localization_local_cloud_map_pub_ &&
+      localization_local_cloud_map_pub_->get_subscription_count() > 0) {
     const auto local_cloud_map = localization_ptr_->GetLocalCloudMap();
     if (local_cloud_map && !local_cloud_map->empty() &&
         local_cloud_map.get() != last_published_local_map_.get()) {
