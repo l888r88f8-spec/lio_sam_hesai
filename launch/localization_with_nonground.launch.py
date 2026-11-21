@@ -1,11 +1,54 @@
 import os
+import time
 
 from ament_index_python.packages import get_package_share_directory
-from launch import LaunchDescription
+from launch import LaunchDescription, Substitution
 from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
 from launch.conditions import IfCondition
+from launch.logging import launch_config
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+
+
+class _RelocalizationGdbPrefix(Substitution):
+    """Build the GDB prefix only when debug mode is enabled.
+
+    The GDB log file lives in launch's configured log directory. That directory
+    is created and owned by launch, so this substitution must not create it. The
+    path is resolved lazily: with debug disabled neither the log directory nor
+    HOME is touched, which keeps default launches working with a read-only HOME.
+    """
+
+    def __init__(self, debug):
+        super().__init__()
+        self.__debug = debug
+        self.__prefix = None
+
+    def perform(self, context):
+        if self.__prefix is not None:
+            return self.__prefix
+        if str(self.__debug.perform(context)).lower() != "true":
+            return ""
+
+        gdb_log_file = os.path.join(
+            launch_config.log_dir,
+            "lio_sam_hesai_relocalization_gdb_"
+            f"{time.strftime('%Y%m%d-%H%M%S')}_{os.getpid()}_"
+            f"{time.time_ns()}.log",
+        )
+        self.__prefix = (
+            "gdb -q --batch "
+            '-ex "set pagination off" '
+            '-ex "set confirm off" '
+            f'-ex "set logging file {gdb_log_file}" '
+            '-ex "set logging overwrite off" '
+            '-ex "set logging enabled on" '
+            "-ex run "
+            '-ex "thread apply all bt full" '
+            '-ex "set logging enabled off" '
+            "--args"
+        )
+        return self.__prefix
 
 
 def generate_launch_description():
@@ -14,9 +57,13 @@ def generate_launch_description():
     use_sim = LaunchConfiguration("use_sim")
     use_rviz = LaunchConfiguration("use_rviz")
     publish_static_tf = LaunchConfiguration("publish_static_tf")
+    debug_relocalization = LaunchConfiguration("debug_relocalization")
     rviz_config_file = os.path.join(share_dir, "config", "rviz2.rviz")
     map_path = LaunchConfiguration("map_path")
     auto_relocalization = LaunchConfiguration("auto_relocalization")
+    relocalization_prefix = _RelocalizationGdbPrefix(
+        debug_relocalization
+    )
 
     params_declare = DeclareLaunchArgument(
         "params_file",
@@ -39,21 +86,29 @@ def generate_launch_description():
     )
     publish_static_tf_declare = DeclareLaunchArgument(
         "publish_static_tf",
-        default_value="true",
+        default_value="false",
         description="Publish base_link->lidar and base_link->imu static transforms.",
     )
     map_path_declare = DeclareLaunchArgument(
         "map_path",
-        default_value="/home/robot/map/hesai_outdoor_yifu/tiled",
+        default_value="/home/robot/map/hesai_sim2/GlobalMap.pcd",
         description="Select path.",
     )
     auto_relocalization_declare = DeclareLaunchArgument(
         "auto_relocalization",
-        default_value="true",
+        default_value="false",
         description=(
             "Enable Scan Context automatic relocalization for the localization "
             "node. Web-managed launches set this to false for maps without a "
             "scan context database so a manual initial pose is required."
+        ),
+    )
+    debug_relocalization_declare = DeclareLaunchArgument(
+        "debug_relocalization",
+        default_value="false",
+        description=(
+            "Run the relocalization node under GDB and print a full backtrace "
+            "if it crashes."
         ),
     )
     colorized_output = SetEnvironmentVariable(
@@ -102,8 +157,9 @@ def generate_launch_description():
                     "use_sim_time": use_sim,
                 },
             ],
-            output="screen",
+            output="both",
             emulate_tty=True,
+            prefix=relocalization_prefix,
         ),
         Node(
             package="lio_sam_hesai",
@@ -139,6 +195,7 @@ def generate_launch_description():
             publish_static_tf_declare,
             map_path_declare,
             auto_relocalization_declare,
+            debug_relocalization_declare,
             colorized_output,
         ]
         + nodes

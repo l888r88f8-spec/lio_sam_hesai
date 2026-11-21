@@ -1,42 +1,31 @@
 __pycache__/
 *.pyc
+.pytest_cache/
+/build/
+/install/
+/log/
+test/
+tests/
 docs/*
 !docs/PROJECT_STATUS.md
-test/
-# Narrow exception: new automatic-recovery policy regression tests.
-!test/
-test/*
-!test/test_automatic_recovery_policy.cpp
-# Narrow exceptions: DUFOMap export plan, usage doc, and regression tests.
+# DUFOMap export plan and usage documentation.
 !docs/superpowers/
 docs/superpowers/*
 !docs/superpowers/plans/
 docs/superpowers/plans/*
 !docs/superpowers/plans/2026-10-23-dufomap-export.md
 !docs/dufomap-export.md
-!test/test_dufomap_export.cpp
-!test/test_dufomap_export_filter.py
-!test/test_map_optimization_save_export.cpp
-!test/test_dufomap_native.cpp
-# Ground segmentation modes: implementation plan, usage, and regression tests.
+# Ground segmentation plans and usage documentation.
 !docs/superpowers/plans/2026-10-24-ground-segmentation-modes.md
 !docs/superpowers/plans/2026-10-24-dufomap-cpp-service-control.md
 !docs/ground-segmentation-modes.md
-!test/test_ground_mode_config.cpp
-!test/test_ground_segmentation.cpp
-!test/test_current_ground_segmenter.cpp
-!test/test_online_ground_pipeline.cpp
-!test/test_patchworkpp_ground_segmenter.cpp
-# Transformed keyframe cache budget and regression coverage.
+# Transformed keyframe cache plan.
 !docs/superpowers/plans/2026-10-28-transformed-keyframe-cache.md
-!test/test_transformed_keyframe_cache.cpp
-# Single-layer GroundMap grid export plan, doc, and processor tests.
+# GroundMap grid export plans and documentation.
 !docs/superpowers/plans/2026-10-28-ground-map-grid.md
 !docs/superpowers/plans/2026-10-28-ground-map-hole-fill.md
 !docs/ground-map-grid.md
-!test/test_ground_grid_processor.cpp
-# Ground scan mesh plan, tests, and documentation.
+# Ground scan mesh plan.
 !docs/superpowers/plans/2026-10-29-ground-scan-mesh.md
-!test/test_ground_mesh.cpp
 .worktrees/
 measure_localization_jitter.py
