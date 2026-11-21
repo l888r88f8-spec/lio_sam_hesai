@@ -1,7 +1,7 @@
 #include "common/dufomap_export.h"
 
 #include <gtest/gtest.h>
-#include <nlohmann/json.hpp>
+#include <yaml-cpp/yaml.h>
 
 #include <filesystem>
 #include <functional>
@@ -113,20 +113,20 @@ TEST(DufomapExportContract, ManifestCarriesFinalPoseAndOriginalTargets)
   manifest.targets.push_back({"corner", "targets/corner_raw.pcd",
                               "corner.pcd"});
 
-  const auto parsed = nlohmann::json::parse(
+  const auto parsed = YAML::Load(
       lio_sam_hesai::SerializeDufomapManifest(manifest));
-  EXPECT_EQ(parsed.at("format"), "lio_sam_dufomap_export");
-  EXPECT_EQ(parsed.at("version"), 1);
-  EXPECT_EQ(parsed.at("backend"), "native-cpp-upstream-core");
-  EXPECT_EQ(parsed.at("ufomap_revision"),
+  EXPECT_EQ(parsed["format"].as<std::string>(), "lio_sam_dufomap_export");
+  EXPECT_EQ(parsed["version"].as<int>(), 1);
+  EXPECT_EQ(parsed["backend"].as<std::string>(), "native-cpp-upstream-core");
+  EXPECT_EQ(parsed["ufomap_revision"].as<std::string>(),
             "fcb20f445d257280c039c07ab756c9d5b37ebd78");
-  ASSERT_EQ(parsed.at("frames").size(), 1U);
-  EXPECT_EQ(parsed.at("frames")[0].at("scan"), "scans/000007.pcd");
-  EXPECT_DOUBLE_EQ(parsed.at("frames")[0].at("pose")[3].get<double>(), 1.5);
-  EXPECT_DOUBLE_EQ(parsed.at("frames")[0].at("pose")[7].get<double>(), -2.0);
-  ASSERT_EQ(parsed.at("targets").size(), 1U);
-  EXPECT_EQ(parsed.at("targets")[0].at("output"), "corner.pcd");
-  EXPECT_DOUBLE_EQ(parsed.at("parameters").at("resolution").get<double>(), 0.1);
+  ASSERT_EQ(parsed["frames"].size(), 1U);
+  EXPECT_EQ(parsed["frames"][0]["scan"].as<std::string>(), "scans/000007.pcd");
+  EXPECT_DOUBLE_EQ(parsed["frames"][0]["pose"][3].as<double>(), 1.5);
+  EXPECT_DOUBLE_EQ(parsed["frames"][0]["pose"][7].as<double>(), -2.0);
+  ASSERT_EQ(parsed["targets"].size(), 1U);
+  EXPECT_EQ(parsed["targets"][0]["output"].as<std::string>(), "corner.pcd");
+  EXPECT_DOUBLE_EQ(parsed["parameters"]["resolution"].as<double>(), 0.1);
 }
 
 TEST(DufomapExportContract, MakesFreshSessionDirectoryBelowConfiguredBase)
