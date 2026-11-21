@@ -433,6 +433,9 @@ if(BUILD_TESTING)
   add_test(NAME test_launch_sim_clock
     COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/test/test_launch_sim_clock.py)
+  add_test(NAME test_relocalization_diagnostics_launch
+    COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/test/test_relocalization_diagnostics_launch.py)
   add_test(NAME test_tiled_map_integration
     COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/test/test_tiled_map_integration.py)
@@ -447,6 +450,15 @@ if(BUILD_TESTING)
     COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/test/test_dufomap_export_filter.py)
   find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_cloud_time_bounds test/test_cloud_time_bounds.cpp)
+  target_include_directories(test_cloud_time_bounds PRIVATE include ${PCL_INCLUDE_DIRS})
+  target_link_libraries(test_cloud_time_bounds ${PCL_LIBRARIES} ${LIO_SAM_EIGEN_TARGET})
+  ament_add_gtest(test_relocalization_failure_handler
+    test/test_relocalization_failure_handler.cpp)
+  target_include_directories(test_relocalization_failure_handler PRIVATE
+    ${GLOG_INCLUDE_DIRS})
+  target_link_libraries(test_relocalization_failure_handler
+    ${GLOG_LIBRARIES} Threads::Threads)
   find_package(ament_lint_auto REQUIRED)
   ament_add_gtest(test_online_ground_pipeline test/test_online_ground_pipeline.cpp)
   target_include_directories(test_online_ground_pipeline PRIVATE include)
@@ -571,6 +583,12 @@ if(BUILD_TESTING)
   ament_add_gtest(test_rigid_transform test/test_rigid_transform.cpp)
   target_include_directories(test_rigid_transform PRIVATE include)
   target_link_libraries(test_rigid_transform ${LIO_SAM_EIGEN_TARGET})
+  ament_add_gtest(test_pre_integration_rotation
+    test/test_pre_integration_rotation.cpp src/imu/pre_integration.cpp)
+  target_include_directories(test_pre_integration_rotation PRIVATE
+    include ${PCL_INCLUDE_DIRS})
+  target_link_libraries(test_pre_integration_rotation
+    ${LIO_SAM_EIGEN_TARGET} ${GLOG_LIBRARIES})
   ament_add_gtest(test_ros_pose_adapter test/test_ros_pose_adapter.cpp)
   target_include_directories(test_ros_pose_adapter PRIVATE include)
   target_link_libraries(test_ros_pose_adapter ${PROJECT_NAME}_contracts)
